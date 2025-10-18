@@ -1,0 +1,28 @@
+schema: '2.0'
+stages:
+  prepare:
+    cmd: python -m src.features.build --config configs/data.yaml
+    deps:
+    - path: configs/data.yaml
+      hash: md5
+      md5: aad30b2c7396a465a6782c80188d56c0
+      size: 504
+    - path: data/raw/creditcard.csv
+      hash: md5
+      md5: e90efcb83d69faf99fcab8b0255024de
+      size: 150828752
+    - path: src/features/build.py
+      hash: md5
+      md5: 054aaef0b6f100d18d1ee7a926563171
+      size: 1087
+    outs:
+    - path: data/interim
+      hash: md5
+      md5: d751713988987e9331980363e24189ce.dir
+      size: 0
+      nfiles: 0
+    - path: data/processed
+      hash: md5
+      md5: d5d5dce6ba29e4f17b0c36dc38d78571.dir
+      size: 72229250
+      nfiles: 1
