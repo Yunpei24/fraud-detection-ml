@@ -213,7 +213,7 @@ __pycache__/
 .pytest_cache/
 .dvc/tmp/
 # DVC data directories - keep .dvc pointer files
-data/*
+#data/*
 !data/**/*.dvc
 models/
 mlruns/
