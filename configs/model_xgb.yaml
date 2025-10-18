@@ -1,0 +1,19 @@
+model:
+  name: fraud_detector
+  type: xgboost
+  params:
+    n_estimators: 400
+    max_depth: 6
+    learning_rate: 0.08
+    subsample: 0.9
+    colsample_bytree: 0.9
+    reg_lambda: 1.0
+  threshold: 0.35
+train:
+  smote: true
+  test_size: 0.2
+  random_state: 42
+mlflow:
+  tracking_uri: ${MLFLOW_TRACKING_URI:-file:mlruns}
+  register: true
+  register_name: fraud_detector

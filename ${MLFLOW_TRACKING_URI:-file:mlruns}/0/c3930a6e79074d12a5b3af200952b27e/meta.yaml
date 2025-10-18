@@ -1,0 +1,15 @@
+artifact_uri: /Users/olaluwoyeolalekantaofeek/Downloads/fraud-detection-ml/${MLFLOW_TRACKING_URI:-file:mlruns}/0/c3930a6e79074d12a5b3af200952b27e/artifacts
+end_time: 1760826737446
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: c3930a6e79074d12a5b3af200952b27e
+run_name: flawless-bee-720
+run_uuid: c3930a6e79074d12a5b3af200952b27e
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1760826732962
+status: 3
+tags: []
+user_id: olaluwoyeolalekantaofeek

@@ -26,3 +26,27 @@ stages:
       md5: d5d5dce6ba29e4f17b0c36dc38d78571.dir
       size: 72229250
       nfiles: 1
+  train:
+    cmd: python -m src.training.train --config configs/model_xgb.yaml
+    deps:
+    - path: configs/model_xgb.yaml
+      hash: md5
+      md5: 1dc5d1215fb7d9ff221a46a80dae0033
+      size: 368
+    - path: data/processed/train.parquet
+      hash: md5
+      md5: 069569b2cbcde9d87a9f8d05113a47c4
+      size: 72229250
+    - path: src/training/train.py
+      hash: md5
+      md5: 7e4fb8782e079b4fe14ef4390fdb9929
+      size: 5681
+    outs:
+    - path: models/xgboost/features.txt
+      hash: md5
+      md5: 545970fbcfaf15e3a510d0ad029e4363
+      size: 109
+    - path: models/xgboost/model.json
+      hash: md5
+      md5: 8b0c7f040406d599938df40807af3266
+      size: 1817668

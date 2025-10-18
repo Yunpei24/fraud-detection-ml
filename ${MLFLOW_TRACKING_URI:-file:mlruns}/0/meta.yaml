@@ -1,0 +1,6 @@
+artifact_location: /Users/olaluwoyeolalekantaofeek/Downloads/fraud-detection-ml/${MLFLOW_TRACKING_URI:-file:mlruns}/0
+creation_time: 1760825791071
+experiment_id: '0'
+last_update_time: 1760825791071
+lifecycle_stage: active
+name: Default

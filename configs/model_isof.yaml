@@ -1,0 +1,22 @@
+model:
+  name: fraud_detector_isof
+  type: isolation_forest
+  params:
+    n_estimators: 200
+    contamination: auto
+    random_state: 42
+  # for anomaly score -> decision
+  anomaly_policy:
+    # if score < 0 => anomaly by default; you can override with a quantile
+    use_quantile: false
+    quantile: 0.02     # used only when use_quantile: true
+
+train:
+  smote: false         # not applicable; keep false
+  test_size: 0.2
+  random_state: 42
+
+mlflow:
+  tracking_uri: ${MLFLOW_TRACKING_URI:-file:mlruns}
+  register: false      # usually you don’t serve ISOF directly; optional
+  register_name: fraud_detector
