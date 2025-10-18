@@ -215,6 +215,6 @@ __pycache__/
 # DVC data directories - keep .dvc pointer files
 data/*
 !data/**/*.dvc
-!data/.gitignore
+printf '*\n!.gitignore\n!**/*.dvc\n' > data/.gitignore
 models/
 mlruns/
