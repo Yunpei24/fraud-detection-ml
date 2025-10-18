@@ -212,8 +212,9 @@ __pycache__/
 .ipynb_checkpoints/
 .pytest_cache/
 .dvc/tmp/
-data/raw/
-data/interim/
-data/processed/
+# DVC data directories - keep .dvc pointer files
+data/*
+!data/**/*.dvc
+!data/.gitignore
 models/
 mlruns/
