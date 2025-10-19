@@ -289,14 +289,14 @@ class FeatureEngineer(BaseFeatureEngineer):
             'max': 'customer_merchant_max_amount'
         })
 
-        # Join interaction stats
-        for col in interaction_stats.columns:
-            df_features[col] = df_features.apply(
-                lambda row: interaction_stats.loc[(row[customer_col], row[merchant_col]), col]
-                if (row[customer_col], row[merchant_col]) in interaction_stats.index else 0,
-                axis=1
-            )
-
+        # Join interaction stats using a vectorized merge for performance
+        interaction_stats = interaction_stats.reset_index()
+        df_features = df_features.merge(
+            interaction_stats,
+            how='left',
+            left_on=[customer_col, merchant_col],
+            right_on=[customer_col, merchant_col]
+        )
         df_features['customer_merchant_std_amount'] = df_features['customer_merchant_std_amount'].fillna(0)
 
         self.features_created.extend([
