@@ -123,9 +123,9 @@ class SchemaValidator:
                 report["business_errors"] = business_errors
             
             # Determine overall validity
-            report["valid_rows"] = len(df) if (fields_valid and business_valid) else 0
-            report["invalid_rows"] = 0 if (fields_valid and business_valid) else len(df)
-            report["is_valid"] = fields_valid and business_valid
+            report["valid_rows"] = len(df) if (fields_valid and types_valid and business_valid) else 0
+            report["invalid_rows"] = 0 if (fields_valid and types_valid and business_valid) else len(df)
+            report["is_valid"] = fields_valid and types_valid and business_valid
             
             return report["is_valid"], report
             
