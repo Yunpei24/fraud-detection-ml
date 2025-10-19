@@ -84,13 +84,16 @@ class DataLakeService:
 
         try:
             import pandas as pd
+            import io
             
-            # Convert to Parquet bytes
-            parquet_bytes = data.to_parquet(index=False)
+            # Convert to Parquet bytes using a BytesIO buffer
+            buf = io.BytesIO()
+            data.to_parquet(buf, index=False, engine="pyarrow")
+            buf.seek(0)
 
             # Upload to Data Lake
             file_client = self.container_client.get_file_client(path)
-            file_client.upload_data(parquet_bytes, overwrite=True)
+            file_client.upload_data(buf.getvalue(), overwrite=True)
 
             logger.info(f"Saved {len(data)} records to Data Lake: {path}")
             return True
