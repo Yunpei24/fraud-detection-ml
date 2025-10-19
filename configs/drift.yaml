@@ -1,6 +1,0 @@
-window_hours: 168
-min_new_labels: 100
-trigger_on:
-  - psi_action
-  - ks_action
-  - recall_drop
