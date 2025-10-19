@@ -1,0 +1,33 @@
+# Azure Event Hub Support (Optional)
+# This file includes azure-eventhub which requires cmake compilation
+# Only use if you need Azure Event Hub functionality and have cmake installed
+
+# First, install base requirements:
+# pip install -r requirements.txt
+
+# Then add Azure Event Hub support:
+# pip install -r requirements-azure.txt
+
+# For macOS with cmake issues, try:
+# brew install cmake  # If cmake not installed
+# export LDFLAGS="-L/usr/local/opt/openssl/lib"
+# export CPPFLAGS="-I/usr/local/opt/openssl/include"
+# pip install --no-binary uamqp uamqp==1.6.6  # Use pre-built wheels
+# pip install azure-eventhub==5.10.0
+
+# If compilation still fails, use the mock implementation instead:
+# See: src/ingestion/event_hub.py for mock implementation
+
+# Azure Event Hub with dependencies
+azure-eventhub==5.10.0
+
+# The uamqp package is a dependency that may require special handling:
+# - On macOS: May need cmake and OpenSSL
+# - On Linux: Usually works without issues
+# - On Windows: Use pre-built wheels
+
+# If installation fails with uamqp, alternatives:
+# 1. Use Python 3.10 (has pre-built wheels)
+# 2. Install cmake: brew install cmake
+# 3. Use mock Event Hub for development
+# 4. Use Kafka instead (works out of the box)
