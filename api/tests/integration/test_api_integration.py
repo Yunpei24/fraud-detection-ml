@@ -79,8 +79,27 @@ class TestPredictEndpoint:
 
 class TestMetricsEndpoint:
     def test_metrics_endpoint(self, client):
-        response = client.get("/api/v1/metrics")
+        """Test Prometheus metrics endpoint is accessible."""
+        response = client.get("/metrics")
         assert response.status_code == 200
+        
+        # Verify Prometheus format
+        content_type = response.headers.get("content-type", "")
+        assert "text/plain" in content_type
+        
+        # Verify metrics content
+        content = response.text
+        assert len(content) > 0
+        assert "fraud_" in content  # All our metrics start with fraud_
+    
+    def test_metrics_contain_system_info(self, client):
+        """Test metrics include system information."""
+        response = client.get("/metrics")
+        content = response.text
+        
+        # Check for system metrics
+        assert "fraud_memory_usage_bytes" in content
+        assert "fraud_cpu_usage_percent" in content
 
 
 class TestAlertIntegration:

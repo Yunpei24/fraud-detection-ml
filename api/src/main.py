@@ -9,7 +9,13 @@ from fastapi.responses import JSONResponse
 
 from .api.routes import admin_router, health_router, metrics_router, predict_router
 from .config import constants, get_logger, settings
-from .monitoring import active_connections, error_counter, request_counter
+from .monitoring.prometheus import (
+    ACTIVE_CONNECTIONS,
+    API_REQUESTS_TOTAL,
+    API_REQUEST_DURATION_SECONDS,
+    API_ERRORS_TOTAL,
+    INVALID_REQUESTS_TOTAL
+)
 from .utils import FraudDetectionException
 
 logger = get_logger(__name__)
@@ -46,7 +52,7 @@ app.add_middleware(
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
-    active_connections.inc()
+    ACTIVE_CONNECTIONS.inc()
 
     response = await call_next(request)
 
@@ -65,9 +71,19 @@ async def log_requests(request: Request, call_next):
 
     response.headers["X-Process-Time"] = str(process_time)
 
-    request_counter.labels(endpoint=request.url.path, status=response.status_code).inc()
+    # Update Prometheus metrics with correct labels
+    API_REQUESTS_TOTAL.labels(
+        endpoint=request.url.path,
+        method=request.method,
+        status_code=response.status_code
+    ).inc()
+    
+    API_REQUEST_DURATION_SECONDS.labels(
+        endpoint=request.url.path,
+        method=request.method
+    ).observe(process_time)
 
-    active_connections.dec()
+    ACTIVE_CONNECTIONS.dec()
 
     return response
 
@@ -76,8 +92,9 @@ async def log_requests(request: Request, call_next):
 async def fraud_detection_exception_handler(
     request: Request, exc: FraudDetectionException
 ):
-    error_counter.labels(
-        error_type=exc.__class__.__name__, error_code=exc.error_code
+    API_ERRORS_TOTAL.labels(
+        error_type=exc.__class__.__name__, 
+        error_code=exc.error_code
     ).inc()
 
     logger.error(
@@ -101,7 +118,9 @@ async def fraud_detection_exception_handler(
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    error_counter.labels(error_type="ValidationError", error_code="E001").inc()
+    INVALID_REQUESTS_TOTAL.labels(
+        validation_error=exc.__class__.__name__
+    ).inc()
 
     logger.warning(
         f"Validation error: {exc}",
@@ -120,7 +139,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
-    error_counter.labels(error_type=exc.__class__.__name__, error_code="E999").inc()
+    API_ERRORS_TOTAL.labels(
+        error_type=exc.__class__.__name__, 
+        error_code="E999"
+    ).inc()
 
     logger.error(
         f"Unhandled exception: {exc}",
