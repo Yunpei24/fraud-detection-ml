@@ -175,37 +175,7 @@ class ConceptDriftDetector:
                 details={"error": str(e)}
             )
     
-    def compute_f1_score(
-        self,
-        y_true: np.ndarray,
-        y_pred: np.ndarray
-    ) -> float:
-        """
-        Compute F1 score (harmonic mean of precision and recall).
-        
-        Args:
-            y_true: True labels
-            y_pred: Predicted labels
-            
-        Returns:
-            F1 score
-        """
-        try:
-            f1 = f1_score(y_true, y_pred, zero_division=0.0)
-            
-            self.logger.debug(
-                "F1 score computed",
-                extra={"f1_score": f1}
-            )
-            
-            return float(f1)
-            
-        except Exception as e:
-            self.logger.error(f"F1 score computation failed: {e}")
-            raise MetricsComputationException(
-                "F1 score computation failed",
-                details={"error": str(e)}
-            )
+# (Removed duplicate compute_f1_score method)
     
     def compute_metrics(
         self,
