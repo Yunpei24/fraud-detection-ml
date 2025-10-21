@@ -7,6 +7,13 @@ import pandas as pd
 import numpy as np
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
+
+# Mock Databricks SDK (not installed in test environment)
+sys.modules['databricks'] = MagicMock()
+sys.modules['databricks.sdk'] = MagicMock()
+sys.modules['databricks.sdk.service'] = MagicMock()
+sys.modules['databricks.sdk.service.jobs'] = MagicMock()
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))

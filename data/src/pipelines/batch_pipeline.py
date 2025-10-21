@@ -1,255 +1,281 @@
 """
-Batch data pipeline for periodic processing of transaction datasets.
+Batch data pipeline for periodic Databricks-based feature engineering.
 
-Provides abstract base and concrete implementations for different data sources.
-Flow: Load -> Validate -> Clean -> Engineer -> Store
+Orchestrates daily batch processing:
+1. Extract transactions from SQL Database
+2. Submit Spark job to Databricks for feature engineering
+3. Handle SMOTE resampling and feature transformations
+4. Store results to S3 and Feature Store
+5. Track execution metrics
+
+Designed for integration with Apache Airflow DAGs.
 """
 
 import logging
-import time
-import pandas as pd
+import os
 from typing import Optional, Dict, Any
-from datetime import datetime
-from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
 
-logger = logging.getLogger(__name__)
+from src.cloud.databricks import DatabricksJobManager, DatabricksNotebookExecutor
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
-class BaseBatchPipeline(ABC):
+class DatabricksBatchPipeline:
     """
-    Abstract base class for batch processing pipelines.
+    Orchestrates daily batch data preparation via Databricks Spark cluster.
     
-    All concrete pipelines inherit from this and define their specific
-    loading, validation, and transformation logic.
+    Flow:
+    1. Load transactions from Azure SQL Database (raw 24h data)
+    2. Submit feature engineering job to Databricks cluster
+    3. Databricks executes PySpark transformations:
+       - Data validation and quality checks
+       - SMOTE resampling (balance classes)
+       - Feature engineering (50+ features)
+       - Output to S3 + Feature Store
+    4. Poll job status with exponential backoff
+    5. Log metrics and handle errors gracefully
     """
     
-    def __init__(self, pipeline_name: str = "BaseBatchPipeline"):
+    def __init__(self, databricks_host: str, databricks_token: str, 
+                 cluster_id: str, polling_interval: int = 5, 
+                 max_job_wait_time: int = 3600):
         """
-        Initialize base batch pipeline.
+        Initialize Databricks batch pipeline.
         
         Args:
-            pipeline_name (str): Name of this pipeline
+            databricks_host (str): Databricks workspace URL (e.g., https://xxx.cloud.databricks.com)
+            databricks_token (str): Databricks API token
+            cluster_id (str): Existing Databricks cluster ID
+            polling_interval (int): Seconds between status checks (default 5)
+            max_job_wait_time (int): Max job execution time in seconds (default 3600)
         """
-        self.pipeline_name = pipeline_name
-        self.execution_stats = {
-            "start_time": None,
-            "end_time": None,
-            "total_rows_processed": 0,
-            "total_rows_stored": 0,
-            "errors": [],
-            "status": None
-        }
+        self.job_manager = DatabricksJobManager(
+            host=databricks_host,
+            token=databricks_token,
+            polling_interval=polling_interval,
+            max_wait_seconds=max_job_wait_time
+        )
+        self.notebook_executor = DatabricksNotebookExecutor(
+            host=databricks_host,
+            token=databricks_token,
+            polling_interval=polling_interval,
+            max_wait_seconds=max_job_wait_time
+        )
+        self.cluster_id = cluster_id
+        self.execution_metrics = {}
     
-    @abstractmethod
-    def execute(self, input_source, **kwargs) -> Dict[str, Any]:
-        """Execute the complete batch pipeline."""
-        pass
-    
-    def get_statistics(self) -> dict:
-        """Get execution statistics."""
-        stats = self.execution_stats.copy()
-        
-        if stats["start_time"] and stats["end_time"]:
-            elapsed = (stats["end_time"] - stats["start_time"]).total_seconds()
-            stats["duration_seconds"] = elapsed
-            stats["rows_per_second"] = (
-                stats["total_rows_stored"] / elapsed if elapsed > 0 else 0
-            )
-        
-        return stats
-
-
-class BatchPipeline(BaseBatchPipeline):
-    """
-    Legacy batch pipeline for daily/hourly processing of historical data.
-    
-    DEPRECATED: Use source-specific pipelines (KaggleBatchPipeline, etc.)
-    This class is kept for backward compatibility.
-    
-    Flow: Load -> Validate -> Clean -> Engineer -> Store
-    """
-
-    def __init__(self):
-        """Initialize batch pipeline"""
-        super().__init__(pipeline_name="LegacyBatchPipeline")
-        self.execution_stats = {
-            "start_time": None,
-            "end_time": None,
-            "total_rows_processed": 0,
-            "total_rows_stored": 0,
-            "errors": []
-        }
-
-    def execute(
-        self,
-        input_source,
-        validator,
-        cleaner,
-        feature_engineer,
-        storage_service,
-        metrics_collector=None
-    ) -> dict:
+    def execute(self, **kwargs) -> Dict[str, Any]:
         """
-        Execute complete batch pipeline
+        Execute complete batch pipeline.
         
         Args:
-            input_source: Data source (DataFrame, file path, or SQL query)
-            validator: Schema validator instance
-            cleaner: Data cleaner instance
-            feature_engineer: Feature engineer instance
-            storage_service: Storage service instance
-            metrics_collector: Optional metrics collector
+            **kwargs: Optional parameters passed to Databricks job
+                - date_range_days: Number of days to process (default 1)
+                - min_transactions: Minimum transactions to process (default 1000)
+                - enable_smote: Enable SMOTE resampling (default True)
+                - output_path: S3 output location
         
         Returns:
-            Execution report dictionary
+            Dict with execution status, rows processed, and metrics
         """
-        self.execution_stats["start_time"] = datetime.utcnow()
-
+        job_name = f"fraud_detection_batch_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        
         try:
-            # 1. Load data
-            logger.info("Step 1: Loading data...")
-            df = self._load_data(input_source)
-            self.execution_stats["total_rows_processed"] = len(df)
-            logger.info(f"Loaded {len(df)} rows")
-
-            # 2. Validate schema
-            logger.info("Step 2: Validating schema...")
-            df_validated = self._validate_data(df, validator, metrics_collector)
-            logger.info(f"Validation complete - {len(df_validated)} rows valid")
-
-            # 3. Clean data
-            logger.info("Step 3: Cleaning data...")
-            df_cleaned = cleaner.clean_pipeline(df_validated)
-            logger.info(f"Cleaned data - {len(df_cleaned)} rows remaining")
-
-            # 4. Engineer features
-            logger.info("Step 4: Engineering features...")
-            df_features = feature_engineer.engineer_features(df_cleaned)
-            logger.info(f"Feature engineering complete - {len(df_features.columns)} total columns")
-
-            # 5. Store results
-            logger.info("Step 5: Storing results...")
-            rows_stored = storage_service.insert_transactions(df_features.to_dict('records'))
-            self.execution_stats["total_rows_stored"] = rows_stored
-            logger.info(f"Stored {rows_stored} rows")
-
-            # 6. Record metrics
-            if metrics_collector:
-                elapsed = (datetime.utcnow() - self.execution_stats["start_time"]).total_seconds()
-                metrics_collector.record_transaction_processed(rows_stored)
-                metrics_collector.record_processing_latency(elapsed)
-
-            self.execution_stats["end_time"] = datetime.utcnow()
-            self.execution_stats["status"] = "success"
-            logger.info("Batch pipeline execution completed successfully")
-
-        except Exception as e:
-            logger.error(f"Batch pipeline execution failed: {str(e)}")
-            self.execution_stats["status"] = "failed"
-            self.execution_stats["errors"].append(str(e))
-            self.execution_stats["end_time"] = datetime.utcnow()
-
-        return self.execution_stats
-
-    def _load_data(self, source) -> pd.DataFrame:
-        """
-        Load data from various sources
-        
-        Args:
-            source: DataFrame, file path (.csv, .parquet), or SQL query dict
-        
-        Returns:
-            Pandas DataFrame
-        """
-        if isinstance(source, pd.DataFrame):
-            return source
-
-        elif isinstance(source, str):
-            if source.endswith('.csv'):
-                return pd.read_csv(source)
-            elif source.endswith('.parquet'):
-                return pd.read_parquet(source)
+            logger.info(f"Starting batch pipeline: {job_name}")
+            
+            # Submit feature engineering job to Databricks
+            run_id = self._submit_feature_engineering_job(job_name, kwargs)
+            
+            # Wait for job completion with polling
+            status = self.job_manager.wait_for_job(run_id)
+            
+            if status == 'SUCCEEDED':
+                logger.info(f"Batch pipeline {job_name} completed successfully")
+                return {
+                    "status": "success",
+                    "job_name": job_name,
+                    "run_id": run_id,
+                    "metrics": self.execution_metrics
+                }
             else:
-                raise ValueError(f"Unsupported file format: {source}")
-
-        elif isinstance(source, dict) and 'query' in source:
-            # Load from database
-            from sqlalchemy import create_engine, text
-            engine = create_engine(source.get('connection_string'))
-            with engine.connect() as conn:
-                result = conn.execute(text(source['query']))
-                columns = result.keys()
-                data = [dict(zip(columns, row)) for row in result]
-            return pd.DataFrame(data)
-
-        else:
-            raise ValueError(f"Unsupported source type: {type(source)}")
-
-    def _validate_data(
-        self,
-        df: pd.DataFrame,
-        validator,
-        metrics_collector=None
-    ) -> pd.DataFrame:
-        """
-        Validate batch data using the appropriate schema.
+                logger.error(f"Batch pipeline {job_name} failed with status: {status}")
+                return {
+                    "status": "failed",
+                    "job_name": job_name,
+                    "run_id": run_id,
+                    "error": f"Job failed with status: {status}"
+                }
         
-        NOTE: This method is for legacy compatibility with old tests.
-        New code should use KaggleBatchPipeline or schema-aware validators.
+        except TimeoutError as e:
+            logger.error(f"Batch pipeline timeout: {str(e)}")
+            return {
+                "status": "timeout",
+                "job_name": job_name,
+                "error": str(e)
+            }
+        except Exception as e:
+            logger.error(f"Batch pipeline error: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "job_name": job_name,
+                "error": str(e)
+            }
+    
+    def execute_via_notebook(self, notebook_path: str, **kwargs) -> Dict[str, Any]:
+        """
+        Execute batch pipeline via Databricks notebook.
+        
+        Alternative method if feature engineering is implemented as a notebook
+        instead of a Spark job.
         
         Args:
-            df: Input DataFrame
-            validator: Schema validator (new API with validate_batch)
-            metrics_collector: Optional metrics collector
+            notebook_path (str): Path to notebook in Databricks workspace
+                (e.g., /Workspace/fraud-detection/feature_engineering)
+            **kwargs: Parameters passed to notebook
         
         Returns:
-            DataFrame with validated rows
+            Dict with execution status
         """
-        # Use new validate_batch API if available
-        if hasattr(validator, 'validate_batch'):
-            is_valid, report = validator.validate_batch(df)
-            invalid_count = len(df) - report.get('valid_rows', 0)
-            logger.info(f"Validation report: {invalid_count} invalid rows")
-            self.execution_stats["errors"].append(f"Invalid rows: {invalid_count}")
-            
-            if metrics_collector and invalid_count > 0:
-                metrics_collector.record_validation_error()
-            
-            return df  # Return all rows (validation already happened)
+        job_name = f"notebook_feature_eng_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
         
-        # Fallback for very old validator interface
-        else:
-            logger.warning("Using legacy row-by-row validation. Consider upgrading to new schema API.")
-            valid_rows = []
-            invalid_count = 0
-
-            for idx, row in df.iterrows():
-                if hasattr(validator, 'validate'):
-                    is_valid, report = validator.validate(row.to_dict())
-                    if is_valid:
-                        valid_rows.append(row)
-                    else:
-                        invalid_count += 1
-                        if metrics_collector:
-                            metrics_collector.record_validation_error()
-                else:
-                    # No validate method, assume row is valid
-                    valid_rows.append(row)
-
-            logger.info(f"Removed {invalid_count} invalid rows during validation")
-            self.execution_stats["errors"].append(f"Invalid rows: {invalid_count}")
+        try:
+            logger.info(f"Starting notebook execution: {job_name} from {notebook_path}")
             
-            return pd.DataFrame(valid_rows)
-
-    def get_statistics(self) -> dict:
-        """Get execution statistics"""
-        stats = self.execution_stats.copy()
-        
-        if stats["start_time"] and stats["end_time"]:
-            elapsed = (stats["end_time"] - stats["start_time"]).total_seconds()
-            stats["duration_seconds"] = elapsed
-            stats["rows_per_second"] = (
-                stats["total_rows_stored"] / elapsed if elapsed > 0 else 0
+            # Execute notebook on cluster
+            run_id = self.notebook_executor.run_notebook(
+                notebook_path=notebook_path,
+                cluster_id=self.cluster_id,
+                parameters=kwargs
             )
+            
+            # Wait for completion
+            status = self.notebook_executor.wait_for_notebook(run_id)
+            
+            if status == 'SUCCEEDED':
+                logger.info(f"Notebook {job_name} completed successfully")
+                return {
+                    "status": "success",
+                    "notebook_path": notebook_path,
+                    "run_id": run_id
+                }
+            else:
+                logger.error(f"Notebook {job_name} failed with status: {status}")
+                return {
+                    "status": "failed",
+                    "notebook_path": notebook_path,
+                    "run_id": run_id,
+                    "error": f"Notebook failed with status: {status}"
+                }
+        
+        except TimeoutError as e:
+            logger.error(f"Notebook execution timeout: {str(e)}")
+            return {
+                "status": "timeout",
+                "notebook_path": notebook_path,
+                "error": str(e)
+            }
+        except Exception as e:
+            logger.error(f"Notebook execution error: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "notebook_path": notebook_path,
+                "error": str(e)
+            }
+    
+    def _submit_feature_engineering_job(self, job_name: str, params: Dict[str, Any]) -> int:
+        """
+        Submit feature engineering Spark job to Databricks.
+        
+        Args:
+            job_name (str): Name for this job run
+            params (Dict): Job parameters (date_range_days, enable_smote, etc.)
+        
+        Returns:
+            int: Job run ID
+        """
+        # Build Spark SQL job parameters
+        spark_job_params = {
+            'sql_file': 'dbfs:/fraud-detection/feature_engineering.sql',
+            'parameters': {
+                'date_range_days': str(params.get('date_range_days', 1)),
+                'min_transactions': str(params.get('min_transactions', 1000)),
+                'enable_smote': str(params.get('enable_smote', True)),
+                'output_path': params.get('output_path', 's3://fraud-detection/features/')
+            }
+        }
+        
+        logger.debug(f"Submitting job with params: {spark_job_params}")
+        
+        # Submit Spark SQL job
+        run_id = self.job_manager.submit_spark_sql_job(
+            job_name=job_name,
+            cluster_id=self.cluster_id,
+            sql_file=spark_job_params['sql_file'],
+            parameters=spark_job_params['parameters']
+        )
+        
+        logger.info(f"Feature engineering job submitted: run_id={run_id}")
+        return run_id
+    
+    def get_job_status(self, run_id: int) -> str:
+        """
+        Get current job status.
+        
+        Args:
+            run_id (int): Job run ID
+        
+        Returns:
+            str: Current status (PENDING, RUNNING, SUCCEEDED, FAILED, etc.)
+        """
+        return self.job_manager.get_job_status(run_id)
+    
+    def cancel_job(self, run_id: int) -> None:
+        """
+        Cancel a running job.
+        
+        Args:
+            run_id (int): Job run ID
+        """
+        self.job_manager.cancel_job(run_id)
+        logger.info(f"Job {run_id} cancelled")
 
-        return stats
+
+def get_batch_pipeline() -> DatabricksBatchPipeline:
+    """
+    Factory function to create DatabricksBatchPipeline from environment variables.
+    
+    Expected environment variables:
+    - DATABRICKS_HOST: Databricks workspace URL
+    - DATABRICKS_TOKEN: Databricks API token
+    - DATABRICKS_CLUSTER_ID: Existing cluster ID
+    - DATABRICKS_POLLING_INTERVAL: Status poll interval (default 5s)
+    - DATABRICKS_MAX_JOB_WAIT: Max job execution time (default 3600s)
+    
+    Returns:
+        DatabricksBatchPipeline: Configured pipeline instance
+    
+    Raises:
+        ValueError: If required environment variables are missing
+    """
+    databricks_host = os.getenv('DATABRICKS_HOST')
+    databricks_token = os.getenv('DATABRICKS_TOKEN')
+    cluster_id = os.getenv('DATABRICKS_CLUSTER_ID')
+    
+    if not all([databricks_host, databricks_token, cluster_id]):
+        raise ValueError(
+            "Missing required Databricks environment variables: "
+            "DATABRICKS_HOST, DATABRICKS_TOKEN, DATABRICKS_CLUSTER_ID"
+        )
+    
+    polling_interval = int(os.getenv('DATABRICKS_POLLING_INTERVAL', 5))
+    max_job_wait = int(os.getenv('DATABRICKS_MAX_JOB_WAIT', 3600))
+    
+    return DatabricksBatchPipeline(
+        databricks_host=databricks_host,
+        databricks_token=databricks_token,
+        cluster_id=cluster_id,
+        polling_interval=polling_interval,
+        max_job_wait_time=max_job_wait
+    )
