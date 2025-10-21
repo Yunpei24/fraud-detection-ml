@@ -5,6 +5,7 @@ Handles Spark job submission, notebook execution, and data transfer.
 """
 
 import os
+import time
 from typing import Optional, List, Dict, Any
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.jobs import RunNow, TaskSettingsSQL
@@ -17,17 +18,21 @@ logger = get_logger(__name__)
 class DatabricksJobManager:
     """Manages Databricks jobs and Spark applications."""
     
-    def __init__(self, host: str, token: str):
+    def __init__(self, host: str, token: str, polling_interval: int = 5, max_wait_seconds: int = 3600):
         """
         Initialize Databricks client.
         
         Args:
             host (str): Databricks workspace host URL
             token (str): Databricks API token
+            polling_interval (int): Seconds between status polls (default 5)
+            max_wait_seconds (int): Max wait time for job completion (default 3600)
         """
         self.host = host
         self.token = token
         self.client = WorkspaceClient(host=host, token=token)
+        self.polling_interval = polling_interval
+        self.max_wait_seconds = max_wait_seconds
     
     def submit_job(self, job_name: str, cluster_id: str, spark_params: Dict[str, Any]) -> int:
         """
@@ -36,7 +41,7 @@ class DatabricksJobManager:
         Args:
             job_name (str): Job name
             cluster_id (str): Cluster ID
-            spark_params (Dict): Spark job parameters
+            spark_params (Dict): Spark job parameters (python_file, parameters)
             
         Returns:
             int: Job run ID
@@ -59,6 +64,37 @@ class DatabricksJobManager:
             logger.error(f"Failed to submit job: {str(e)}")
             raise
     
+    def submit_spark_sql_job(self, job_name: str, cluster_id: str, sql_file: str, parameters: Optional[Dict[str, str]] = None) -> int:
+        """
+        Submit a Spark SQL job to Databricks.
+        
+        Args:
+            job_name (str): Job name
+            cluster_id (str): Cluster ID
+            sql_file (str): Path to SQL file in DBFS (e.g., dbfs:/path/to/script.sql)
+            parameters (Dict): SQL parameters
+            
+        Returns:
+            int: Job run ID
+        """
+        try:
+            run = self.client.jobs.submit(
+                run_name=job_name,
+                tasks=[{
+                    'task_key': job_name,
+                    'existing_cluster_id': cluster_id,
+                    'spark_sql_task': {
+                        'file': sql_file,
+                        'parameters': parameters or {}
+                    }
+                }]
+            )
+            logger.info(f"Spark SQL job {job_name} submitted with run ID: {run.run_id}")
+            return run.run_id
+        except Exception as e:
+            logger.error(f"Failed to submit Spark SQL job: {str(e)}")
+            raise
+    
     def get_job_status(self, run_id: int) -> str:
         """
         Get the status of a Spark job.
@@ -75,6 +111,36 @@ class DatabricksJobManager:
         except Exception as e:
             logger.error(f"Failed to get job status: {str(e)}")
             raise
+    
+    def wait_for_job(self, run_id: int) -> str:
+        """
+        Poll job status until completion or timeout.
+        
+        Args:
+            run_id (int): Job run ID
+            
+        Returns:
+            str: Final job status (SUCCEEDED, FAILED, SKIPPED, etc.)
+            
+        Raises:
+            TimeoutError: If job exceeds max_wait_seconds
+        """
+        start_time = time.time()
+        
+        while True:
+            elapsed = time.time() - start_time
+            if elapsed > self.max_wait_seconds:
+                logger.error(f"Job {run_id} timeout after {self.max_wait_seconds} seconds")
+                raise TimeoutError(f"Job {run_id} exceeded max wait time: {self.max_wait_seconds}s")
+            
+            status = self.get_job_status(run_id)
+            
+            if status in ['SUCCEEDED', 'FAILED', 'SKIPPED', 'INTERNAL_ERROR']:
+                logger.info(f"Job {run_id} completed with status: {status}")
+                return status
+            
+            logger.debug(f"Job {run_id} status: {status} (elapsed: {elapsed:.0f}s)")
+            time.sleep(self.polling_interval)
     
     def cancel_job(self, run_id: int) -> None:
         """
@@ -94,17 +160,21 @@ class DatabricksJobManager:
 class DatabricksNotebookExecutor:
     """Executes Databricks notebooks."""
     
-    def __init__(self, host: str, token: str):
+    def __init__(self, host: str, token: str, polling_interval: int = 5, max_wait_seconds: int = 3600):
         """
         Initialize Databricks notebook executor.
         
         Args:
             host (str): Databricks workspace host URL
             token (str): Databricks API token
+            polling_interval (int): Seconds between status polls (default 5)
+            max_wait_seconds (int): Max wait time for execution (default 3600)
         """
         self.host = host
         self.token = token
         self.client = WorkspaceClient(host=host, token=token)
+        self.polling_interval = polling_interval
+        self.max_wait_seconds = max_wait_seconds
     
     def run_notebook(self, notebook_path: str, cluster_id: str, 
                     parameters: Optional[Dict[str, str]] = None) -> int:
@@ -112,7 +182,7 @@ class DatabricksNotebookExecutor:
         Run a Databricks notebook.
         
         Args:
-            notebook_path (str): Path to notebook
+            notebook_path (str): Path to notebook (e.g., /Workspace/fraud-detection/notebooks/feature_eng)
             cluster_id (str): Cluster ID
             parameters (Dict): Notebook parameters
             
@@ -136,6 +206,37 @@ class DatabricksNotebookExecutor:
         except Exception as e:
             logger.error(f"Failed to run notebook: {str(e)}")
             raise
+    
+    def wait_for_notebook(self, run_id: int) -> str:
+        """
+        Poll notebook execution status until completion or timeout.
+        
+        Args:
+            run_id (int): Run ID
+            
+        Returns:
+            str: Final execution status
+            
+        Raises:
+            TimeoutError: If execution exceeds max_wait_seconds
+        """
+        start_time = time.time()
+        
+        while True:
+            elapsed = time.time() - start_time
+            if elapsed > self.max_wait_seconds:
+                logger.error(f"Notebook {run_id} timeout after {self.max_wait_seconds} seconds")
+                raise TimeoutError(f"Notebook {run_id} exceeded max wait time: {self.max_wait_seconds}s")
+            
+            run = self.client.jobs.get_run(run_id)
+            status = run.state.value
+            
+            if status in ['SUCCEEDED', 'FAILED', 'SKIPPED', 'INTERNAL_ERROR']:
+                logger.info(f"Notebook {run_id} completed with status: {status}")
+                return status
+            
+            logger.debug(f"Notebook {run_id} status: {status} (elapsed: {elapsed:.0f}s)")
+            time.sleep(self.polling_interval)
     
     def get_notebook_output(self, run_id: int) -> Optional[str]:
         """

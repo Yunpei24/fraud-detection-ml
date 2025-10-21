@@ -1,125 +1,93 @@
 """
-Integration tests for data pipeline
+Integration tests for Databricks batch pipeline
 """
 
 import pytest
-import pandas as pd
 import sys
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from src.pipelines.batch_pipeline import BatchPipeline
-from src.validation.schema import SchemaValidator
-from src.transformation.cleaner import DataCleaner
-from src.transformation.features import FeatureEngineer
+from src.pipelines.batch_pipeline import DatabricksBatchPipeline, get_batch_pipeline
 
 
-class MockStorage:
-    """Mock storage service for testing"""
-    def __init__(self):
-        self.stored_data = []
+class TestDatabricksBatchPipeline:
+    """Tests for DatabricksBatchPipeline"""
 
-    def insert_transactions(self, transactions):
-        self.stored_data.extend(transactions)
-        return len(transactions)
-
-
-class TestBatchPipeline:
-    """Tests for BatchPipeline integration"""
-
-    def test_pipeline_with_dataframe(self, sample_dataframe):
-        """Test batch pipeline with DataFrame input"""
-        pipeline = BatchPipeline()
-        validator = SchemaValidator()
-        cleaner = DataCleaner()
-        engineer = FeatureEngineer()
-        storage = MockStorage()
-
-        stats = pipeline.execute(
-            sample_dataframe,
-            validator,
-            cleaner,
-            engineer,
-            storage
+    @patch('src.cloud.databricks.WorkspaceClient')
+    def test_pipeline_initialization(self, mock_workspace_client):
+        """Test batch pipeline initialization"""
+        pipeline = DatabricksBatchPipeline(
+            databricks_host='https://test.cloud.databricks.com',
+            databricks_token='test-token',
+            cluster_id='test-cluster-id'
         )
-
-        assert stats["status"] == "success"
-        assert stats["total_rows_processed"] > 0
-        assert stats["total_rows_stored"] > 0
-        assert len(storage.stored_data) > 0
-
-    def test_pipeline_statistics(self, sample_dataframe):
-        """Test pipeline statistics calculation"""
-        pipeline = BatchPipeline()
-        validator = SchemaValidator()
-        cleaner = DataCleaner()
-        engineer = FeatureEngineer()
-        storage = MockStorage()
-
-        pipeline.execute(
-            sample_dataframe,
-            validator,
-            cleaner,
-            engineer,
-            storage
-        )
-
-        stats = pipeline.get_statistics()
         
-        assert "duration_seconds" in stats
-        assert "rows_per_second" in stats
-        assert stats["status"] == "success"
+        assert pipeline.cluster_id == 'test-cluster-id'
+        assert pipeline.job_manager is not None
+        assert pipeline.notebook_executor is not None
 
-    def test_pipeline_with_invalid_data(self):
-        """Test pipeline handles invalid data gracefully"""
-        pipeline = BatchPipeline()
-        validator = SchemaValidator()
-        cleaner = DataCleaner()
-        engineer = FeatureEngineer()
-        storage = MockStorage()
-
-        # Create invalid dataframe
-        invalid_df = pd.DataFrame({
-            "id": ["A", "B", "C"]
-            # Missing required columns
-        })
-
-        stats = pipeline.execute(
-            invalid_df,
-            validator,
-            cleaner,
-            engineer,
-            storage
-        )
-
-        # Should handle error gracefully
-        assert "status" in stats
-
-
-class TestDataPipelineIntegration:
-    """End-to-end data pipeline tests"""
-
-    def test_full_data_flow(self, sample_dataframe):
-        """Test complete data flow"""
-        # Validate using new batch API
-        validator = SchemaValidator()
-        is_valid, report = validator.validate_batch(sample_dataframe)
+    @patch('src.cloud.databricks.WorkspaceClient')
+    def test_pipeline_execute_success(self, mock_workspace_client):
+        """Test successful pipeline execution"""
+        mock_client = Mock()
+        mock_run = Mock()
+        mock_run.run_id = 99999
+        mock_run.state.value = 'SUCCEEDED'
+        mock_client.jobs.submit.return_value = mock_run
+        mock_client.jobs.get_run.return_value = mock_run
+        mock_workspace_client.return_value = mock_client
         
-        df_valid = sample_dataframe
-        assert len(df_valid) > 0
+        pipeline = DatabricksBatchPipeline(
+            databricks_host='https://test.cloud.databricks.com',
+            databricks_token='test-token',
+            cluster_id='test-cluster-id'
+        )
+        
+        result = pipeline.execute(date_range_days=1)
+        
+        assert result['status'] == 'success'
+        assert result['run_id'] == 99999
 
-        # Clean
-        cleaner = DataCleaner()
-        df_cleaned = cleaner.clean_pipeline(df_valid)
-        assert len(df_cleaned) > 0
+    @patch('src.cloud.databricks.WorkspaceClient')
+    def test_pipeline_execute_failure(self, mock_workspace_client):
+        """Test failed pipeline execution"""
+        mock_client = Mock()
+        mock_run = Mock()
+        mock_run.run_id = 88888
+        mock_run.state.value = 'FAILED'
+        mock_client.jobs.submit.return_value = mock_run
+        mock_client.jobs.get_run.return_value = mock_run
+        mock_workspace_client.return_value = mock_client
+        
+        pipeline = DatabricksBatchPipeline(
+            databricks_host='https://test.cloud.databricks.com',
+            databricks_token='test-token',
+            cluster_id='test-cluster-id'
+        )
+        
+        result = pipeline.execute(date_range_days=1)
+        
+        assert result['status'] == 'failed'
+        assert 'error' in result
 
-        # Engineer features
-        engineer = FeatureEngineer()
-        df_features = engineer.engineer_features(df_cleaned)
-        assert len(df_features.columns) > len(df_cleaned.columns)
+    @patch.dict('os.environ', {
+        'DATABRICKS_HOST': 'https://test.cloud.databricks.com',
+        'DATABRICKS_TOKEN': 'test-token',
+        'DATABRICKS_CLUSTER_ID': 'test-cluster'
+    })
+    @patch('src.cloud.databricks.WorkspaceClient')
+    def test_factory_function_from_env(self, mock_workspace_client):
+        """Test factory function creates pipeline from environment variables"""
+        pipeline = get_batch_pipeline()
+        
+        assert pipeline is not None
+        assert isinstance(pipeline, DatabricksBatchPipeline)
+        assert pipeline.cluster_id == 'test-cluster'
 
-        # Store
-        storage = MockStorage()
-        rows_stored = storage.insert_transactions(df_features.to_dict('records'))
-        assert rows_stored == len(df_features)
+    @patch.dict('os.environ', {})
+    def test_factory_function_missing_env_vars(self):
+        """Test factory function raises error when env vars missing"""
+        with pytest.raises(ValueError, match="Missing required Databricks environment variables"):
+            get_batch_pipeline()
