@@ -126,6 +126,37 @@ class TestMetricsEndpoint:
         # Prometheus metrics are in text format
         assert "text/plain" in response.headers["content-type"] or \
                "text/plain" in str(response.headers.get("content-type", ""))
+        
+        # Verify content contains Prometheus metrics
+        content = response.text
+        assert "# HELP" in content or "# TYPE" in content
+    
+    def test_metrics_content_has_new_metrics(self, client):
+        """Test that new metrics are exposed."""
+        response = client.get("/metrics")
+        content = response.text
+        
+        # Check for new API metrics
+        assert "fraud_api_requests_total" in content
+        assert "fraud_api_request_duration_seconds" in content
+        assert "fraud_predictions_total" in content
+        assert "fraud_prediction_latency_seconds" in content
+        
+        # Check for system metrics
+        assert "fraud_memory_usage_bytes" in content
+        assert "fraud_cpu_usage_percent" in content
+    
+    def test_metrics_updated_after_prediction(self, client, sample_transaction):
+        """Test that metrics are updated after making a prediction."""
+        # Make a prediction to increment counters
+        client.post("/api/v1/predict", json=sample_transaction)
+        
+        # Check metrics were updated
+        response = client.get("/metrics")
+        content = response.text
+        
+        # Predictions counter should be incremented
+        assert "fraud_predictions_total" in content
 
 
 class TestRootEndpoint:

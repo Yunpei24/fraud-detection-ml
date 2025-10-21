@@ -1,133 +1,125 @@
 """
-Metrics collection for Prometheus monitoring
+Prometheus metrics for data pipeline monitoring.
+
+This module exposes data pipeline metrics in Prometheus format.
 """
 
-import logging
-from typing import Optional, Dict
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
 from datetime import datetime
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
+
+NAMESPACE = "data_pipeline"
+
+# -----------------------------------------------------------------------------
+# Pipeline Health Metrics
+# -----------------------------------------------------------------------------
+
+PIPELINE_RUNS_TOTAL = Counter(
+    f"{NAMESPACE}_runs_total",
+    "Total number of pipeline runs",
+    ["pipeline_name", "status"]  # status: 'success' or 'failed'
+)
+
+PIPELINE_DURATION_SECONDS = Gauge(
+    f"{NAMESPACE}_duration_seconds",
+    "Duration of the last pipeline run in seconds",
+    ["pipeline_name"]
+)
+
+PIPELINE_LAST_SUCCESS_TIMESTAMP = Gauge(
+    f"{NAMESPACE}_last_success_timestamp",
+    "Timestamp of the last successful pipeline run",
+    ["pipeline_name"]
+)
+
+# -----------------------------------------------------------------------------
+# Data Volume Metrics
+# -----------------------------------------------------------------------------
+
+TRANSACTIONS_INGESTED_TOTAL = Counter(
+    f"{NAMESPACE}_transactions_ingested_total",
+    "Total number of transactions ingested from the source",
+    ["source"]  # e.g., 'azure_sql', 'event_hub', 'file'
+)
+
+TRANSACTIONS_PROCESSED_TOTAL = Counter(
+    f"{NAMESPACE}_transactions_processed_total",
+    "Total number of transactions successfully processed",
+    ["destination"]  # e.g., 'feature_store', 's3', 'database'
+)
+
+TRANSACTIONS_REJECTED_TOTAL = Counter(
+    f"{NAMESPACE}_transactions_rejected_total",
+    "Total number of transactions rejected during processing",
+    ["reason"]  # e.g., 'validation_error', 'duplicate', 'missing_critical_field'
+)
+
+# -----------------------------------------------------------------------------
+# Data Quality Metrics
+# -----------------------------------------------------------------------------
+
+VALIDATION_ERRORS_TOTAL = Counter(
+    f"{NAMESPACE}_validation_errors_total",
+    "Total number of data validation errors",
+    ["feature_name", "error_type"]  # error_type: 'missing', 'out_of_range', 'invalid_format'
+)
+
+MISSING_VALUES_TOTAL = Counter(
+    f"{NAMESPACE}_missing_values_total",
+    "Total number of missing values found",
+    ["feature_name"]
+)
+
+# -----------------------------------------------------------------------------
+# Performance Metrics
+# -----------------------------------------------------------------------------
+
+STEP_LATENCY_SECONDS = Histogram(
+    f"{NAMESPACE}_step_latency_seconds",
+    "Latency of individual pipeline steps in seconds",
+    ["step_name"],  # e.g., 'ingestion', 'validation', 'feature_engineering', 'storage'
+    buckets=[1, 5, 15, 30, 60, 120, 300, 600, 1200]  # 1s to 20min
+)
 
 
-class MetricsCollector:
+def setup_prometheus_metrics(port: int = 9090) -> None:
     """
-    Collects metrics for monitoring data pipeline health
-    Integrates with Prometheus
+    Start Prometheus metrics server for data pipeline.
+    
+    Args:
+        port: Port number for metrics server (default: 9090)
     """
+    try:
+        start_http_server(port)
+        logger.info("prometheus_metrics_server_started", port=port, module="data_pipeline")
+    except Exception as e:
+        logger.error("prometheus_server_start_failed", error=str(e), module="data_pipeline")
 
-    def __init__(self, namespace: str = "fraud_detection_data"):
-        """
-        Initialize metrics collector
-        
-        Args:
-            namespace: Prometheus metric namespace
-        """
-        self.namespace = namespace
-        self.metrics = {}
-        self._init_prometheus()
 
-    def _init_prometheus(self) -> None:
-        """Initialize Prometheus metrics"""
-        try:
-            from prometheus_client import Counter, Histogram, Gauge
+def record_pipeline_success(pipeline_name: str, duration: float) -> None:
+    """
+    Record a successful pipeline run.
+    
+    Args:
+        pipeline_name: Name of the pipeline
+        duration: Duration in seconds
+    """
+    PIPELINE_RUNS_TOTAL.labels(pipeline_name=pipeline_name, status="success").inc()
+    PIPELINE_DURATION_SECONDS.labels(pipeline_name=pipeline_name).set(duration)
+    PIPELINE_LAST_SUCCESS_TIMESTAMP.labels(pipeline_name=pipeline_name).set(
+        datetime.utcnow().timestamp()
+    )
+    logger.debug("pipeline_success_recorded", pipeline_name=pipeline_name, duration=duration)
 
-            # Counters
-            self.transactions_processed = Counter(
-                f'{self.namespace}_transactions_processed_total',
-                'Total transactions processed'
-            )
-            self.transactions_ingested = Counter(
-                f'{self.namespace}_transactions_ingested_total',
-                'Total transactions ingested'
-            )
-            self.validation_errors = Counter(
-                f'{self.namespace}_validation_errors_total',
-                'Total validation errors'
-            )
-            self.data_quality_issues = Counter(
-                f'{self.namespace}_data_quality_issues_total',
-                'Total data quality issues'
-            )
 
-            # Histograms
-            self.ingestion_latency = Histogram(
-                f'{self.namespace}_ingestion_latency_seconds',
-                'Time taken to ingest batch'
-            )
-            self.processing_latency = Histogram(
-                f'{self.namespace}_processing_latency_seconds',
-                'Time taken to process batch'
-            )
-            self.validation_latency = Histogram(
-                f'{self.namespace}_validation_latency_seconds',
-                'Time taken to validate batch'
-            )
-
-            # Gauges
-            self.active_connections = Gauge(
-                f'{self.namespace}_active_connections',
-                'Number of active connections'
-            )
-            self.queue_size = Gauge(
-                f'{self.namespace}_queue_size',
-                'Size of processing queue'
-            )
-            self.last_processed_timestamp = Gauge(
-                f'{self.namespace}_last_processed_timestamp',
-                'Timestamp of last processed transaction'
-            )
-
-            logger.info("Prometheus metrics initialized")
-
-        except ImportError:
-            logger.warning("prometheus_client not installed, metrics disabled")
-        except Exception as e:
-            logger.error(f"Failed to initialize metrics: {str(e)}")
-
-    def record_transaction_processed(self, count: int = 1) -> None:
-        """Record processed transactions"""
-        self.transactions_processed.inc(count)
-
-    def record_transaction_ingested(self, count: int = 1) -> None:
-        """Record ingested transactions"""
-        self.transactions_ingested.inc(count)
-
-    def record_validation_error(self) -> None:
-        """Record validation error"""
-        self.validation_errors.inc()
-
-    def record_data_quality_issue(self, count: int = 1) -> None:
-        """Record data quality issues"""
-        self.data_quality_issues.inc(count)
-
-    def record_ingestion_latency(self, seconds: float) -> None:
-        """Record ingestion latency"""
-        self.ingestion_latency.observe(seconds)
-
-    def record_processing_latency(self, seconds: float) -> None:
-        """Record processing latency"""
-        self.processing_latency.observe(seconds)
-
-    def record_validation_latency(self, seconds: float) -> None:
-        """Record validation latency"""
-        self.validation_latency.observe(seconds)
-
-    def set_active_connections(self, count: int) -> None:
-        """Set number of active connections"""
-        self.active_connections.set(count)
-
-    def set_queue_size(self, size: int) -> None:
-        """Set queue size"""
-        self.queue_size.set(size)
-
-    def set_last_processed_timestamp(self) -> None:
-        """Set last processed timestamp"""
-        self.last_processed_timestamp.set(datetime.utcnow().timestamp())
-
-    def get_metrics_summary(self) -> Dict:
-        """Get summary of all collected metrics"""
-        return {
-            "namespace": self.namespace,
-            "metrics_initialized": True,
-            "collection_time": datetime.utcnow().isoformat()
-        }
+def record_pipeline_failure(pipeline_name: str) -> None:
+    """
+    Record a failed pipeline run.
+    
+    Args:
+        pipeline_name: Name of the pipeline
+    """
+    PIPELINE_RUNS_TOTAL.labels(pipeline_name=pipeline_name, status="failed").inc()
+    logger.debug("pipeline_failure_recorded", pipeline_name=pipeline_name)
