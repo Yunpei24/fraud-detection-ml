@@ -1,0 +1,43 @@
+# Airflow
+logs/*
+!logs/.gitkeep
+*.pid
+*.log
+airflow.cfg
+airflow.db
+airflow-webserver.pid
+unittests.cfg
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+*.tmp
+tmp/
+temp/
+FINAL_SUMMARY.md
+ALL_DAGS_UPDATED.md
+IMPLEMENTATION_COMPLETE.md
+IMPLEMENTATION_STATUS.md
+REFACTORING_COMPLETE.md
+REFACTORING_SUMMARY.md
+STRUCTURE_CORRECTIONS.md
+VISUAL_SUMMARY.md
+NEXT_STEPS.md

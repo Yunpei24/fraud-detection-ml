@@ -1,0 +1,394 @@
+"""
+DAG 06: Model Performance Tracking
+Suivi quotidien des performances du modèle en production
+Utilise module_loader et config centralisée
+
+Schedule: Quotidien 3h AM
+"""
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.utils.dates import days_ago
+import sys
+from pathlib import Path
+
+# Add config and plugins to path
+AIRFLOW_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(AIRFLOW_ROOT / "config"))
+sys.path.insert(0, str(AIRFLOW_ROOT / "plugins"))
+
+from settings import settings
+from module_loader import loader
+from helpers import (
+    calculate_percentage_change,
+    validate_training_metrics,
+    format_metric_value,
+    create_alert_message
+)
+from hooks.postgres_hook import FraudPostgresHook
+
+default_args = {
+    'owner': 'ml-team',
+    'depends_on_past': False,
+    'email': settings.alert_email_recipients,
+    'email_on_failure': True,
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5)
+}
+
+
+def compute_daily_metrics(**context):
+    """Calcule métriques modèle dernières 24h using FraudPostgresHook"""
+    import pandas as pd
+    from sklearn.metrics import (
+        recall_score, precision_score, f1_score,
+        roc_auc_score, confusion_matrix
+    )
+    
+    # Use hook instead of direct SQLAlchemy
+    hook = FraudPostgresHook()
+    
+    # Récupérer predictions vs actuals dernières 24h
+    query = """
+        SELECT 
+            p.prediction,
+            p.probability,
+            t.is_fraud as actual,
+            p.model_version,
+            p.created_at
+        FROM predictions p
+        JOIN transactions t ON p.transaction_id = t.transaction_id
+        WHERE p.created_at >= NOW() - INTERVAL '24 hours'
+        AND t.analyst_reviewed = true
+    """
+    
+    # Fetch all rows into DataFrame
+    results = hook.fetch_all(query)
+    
+    if not results:
+        return {
+            'status': 'no_data',
+            'message': 'No reviewed transactions in last 24h'
+        }
+    
+    # Convert to DataFrame for metrics calculation
+    df = pd.DataFrame(results, columns=['prediction', 'probability', 'actual', 'model_version', 'created_at'])
+    
+    y_true = df['actual']
+    y_pred = df['prediction']
+    y_prob = df['probability']
+    
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+    
+    metrics = {
+        'date': context['ds'],
+        'total_predictions': len(df),
+        'recall': float(recall_score(y_true, y_pred)),
+        'precision': float(precision_score(y_true, y_pred)),
+        'f1_score': float(f1_score(y_true, y_pred)),
+        'auc_roc': float(roc_auc_score(y_true, y_prob)),
+        'true_positives': int(tp),
+        'false_positives': int(fp),
+        'true_negatives': int(tn),
+        'false_negatives': int(fn),
+        'false_positive_rate': float(fp / (fp + tn)) if (fp + tn) > 0 else 0.0,
+        'false_negative_rate': float(fn / (fn + tp)) if (fn + tp) > 0 else 0.0
+    }
+    
+    return metrics
+
+
+def compare_to_baseline(**context):
+    """Compare métriques actuelles au baseline using FraudPostgresHook and helpers"""
+    ti = context['task_instance']
+    current_metrics = ti.xcom_pull(task_ids='compute_daily_metrics')
+    
+    if current_metrics.get('status') == 'no_data':
+        return {'comparison': 'skipped', 'reason': 'no_data'}
+    
+    # Use hook instead of direct SQLAlchemy
+    hook = FraudPostgresHook()
+    
+    # Récupérer baseline (moyenne 30 derniers jours)
+    query = """
+        SELECT 
+            AVG(recall) as baseline_recall,
+            AVG(precision) as baseline_precision,
+            AVG(f1_score) as baseline_f1,
+            AVG(auc_roc) as baseline_auc
+        FROM model_versions
+        WHERE is_production = true
+        AND registered_at >= NOW() - INTERVAL '30 days'
+    """
+    
+    result = hook.fetch_one(query)
+    
+    # Use centralized thresholds from settings
+    baseline = {
+        'recall': float(result[0] or settings.min_recall_threshold),
+        'precision': float(result[1] or settings.min_precision_threshold),
+        'f1_score': float(result[2] or 0.77),
+        'auc_roc': float(result[3] or 0.85)
+    }
+    
+    # Use helper function to calculate percentage changes
+    recall_pct_change = calculate_percentage_change(baseline['recall'], current_metrics['recall'])
+    precision_pct_change = calculate_percentage_change(baseline['precision'], current_metrics['precision'])
+    f1_pct_change = calculate_percentage_change(baseline['f1_score'], current_metrics['f1_score'])
+    auc_pct_change = calculate_percentage_change(baseline['auc_roc'], current_metrics['auc_roc'])
+    
+    comparison = {
+        'recall_delta': current_metrics['recall'] - baseline['recall'],
+        'precision_delta': current_metrics['precision'] - baseline['precision'],
+        'f1_delta': current_metrics['f1_score'] - baseline['f1_score'],
+        'auc_delta': current_metrics['auc_roc'] - baseline['auc_roc'],
+        'recall_pct_change': recall_pct_change,
+        'precision_pct_change': precision_pct_change,
+        'f1_pct_change': f1_pct_change,
+        'auc_pct_change': auc_pct_change,
+        'baseline': baseline,
+        'current': {
+            'recall': current_metrics['recall'],
+            'precision': current_metrics['precision'],
+            'f1_score': current_metrics['f1_score'],
+            'auc_roc': current_metrics['auc_roc']
+        }
+    }
+    
+    # Use centralized degradation threshold from settings
+    degradation_threshold = settings.performance_degradation_threshold if hasattr(settings, 'performance_degradation_threshold') else 0.05
+    
+    # Déterminer si dégradation significative
+    degraded = (
+        comparison['recall_delta'] < -degradation_threshold or
+        comparison['f1_delta'] < -degradation_threshold or
+        comparison['auc_delta'] < -degradation_threshold
+    )
+    
+    comparison['is_degraded'] = degraded
+    comparison['severity'] = 'CRITICAL' if degraded else 'OK'
+    
+    return comparison
+
+
+def check_performance_thresholds(**context):
+    """Vérifie seuils de performance using centralized thresholds and helpers"""
+    ti = context['task_instance']
+    metrics = ti.xcom_pull(task_ids='compute_daily_metrics')
+    
+    if metrics.get('status') == 'no_data':
+        return {'status': 'skipped'}
+    
+    # Use centralized thresholds from settings instead of hardcoded values
+    min_recall = settings.min_recall_threshold
+    min_precision = settings.min_precision_threshold
+    max_fpr = settings.max_fpr_threshold if hasattr(settings, 'max_fpr_threshold') else 0.05
+    
+    violations = []
+    
+    if metrics['recall'] < min_recall:
+        violations.append({
+            'metric': 'recall',
+            'value': metrics['recall'],
+            'threshold': min_recall,
+            'message': f"Recall {format_metric_value(metrics['recall'])} < {min_recall}"
+        })
+    
+    if metrics['precision'] < min_precision:
+        violations.append({
+            'metric': 'precision',
+            'value': metrics['precision'],
+            'threshold': min_precision,
+            'message': f"Precision {format_metric_value(metrics['precision'])} < {min_precision}"
+        })
+    
+    if metrics['false_positive_rate'] > max_fpr:
+        violations.append({
+            'metric': 'false_positive_rate',
+            'value': metrics['false_positive_rate'],
+            'threshold': max_fpr,
+            'message': f"FPR {format_metric_value(metrics['false_positive_rate'])} > {max_fpr}"
+        })
+    
+    return {
+        'violations': violations,
+        'has_violations': len(violations) > 0,
+        'severity': 'CRITICAL' if len(violations) > 0 else 'OK'
+    }
+
+
+def save_performance_metrics(**context):
+    """Sauvegarde métriques dans database using FraudPostgresHook"""
+    import json
+    
+    ti = context['task_instance']
+    metrics = ti.xcom_pull(task_ids='compute_daily_metrics')
+    
+    if metrics.get('status') == 'no_data':
+        return {'status': 'skipped'}
+    
+    # Use hook instead of direct SQLAlchemy
+    hook = FraudPostgresHook()
+    
+    # Sauvegarder dans pipeline_execution_log
+    query = """
+        INSERT INTO pipeline_execution_log 
+        (pipeline_name, status, execution_time_seconds, records_processed, metrics)
+        VALUES (%s, %s, %s, %s, %s::jsonb)
+    """
+    
+    metrics_json = json.dumps({
+        'recall': metrics['recall'],
+        'precision': metrics['precision'],
+        'f1_score': metrics['f1_score'],
+        'auc_roc': metrics['auc_roc'],
+        'fpr': metrics['false_positive_rate'],
+        'fnr': metrics['false_negative_rate']
+    })
+    
+    hook.execute_query(query, (
+        '06_model_performance_tracking',
+        'SUCCESS',
+        0,
+        metrics['total_predictions'],
+        metrics_json
+    ))
+    
+    return {'status': 'saved', 'metrics_count': 6}
+
+
+def send_performance_alert(**context):
+    """Envoie alerte si performance dégradée using helper and AlertOperator"""
+    ti = context['task_instance']
+    
+    comparison = ti.xcom_pull(task_ids='compare_to_baseline')
+    threshold_check = ti.xcom_pull(task_ids='check_performance_thresholds')
+    
+    # Skip si pas de données
+    if comparison.get('comparison') == 'skipped':
+        return {'status': 'no_alert'}
+    
+    # Alert si dégradation ou violations
+    needs_alert = (
+        comparison.get('is_degraded', False) or
+        threshold_check.get('has_violations', False)
+    )
+    
+    if not needs_alert:
+        return {'status': 'no_alert_needed'}
+    
+    from plugins.operators.alert_operator import FraudDetectionAlertOperator
+    
+    # Use create_alert_message helper for consistency
+    violations = threshold_check.get('violations', [])
+    violations_msg = "\n".join([f"  - {v['message']}" for v in violations])
+    
+    alert_message = create_alert_message(
+        alert_type='model_performance',
+        summary=f"Model performance degradation detected ({len(violations)} violations)",
+        details=violations_msg
+    )
+    
+    alert_op = FraudDetectionAlertOperator(
+        task_id='performance_alert_internal',
+        alert_type='model_performance',
+        severity='CRITICAL',
+        message=alert_message,
+        details={
+            'comparison': comparison,
+            'violations': violations,
+            'baseline': comparison.get('baseline'),
+            'current': comparison.get('current')
+        }
+    )
+    
+    return alert_op.execute(context)
+
+
+def generate_performance_report(**context):
+    """Génère rapport de performance"""
+    ti = context['task_instance']
+    
+    metrics = ti.xcom_pull(task_ids='compute_daily_metrics')
+    comparison = ti.xcom_pull(task_ids='compare_to_baseline')
+    
+    if metrics.get('status') == 'no_data':
+        return {'report': 'No data available for report'}
+    
+    report = f"""
+    === Model Performance Report ===
+    Date: {context['ds']}
+    
+    CURRENT METRICS (24h):
+    - Total Predictions: {metrics['total_predictions']}
+    - Recall: {metrics['recall']:.3f}
+    - Precision: {metrics['precision']:.3f}
+    - F1-Score: {metrics['f1_score']:.3f}
+    - AUC-ROC: {metrics['auc_roc']:.3f}
+    - False Positive Rate: {metrics['false_positive_rate']:.3f}
+    - False Negative Rate: {metrics['false_negative_rate']:.3f}
+    
+    CONFUSION MATRIX:
+    - True Positives: {metrics['true_positives']}
+    - False Positives: {metrics['false_positives']}
+    - True Negatives: {metrics['true_negatives']}
+    - False Negatives: {metrics['false_negatives']}
+    
+    COMPARISON TO BASELINE (30 days):
+    - Recall Δ: {comparison.get('recall_delta', 0):.3f}
+    - Precision Δ: {comparison.get('precision_delta', 0):.3f}
+    - F1 Δ: {comparison.get('f1_delta', 0):.3f}
+    - AUC Δ: {comparison.get('auc_delta', 0):.3f}
+    
+    STATUS: {comparison.get('severity', 'OK')}
+    """
+    
+    print(report)
+    return {'report': report, 'status': 'generated'}
+
+
+# Define DAG
+with DAG(
+    '06_model_performance_tracking',
+    default_args=default_args,
+    description='Suivi quotidien des performances du modèle en production',
+    schedule_interval='0 3 * * *',  # 3 AM daily
+    start_date=days_ago(1),
+    catchup=False,
+    tags=['monitoring', 'performance', 'ml']
+) as dag:
+    
+    compute = PythonOperator(
+        task_id='compute_daily_metrics',
+        python_callable=compute_daily_metrics
+    )
+    
+    compare = PythonOperator(
+        task_id='compare_to_baseline',
+        python_callable=compare_to_baseline
+    )
+    
+    check = PythonOperator(
+        task_id='check_performance_thresholds',
+        python_callable=check_performance_thresholds
+    )
+    
+    save = PythonOperator(
+        task_id='save_performance_metrics',
+        python_callable=save_performance_metrics
+    )
+    
+    alert = PythonOperator(
+        task_id='send_performance_alert',
+        python_callable=send_performance_alert
+    )
+    
+    report = PythonOperator(
+        task_id='generate_performance_report',
+        python_callable=generate_performance_report
+    )
+    
+    # Dependencies
+    compute >> [compare, check]
+    [compare, check] >> save
+    save >> alert >> report
