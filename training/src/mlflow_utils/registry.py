@@ -1,31 +1,63 @@
 # training/src/mlflow_utils/registry.py
 from __future__ import annotations
 
-import mlflow
-from typing import Any
+from typing import Any, Optional
+
+try:
+    import mlflow  # type: ignore
+    from mlflow.tracking import MlflowClient  # type: ignore
+    MLFLOW_AVAILABLE = True
+except Exception:
+    mlflow = None  # type: ignore
+    MlflowClient = object  # type: ignore
+    MLFLOW_AVAILABLE = False
 
 
-def register_model(run_id: str, model_path: str, model_name: str) -> None:
+def register_model(model: Any, name: str, stage: str = "staging") -> Optional[str]:
     """
-    Register a model in the MLflow Model Registry.
+    Registers the current run's logged model under `name`.
+    Returns model version string if available.
+    Safe no-op without MLflow.
     """
-    model_uri = f"runs:/{run_id}/{model_path}"
-    mlflow.register_model(model_uri, model_name)
-    print(f"Registered model '{model_name}' from run {run_id}")
+    if not (MLFLOW_AVAILABLE and mlflow.active_run()):
+        return None
+
+    try:
+        # If the model wasn't logged yet, attempt to log quickly.
+        # Caller often already called tracking.log_model(...)
+        # Here we only ensure a registration exists.
+        run_id = mlflow.active_run().info.run_id  # type: ignore
+        client = MlflowClient()
+        # Register whatever is logged at 'model' artifact path
+        mv = mlflow.register_model(f"runs:/{run_id}/model", name)
+        # Optionally transition stage
+        if stage:
+            client.transition_model_version_stage(name, mv.version, stage)
+        return str(mv.version)
+    except Exception:
+        return None
 
 
-def promote_model(model_name: str, stage: str = "Staging") -> None:
+def transition_stage(model_name: str, version: str | int, new_stage: str) -> bool:
+    if not MLFLOW_AVAILABLE:
+        return False
+    try:
+        client = MlflowClient()
+        client.transition_model_version_stage(model_name, str(version), new_stage)
+        return True
+    except Exception:
+        return False
+
+
+def get_latest_model(model_name: str, stage: str = "production"):
     """
-    Promote a registered model to a specific stage.
+    Returns the latest model version meta for the given stage, or None.
     """
-    client = mlflow.tracking.MlflowClient()
-    latest = client.get_latest_versions(model_name, stages=["None"])
-    if not latest:
-        print(f"No un-staged version found for {model_name}")
-        return
-    client.transition_model_version_stage(
-        name=model_name,
-        version=latest[0].version,
-        stage=stage,
-    )
-    print(f"Model '{model_name}' promoted to stage '{stage}'")
+    if not MLFLOW_AVAILABLE:
+        return None
+    try:
+        client = MlflowClient()
+        vers = client.get_latest_versions(model_name, stages=[stage])
+        return vers[0] if vers else None
+    except Exception:
+        return None

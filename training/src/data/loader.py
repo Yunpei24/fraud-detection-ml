@@ -7,7 +7,6 @@ from typing import Literal, Optional
 
 import pandas as pd
 
-
 def read_table(
     path: str | os.PathLike,
     *,
@@ -53,8 +52,52 @@ def safe_cast_dtypes(df: pd.DataFrame, schema: dict[str, str] | None = None) -> 
     """
     if not schema:
         return df
-    out = df.copy()
-    for col, dtype in schema.items():
-        if col in out.columns:
-            out[col] = out[col].astype(dtype)
-    return out
+
+# Data loading utilities for the creditcard fraud dataset.
+
+from pathlib import Path
+from typing import Iterable, List
+import pandas as pd
+
+from training.src.config.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+# canonical order for the Kaggle creditcard.csv
+EXPECTED_COLUMNS: List[str] = (
+    ["Time"]
+    + [f"V{i}" for i in range(1, 29)]
+    + ["Amount", "Class"]
+)
+
+
+def validate_schema(df: pd.DataFrame, required: Iterable[str] = EXPECTED_COLUMNS) -> None:
+    """Raise if required columns are missing. Warn if extras are present."""
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required columns: {missing}")
+    extras = [c for c in df.columns if c not in required]
+    if extras:
+        logger.warning(f"Extra unexpected columns found: {extras}")
+
+
+def load_local_csv(path: str | Path, validate: bool = True) -> pd.DataFrame:
+    """
+    Load creditcard.csv from a local path.
+
+    Args:
+        path: path to CSV file
+        validate: if True, enforce expected schema
+
+    Returns:
+        pandas DataFrame
+    """
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"CSV not found at {path.resolve()}")
+    logger.info(f"Loading CSV from {path}")
+    df = pd.read_csv(path)
+    if validate:
+        validate_schema(df)
+    logger.info(f"Loaded shape={df.shape}")
+    return df

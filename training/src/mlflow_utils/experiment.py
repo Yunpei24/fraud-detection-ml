@@ -1,22 +1,64 @@
 # training/src/mlflow_utils/experiment.py
 from __future__ import annotations
 
-import mlflow
+import os
+from contextlib import contextmanager
+
+try:
+    import mlflow  # type: ignore
+    MLFLOW_AVAILABLE = True
+except Exception:
+    mlflow = None  # type: ignore
+    MLFLOW_AVAILABLE = False
 
 
-def set_experiment(name: str) -> None:
+def setup_experiment(name: str, tags: dict | None = None) -> None:
     """
-    Set or create an MLflow experiment.
+    Idempotent setup. If MLflow isn't available/configured, it's a no-op.
     """
+    if not MLFLOW_AVAILABLE:
+        return
+
+    # Respect env var if provided, otherwise MLflow uses its default (./mlruns)
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
+    if tracking_uri:
+        mlflow.set_tracking_uri(tracking_uri)
+
     mlflow.set_experiment(name)
-    exp = mlflow.get_experiment_by_name(name)
-    print(f"Experiment '{name}' active (ID={exp.experiment_id})")
+    if tags:
+        try:
+            mlflow.set_tags(tags)
+        except Exception:
+            # set_tags requires an active run; ignore if none yet
+            pass
 
 
-def list_experiments() -> None:
+@contextmanager
+def start_run(run_name: str | None = None):
     """
-    Print available MLflow experiments.
+    Context manager that works even without MLflow installed.
+    Usage:
+        with start_run("my_run"):
+            ...
     """
-    exps = mlflow.list_experiments()
-    for e in exps:
-        print(f"- {e.name} (id={e.experiment_id}, artifact_location={e.artifact_location})")
+    if not MLFLOW_AVAILABLE:
+        yield None
+        return
+
+    active = mlflow.active_run()
+    if active is None:
+        with mlflow.start_run(run_name=run_name):
+            yield mlflow.active_run()
+    else:
+        # Nested usage: just yield without creating a new run
+        yield active
+
+
+def end_run() -> None:
+    if not MLFLOW_AVAILABLE:
+        return
+    try:
+        if mlflow.active_run() is not None:
+            mlflow.end_run()
+    except Exception:
+        pass
