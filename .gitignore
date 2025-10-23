@@ -205,15 +205,3 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
-
-
-.venv/
-__pycache__/
-.ipynb_checkpoints/
-.pytest_cache/
-.dvc/tmp/
-# DVC data directories - keep .dvc pointer files
-data/*
-!data/**/*.dvc
-models/
-mlruns/

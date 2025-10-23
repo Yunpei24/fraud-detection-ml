@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: fraud_detection_db
+    environment:
+      POSTGRES_DB: fraud_detection
+      POSTGRES_USER: fraud_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fraud_password_dev}
+      POSTGRES_INITDB_ARGS: "-c max_connections=200"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fraud_user -d fraud_detection"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fraud_detection_network
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: fraud_detection_cache
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_password_dev}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fraud_detection_network
+    restart: unless-stopped
+
+  # Data Pipeline (Real-time)
+  data_pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fraud_data_pipeline
+    environment:
+      # Database
+      DATABASE_URL: postgresql://fraud_user:${POSTGRES_PASSWORD:-fraud_password_dev}@postgres:5432/fraud_detection
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: fraud_user
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-fraud_password_dev}
+      DB_NAME: fraud_detection
+      
+      # Redis
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_password_dev}@redis:6379/0
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password_dev}
+      
+      # Event Hub (optional - use mock if not configured)
+      EVENT_HUB_CONNECTION_STRING: ${EVENT_HUB_CONNECTION_STRING:-}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONUNBUFFERED: 1
+      PYTHONDONTWRITEBYTECODE: 1
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    
+    ports:
+      - "8000:8000"  # For health checks/metrics
+    
+    volumes:
+      - ./src:/app/src
+      - ./logs:/app/logs
+      - ./data:/app/data
+    
+    healthcheck:
+      test: ["CMD", "python", "-c", "import src; print('OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    networks:
+      - fraud_detection_network
+    
+    restart: unless-stopped
+    
+    # Uncomment to run in background and keep logs
+    # stdin_open: true
+    # tty: true
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  fraud_detection_network:
+    driver: bridge
