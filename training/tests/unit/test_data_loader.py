@@ -8,8 +8,7 @@ from unittest.mock import MagicMock, Mock, patch
 import numpy as np
 import pandas as pd
 import pytest
-from src.data.loader import (check_data_quality, load_training_data,
-                             validate_data_schema)
+from src.data.loader import check_data_quality, load_training_data, validate_data_schema
 
 
 class TestLoadTrainingData:
