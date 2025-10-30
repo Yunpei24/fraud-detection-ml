@@ -14,6 +14,7 @@ from airflow.utils.dates import days_ago
 from plugins.hooks.postgres_hook import FraudPostgresHook
 
 from airflow import DAG
+
 # Import centralized configuration
 from config.constants import ALERT_CONFIG, SCHEDULES, TABLE_NAMES, THRESHOLDS
 
@@ -50,8 +51,13 @@ default_args = {
 def compute_daily_metrics(**context):
     """Calculate model metrics for last 24h using FraudPostgresHook"""
     import pandas as pd
-    from sklearn.metrics import (confusion_matrix, f1_score, precision_score,
-                                 recall_score, roc_auc_score)
+    from sklearn.metrics import (
+        confusion_matrix,
+        f1_score,
+        precision_score,
+        recall_score,
+        roc_auc_score,
+    )
 
     # Use hook instead of direct SQLAlchemy
     hook = FraudPostgresHook()

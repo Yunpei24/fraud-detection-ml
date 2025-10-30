@@ -1,10 +1,15 @@
 from datetime import datetime
 
 import pytest
-from src.services.model_versions import (ModelFramework, ModelMetrics,
-                                         ModelRegistry, ModelStage,
-                                         ModelVersion, get_model_registry,
-                                         init_model_registry)
+from src.services.model_versions import (
+    ModelFramework,
+    ModelMetrics,
+    ModelRegistry,
+    ModelStage,
+    ModelVersion,
+    get_model_registry,
+    init_model_registry,
+)
 
 
 class TestModelMetrics:

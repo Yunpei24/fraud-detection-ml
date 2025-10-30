@@ -94,8 +94,7 @@ def test_basic_functionality():
 
     try:
         # Test validation with production schema
-        from src.validation.schema import (ProductionSchemaValidator,
-                                           SchemaValidator)
+        from src.validation.schema import ProductionSchemaValidator, SchemaValidator
 
         validator = SchemaValidator()
 

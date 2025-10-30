@@ -8,8 +8,13 @@ from fastapi import Depends, Header, HTTPException, status
 
 from ..config import get_logger, settings
 from ..models import EnsembleModel
-from ..services import (CacheService, DatabaseService, EvidentlyDriftService,
-                        PredictionService, TrafficRouter)
+from ..services import (
+    CacheService,
+    DatabaseService,
+    EvidentlyDriftService,
+    PredictionService,
+    TrafficRouter,
+)
 
 logger = get_logger(__name__)
 

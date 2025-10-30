@@ -8,8 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from ...api.routes.auth import get_current_analyst_user
 from ...config import get_logger
-from ...models import (ErrorResponse, ExplanationRequest,
-                       FeatureImportanceResponse, SHAPExplanationResponse)
+from ...models import (
+    ErrorResponse,
+    ExplanationRequest,
+    FeatureImportanceResponse,
+    SHAPExplanationResponse,
+)
 from ...services import PredictionService
 from ...utils import InvalidInputException
 

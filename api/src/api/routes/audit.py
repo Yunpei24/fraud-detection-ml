@@ -9,9 +9,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ...api.routes.auth import get_current_admin_user
 from ...config import get_logger
-from ...models import (AuditLogEntry, AuditLogsResponse,
-                       AuditLogSummaryResponse, AuditQueryRequest,
-                       ErrorResponse)
+from ...models import (
+    AuditLogEntry,
+    AuditLogsResponse,
+    AuditLogSummaryResponse,
+    AuditQueryRequest,
+    ErrorResponse,
+)
 from ...services import DatabaseService
 
 logger = get_logger(__name__)

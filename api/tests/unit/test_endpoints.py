@@ -10,17 +10,25 @@ import pandas as pd
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from src.api.dependencies import (get_cache_service, get_database_service,
-                                  get_prediction_service)
+from src.api.dependencies import (
+    get_cache_service,
+    get_database_service,
+    get_prediction_service,
+)
 from src.api.routes.admin import router as admin_router
 from src.api.routes.health import router as health_router
 from src.api.routes.metrics import router as metrics_router
 from src.api.routes.predict import router as predict_router
-from src.models.schemas import (BatchPredictionResponse,
-                                BatchTransactionRequest,
-                                DetailedHealthCheckResponse, ErrorResponse,
-                                HealthCheckResponse, ModelVersionResponse,
-                                PredictionResponse, TransactionRequest)
+from src.models.schemas import (
+    BatchPredictionResponse,
+    BatchTransactionRequest,
+    DetailedHealthCheckResponse,
+    ErrorResponse,
+    HealthCheckResponse,
+    ModelVersionResponse,
+    PredictionResponse,
+    TransactionRequest,
+)
 
 
 @pytest.mark.unit

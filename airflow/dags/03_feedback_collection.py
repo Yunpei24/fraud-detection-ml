@@ -13,6 +13,7 @@ from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 
 from airflow import DAG
+
 # Import centralized configuration
 from config.constants import ALERT_CONFIG, SCHEDULES, TABLE_NAMES
 

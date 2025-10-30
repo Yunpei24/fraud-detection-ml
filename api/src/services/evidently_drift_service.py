@@ -12,13 +12,19 @@ from typing import Any, Dict, Tuple
 import numpy as np
 import pandas as pd
 from evidently import ColumnMapping
-from evidently.metrics import (ColumnDistributionMetric, ColumnDriftMetric,
-                               ColumnSummaryMetric, DatasetDriftMetric)
+from evidently.metrics import (
+    ColumnDistributionMetric,
+    ColumnDriftMetric,
+    ColumnSummaryMetric,
+    DatasetDriftMetric,
+)
 from evidently.report import Report
 from evidently.test_suite import TestSuite
-from evidently.tests import (TestAllFeaturesValueDrift,
-                             TestNumberOfDriftedColumns,
-                             TestShareOfDriftedColumns)
+from evidently.tests import (
+    TestAllFeaturesValueDrift,
+    TestNumberOfDriftedColumns,
+    TestShareOfDriftedColumns,
+)
 
 from .database_service import DatabaseService
 

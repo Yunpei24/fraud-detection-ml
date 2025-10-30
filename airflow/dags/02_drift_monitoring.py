@@ -12,9 +12,15 @@ from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.utils.dates import days_ago
 
 from airflow import DAG
+
 # Import centralized configuration
-from config.constants import (DOCKER_IMAGE_DRIFT, DOCKER_NETWORK, ENV_VARS,
-                              SCHEDULES, THRESHOLDS)
+from config.constants import (
+    DOCKER_IMAGE_DRIFT,
+    DOCKER_NETWORK,
+    ENV_VARS,
+    SCHEDULES,
+    THRESHOLDS,
+)
 
 default_args = {
     "owner": "ml-team",
