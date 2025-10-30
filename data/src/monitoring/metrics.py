@@ -6,9 +6,9 @@ This module exposes data pipeline metrics in Prometheus format.
 
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 from datetime import datetime
-import structlog
+import logging
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 NAMESPACE = "data_pipeline"
 
@@ -93,9 +93,9 @@ def setup_prometheus_metrics(port: int = 9090) -> None:
     """
     try:
         start_http_server(port)
-        logger.info("prometheus_metrics_server_started", port=port, module="data_pipeline")
+        logger.info(f"Prometheus metrics server started on port {port} (module: data_pipeline)")
     except Exception as e:
-        logger.error("prometheus_server_start_failed", error=str(e), module="data_pipeline")
+        logger.error(f"Prometheus server start failed: {e} (module: data_pipeline)")
 
 
 def record_pipeline_success(pipeline_name: str, duration: float) -> None:
@@ -111,7 +111,7 @@ def record_pipeline_success(pipeline_name: str, duration: float) -> None:
     PIPELINE_LAST_SUCCESS_TIMESTAMP.labels(pipeline_name=pipeline_name).set(
         datetime.utcnow().timestamp()
     )
-    logger.debug("pipeline_success_recorded", pipeline_name=pipeline_name, duration=duration)
+    logger.debug(f"Pipeline success recorded: {pipeline_name}, duration={duration}s")
 
 
 def record_pipeline_failure(pipeline_name: str) -> None:
@@ -122,4 +122,4 @@ def record_pipeline_failure(pipeline_name: str) -> None:
         pipeline_name: Name of the pipeline
     """
     PIPELINE_RUNS_TOTAL.labels(pipeline_name=pipeline_name, status="failed").inc()
-    logger.debug("pipeline_failure_recorded", pipeline_name=pipeline_name)
+    logger.debug(f"Pipeline failure recorded: {pipeline_name}")

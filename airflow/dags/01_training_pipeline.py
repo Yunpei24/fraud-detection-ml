@@ -1,321 +1,207 @@
 """
-DAG 01: Model Training Pipeline
-Runs daily or triggered by drift detection
+DAG 01: Model Training Pipeline (Refactored)
+==================================================
+Unified training pipeline that:
+1. Loads data from PostgreSQL (training_transactions)
+2. Performs preprocessing and feature engineering
+3. Trains multiple models (XGBoost, RF, NN, IF) with SMOTE
+4. Evaluates and registers best model in MLflow Registry
 
-Priority: #2 (HIGH)
+Triggers:
+- Manual trigger
+- Schedule: Every Saturday at 2 AM
+- Drift detected (via sensor)
+- Performance degradation (via sensor)
 """
-from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python import PythonOperator, BranchPythonOperator
-from airflow.providers.databricks.operators.databricks import DatabricksSubmitRunOperator
-from airflow.utils.dates import days_ago
-import sys
-from pathlib import Path
+from __future__ import annotations
 
-# Add config and plugins to path
-AIRFLOW_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(AIRFLOW_ROOT / "config"))
-sys.path.insert(0, str(AIRFLOW_ROOT / "plugins"))
+import pendulum
+from datetime import timedelta
+import json
 
-from settings import settings
-from module_loader import loader
-from helpers import should_trigger_retraining, calculate_training_priority
+from airflow.models.dag import DAG
+from airflow.operators.python import BranchPythonOperator, PythonOperator
+from airflow.operators.empty import EmptyOperator
+from airflow.providers.docker.operators.docker import DockerOperator
+from airflow.utils.trigger_rule import TriggerRule
+from airflow.hooks.postgres_hook import PostgresHook
 
+# Import centralized configuration
+from config.constants import ENV_VARS, DOCKER_NETWORK, TABLE_NAMES, DOCKER_IMAGE_TRAINING
+
+
+# Default args
 default_args = {
-    'owner': 'ml-team',
-    'depends_on_past': False,
-    'email': settings.alert_email_recipients,
-    'email_on_failure': True,
-    'email_on_retry': False,
-    'retries': 1,
-    'retry_delay': timedelta(minutes=10)
+    "owner": "ml-team",
+    "depends_on_past": False,
+    "email": ["emmanuelyunpei@gmail.com"],  # Updated to your email
+    "email_on_failure": True,
+    "email_on_retry": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=10),
 }
 
 
-def check_should_retrain(**context):
-    """Intelligent decision: should we retrain?"""
-    import sqlalchemy as sa
+def check_training_conditions(**context):
+    """
+    Check if training should be triggered based on drift or performance.
     
-    # Check if triggered by drift (high priority)
-    dag_run = context.get('dag_run')
-    if dag_run and dag_run.conf.get('triggered_by') == 'drift_detection':
-        return {'should_retrain': True, 'reason': 'drift_detected', 'priority': 'high'}
-    
-    # Check last training time
-    engine = sa.create_engine(settings.fraud_database_url)
-    
-    query = """
-        SELECT MAX(completed_at) as last_training
-        FROM retraining_triggers
-        WHERE status = 'completed'
+    Returns:
+        "run_training" if conditions met, "skip_training" otherwise
     """
     
-    with engine.connect() as conn:
-        result = conn.execute(sa.text(query)).fetchone()
-        last_training = result[0] if result else None
+    pg_hook = PostgresHook(postgres_conn_id="fraud_postgres")
     
-    # FIRST TIME TRAINING: Si jamais entrainé, toujours train
-    if last_training is None:
-        return {
-            'should_retrain': True,
-            'reason': 'initial_training (no previous training found)',
-            'priority': 'high'
-        }
+    # Check 1: Drift detected in last 7 days
+    drift_query = f"""
+        SELECT EXISTS(
+            SELECT 1 FROM {TABLE_NAMES['DRIFT_METRICS']} 
+            WHERE threshold_exceeded = TRUE 
+            AND severity IN ('HIGH', 'CRITICAL')
+            AND timestamp > NOW() - INTERVAL '7 days'
+        )
+    """
+    drift_detected = pg_hook.get_first(drift_query)[0]
     
-    # If last training > cooldown period, allow retraining
-    hours_since_training = (datetime.now() - last_training).total_seconds() / 3600
+    # Check 2: Performance degradation in last 7 days
+    perf_query = f"""
+        SELECT EXISTS(
+            SELECT 1 FROM {TABLE_NAMES['PREDICTIONS']} 
+            WHERE prediction_time > NOW() - INTERVAL '7 days'
+            GROUP BY DATE(prediction_time)
+            HAVING AVG(fraud_score) < 0.85
+        )
+    """
+    perf_degraded = pg_hook.get_first(perf_query)[0]
     
-    if hours_since_training < settings.training_cooldown_hours:
-        return {
-            'should_retrain': False,
-            'reason': f'cooldown_period ({hours_since_training:.1f}h < {settings.training_cooldown_hours}h)',
-            'priority': 'low'
-        }
+    # Check 3: Last training was more than 7 days ago: column training_date
+    last_training_query = f"""
+        SELECT EXISTS(
+            SELECT 1 FROM {TABLE_NAMES['MODEL_VERSIONS']} 
+            WHERE training_date < NOW() - INTERVAL '7 days'
+        )
+    """
+    recently_trained = pg_hook.get_first(last_training_query)[0]
     
-    # Check training data volume
-    query = """
-        SELECT COUNT(*) as new_transactions
-        FROM transactions
-        WHERE created_at > (SELECT COALESCE(MAX(completed_at), NOW() - INTERVAL '7 days') FROM retraining_triggers WHERE status = 'completed')
+    # Log conditions
+    print(f"Training conditions:")
+    print(f"   - Drift detected: {drift_detected}")
+    print(f"   - Performance degraded: {perf_degraded}")
+    print(f"   - Recently trained (< 7 days): {recently_trained}")
+    
+    # Decision logic
+    if drift_detected or perf_degraded:
+        print("Training triggered: Drift or performance issue detected")
+        return "run_training"
+    
+    if not recently_trained:
+        print("Training triggered: No recent training found")
+        return "run_training"
+    
+    print("⏭Skipping training: All conditions normal")
+    return "skip_training"
+
+
+def send_training_notification(status: str, **context):
+    """
+    Send notification about training completion.
+    
+    Args:
+        status: "success" or "failure"
     """
     
-    with engine.connect() as conn:
-        result = conn.execute(sa.text(query)).fetchone()
-        new_transactions = result[0] if result else 0
+    ti = context["task_instance"]
+    execution_date = context["execution_date"]
     
-    if new_transactions < settings.min_training_samples:
-        return {
-            'should_retrain': False,
-            'reason': f'insufficient_data ({new_transactions} < {settings.min_training_samples})',
-            'priority': 'low'
-        }
+    # In production, this would send to Slack/Email
+    # For now, just log
     
-    return {'should_retrain': True, 'reason': 'scheduled_daily', 'priority': 'normal'}
-
-
-def decide_training_branch(**context):
-    """Branch decision: train or skip"""
-    ti = context['task_instance']
-    decision = ti.xcom_pull(task_ids='check_should_retrain')
-    
-    if decision['should_retrain']:
-        return 'load_training_data'
+    if status == "success":
+        print(f"Training pipeline completed successfully at {execution_date}")
+        print(f"   Check MLflow: {ENV_VARS['MLFLOW_TRACKING_URI']}")
     else:
-        return 'skip_training'
+        print(f"Training pipeline failed at {execution_date}")
+        print(f"   Check logs for details")
 
 
-def load_training_data(**context):
-    """Load and prepare training data from PostgreSQL"""
-    import pandas as pd
-    import sqlalchemy as sa
-    
-    engine = sa.create_engine(settings.fraud_database_url)
-    
-    # Load transactions with predictions (for validation)
-    query = """
-        SELECT 
-            t.*,
-            p.prediction,
-            p.probability,
-            cf.num_purchases_24h,
-            cf.avg_transaction_amount,
-            cf.days_since_last_transaction,
-            cf.is_new_customer,
-            mf.merchant_risk_score,
-            mf.total_transactions_30d
-        FROM transactions t
-        LEFT JOIN predictions p ON t.transaction_id = p.transaction_id
-        LEFT JOIN customer_features cf ON t.customer_id = cf.customer_id
-        LEFT JOIN merchant_features mf ON t.merchant_id = mf.merchant_id
-        WHERE t.created_at >= NOW() - INTERVAL '90 days'
-        ORDER BY t.created_at DESC
-    """
-    
-    df = pd.read_sql(query, engine)
-    
-    # Save to temporary location for Databricks
-    output_path = f"/tmp/training_data_{context['ds_nodash']}.parquet"
-    df.to_parquet(output_path, index=False)
-    
-    return {
-        'data_path': output_path,
-        'num_samples': len(df),
-        'fraud_rate': df['is_fraud'].mean() if 'is_fraud' in df.columns else 0.0
-    }
-
-
-def skip_training(**context):
-    """Skip training - conditions not met"""
-    ti = context['task_instance']
-    decision = ti.xcom_pull(task_ids='check_should_retrain')
-    
-    return {'status': 'skipped', 'reason': decision['reason']}
-
-
-def validate_trained_model(**context):
-    """Validate model performance before promotion"""
-    ti = context['task_instance']
-    
-    # Get Databricks job result
-    job_result = ti.xcom_pull(task_ids='train_models_databricks')
-    
-    if not job_result:
-        raise ValueError("No training results from Databricks")
-    
-    # Extract metrics from job result
-    metrics = job_result.get('metadata', {}).get('metrics', {})
-    
-    # Validation thresholds
-    min_recall = settings.min_recall_threshold
-    min_precision = settings.min_precision_threshold
-    
-    recall = metrics.get('recall', 0)
-    precision = metrics.get('precision', 0)
-    
-    if recall < min_recall:
-        raise ValueError(f"Model recall {recall:.3f} below threshold {min_recall}")
-    
-    if precision < min_precision:
-        raise ValueError(f"Model precision {precision:.3f} below threshold {min_precision}")
-    
-    return {
-        'status': 'validated',
-        'metrics': metrics,
-        'model_uri': job_result.get('model_uri')
-    }
-
-
-def register_model_to_mlflow(**context):
-    """Register validated model to MLflow Model Registry"""
-    import mlflow
-    
-    ti = context['task_instance']
-    validation_result = ti.xcom_pull(task_ids='validate_models')
-    
-    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
-    
-    model_uri = validation_result['model_uri']
-    model_name = settings.mlflow_model_name
-    
-    # Register model
-    model_version = mlflow.register_model(
-        model_uri=model_uri,
-        name=model_name
-    )
-    
-    # Save to model_versions table
-    import sqlalchemy as sa
-    engine = sa.create_engine(settings.fraud_database_url)
-    
-    query = """
-        INSERT INTO model_versions 
-        (version, model_name, model_uri, recall, precision, f1_score, registered_by)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-    """
-    
-    metrics = validation_result['metrics']
-    
-    with engine.connect() as conn:
-        conn.execute(sa.text(query), (
-            model_version.version,
-            model_name,
-            model_uri,
-            metrics.get('recall'),
-            metrics.get('precision'),
-            metrics.get('f1_score'),
-            'airflow_training_pipeline'
-        ))
-        conn.commit()
-    
-    return {
-        'model_name': model_name,
-        'model_version': model_version.version,
-        'model_uri': model_uri,
-        'status': 'registered'
-    }
-
-
-# Databricks job configuration
-databricks_job_config = {
-    'new_cluster': {
-        'spark_version': '13.3.x-scala2.12',
-        'node_type_id': 'Standard_DS3_v2',
-        'num_workers': 2,
-        'spark_env_vars': {
-            'PYSPARK_PYTHON': '/databricks/python3/bin/python3'
-        }
-    },
-    'notebook_task': {
-        'notebook_path': '/Workspace/fraud-detection/training',
-        'base_parameters': {
-            'data_path': '{{ ti.xcom_pull(task_ids="load_training_data")["data_path"] }}',
-            'mlflow_tracking_uri': settings.mlflow_tracking_uri,
-            'experiment_name': '/fraud-detection/training-runs'
-        }
-    },
-    'libraries': [
-        {'pypi': {'package': 'xgboost==1.7.6'}},
-        {'pypi': {'package': 'scikit-learn==1.3.2'}},
-        {'pypi': {'package': 'mlflow==2.10.2'}}
-    ]
-}
-
-
-# Define DAG
+# Define the DAG
 with DAG(
-    '01_training_pipeline',
+    dag_id="01_training_pipeline",
     default_args=default_args,
-    description='Daily model training with intelligent decision logic',
-    schedule_interval='0 2 * * *',  # 2 AM daily
-    start_date=days_ago(1),
+    description="Unified model training pipeline with drift detection and performance monitoring",
+    schedule="0 2 * * 6",  # Every Saturday at 2 AM
+    start_date=pendulum.datetime(2025, 1, 1, tz="UTC"),
     catchup=False,
-    tags=['training', 'ml', 'high-priority']
+    tags=["training", "mlflow", "production"],
+    doc_md=__doc__,
 ) as dag:
     
-    # Task 1: Check if training needed
-    check_retrain = PythonOperator(
-        task_id='check_should_retrain',
-        python_callable=check_should_retrain
+    # Task 1: Check if training should run
+    check_conditions = BranchPythonOperator(
+        task_id="check_training_conditions",
+        python_callable=check_training_conditions,
+        provide_context=True,
     )
     
-    # Task 2: Branch decision
-    branch_decision = BranchPythonOperator(
-        task_id='decide_training_branch',
-        python_callable=decide_training_branch
+    # Task 2a: Skip training
+    skip_training = EmptyOperator(
+        task_id="skip_training",
+        trigger_rule=TriggerRule.NONE_FAILED,
     )
     
-    # Task 3a: Load training data
-    load_data = PythonOperator(
-        task_id='load_training_data',
-        python_callable=load_training_data
+    # Task 2b: Run unified training pipeline
+    run_training = DockerOperator(
+        task_id="run_training",
+        image=DOCKER_IMAGE_TRAINING,
+        command="python -m src.pipelines.training_pipeline",
+        environment=ENV_VARS,
+        docker_url="unix://var/run/docker.sock",
+        network_mode=DOCKER_NETWORK,
+        auto_remove=True,
+        mount_tmp_dir=False,
+        mounts=[
+            {
+                "target": "/app/data/raw/creditcard.csv",
+                "source": "/Users/joshuajusteyunpeinikiema/Documents/MLOps/fraud-detection-project/fraud-detection-ml/creditcard.csv",
+                "type": "bind",
+                "read_only": True
+            }
+        ],
+        trigger_rule=TriggerRule.NONE_FAILED,
+        doc_md="""
+        Runs the complete training pipeline:
+        1. Load data from training_transactions (PostgreSQL)
+        2. Feature engineering and preprocessing
+        3. Train 4 models in parallel (XGBoost, RF, NN, IF)
+        4. Evaluate on test set
+        5. Register best model in MLflow (Production stage)
+        """,
     )
     
-    # Task 3b: Skip training
-    skip = PythonOperator(
-        task_id='skip_training',
-        python_callable=skip_training
+    # Task 3: Notify success
+    notify_success = PythonOperator(
+        task_id="notify_success",
+        python_callable=send_training_notification,
+        op_kwargs={"status": "success"},
+        trigger_rule=TriggerRule.ALL_SUCCESS,
     )
     
-    # Task 4: Train models on Databricks
-    train_databricks = DatabricksSubmitRunOperator(
-        task_id='train_models_databricks',
-        databricks_conn_id='databricks_default',
-        json=databricks_job_config
+    # Task 4: Notify failure
+    notify_failure = PythonOperator(
+        task_id="notify_failure",
+        python_callable=send_training_notification,
+        op_kwargs={"status": "failure"},
+        trigger_rule=TriggerRule.ONE_FAILED,
     )
     
-    # Task 5: Validate model
-    validate = PythonOperator(
-        task_id='validate_models',
-        python_callable=validate_trained_model
+    # Task 5: End
+    end = EmptyOperator(
+        task_id="end",
+        trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS,
     )
     
-    # Task 6: Register to MLflow
-    register = PythonOperator(
-        task_id='register_to_mlflow',
-        python_callable=register_model_to_mlflow
-    )
-    
-    # Define dependencies
-    check_retrain >> branch_decision
-    branch_decision >> [load_data, skip]
-    load_data >> train_databricks >> validate >> register
+    # Define task dependencies
+    check_conditions >> [skip_training, run_training]
+    skip_training >> end
+    run_training >> [notify_success, notify_failure]
+    [notify_success, notify_failure] >> end

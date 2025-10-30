@@ -1,29 +1,29 @@
 """
 DAG 04: Data Quality Monitoring
-Surveille la qualité des données en production
-Utilise PostgresHook et helpers
+Monitors data quality in production
+Uses PostgresHook for validation
 
-Schedule: Quotidien 3h AM
+Schedule: Daily at 2 AM
+Refactored to remove obsolete settings/module_loader imports
 """
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
-import sys
-from pathlib import Path
+import os
 
-# Add config and plugins to path
-AIRFLOW_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(AIRFLOW_ROOT / "config"))
-sys.path.insert(0, str(AIRFLOW_ROOT / "plugins"))
+# Import centralized configuration
+from config.constants import TABLE_NAMES, SCHEDULES, THRESHOLDS, ALERT_CONFIG
 
-from settings import settings
-from module_loader import loader
+# Configuration from environment
+ALERT_EMAIL = os.getenv('ALERT_EMAIL', ALERT_CONFIG['DEFAULT_EMAIL'])
+MAX_DATA_AGE_HOURS = float(os.getenv('MAX_DATA_AGE_HOURS', '2'))
+MIN_PREDICTION_COVERAGE = float(os.getenv('MIN_PREDICTION_COVERAGE', '95'))
 
 default_args = {
     'owner': 'data-team',
     'depends_on_past': False,
-    'email': settings.alert_email_recipients,
+    'email': [ALERT_EMAIL],
     'email_on_failure': True,
     'retries': 1,
     'retry_delay': timedelta(minutes=5)
@@ -31,17 +31,17 @@ default_args = {
 
 
 def check_data_freshness(**context):
-    """Vérifie fraîcheur des données via PostgresHook"""
+    """Check data freshness via PostgresHook"""
     from plugins.hooks.postgres_hook import FraudPostgresHook
     
     hook = FraudPostgresHook()
     
-    # Check dernière transaction
-    query = """
+    # Check last transaction
+    query = f"""
         SELECT 
             MAX(created_at) as last_transaction,
             COUNT(*) as total_transactions_24h
-        FROM transactions
+        FROM {TABLE_NAMES['TRANSACTIONS']}
         WHERE created_at >= NOW() - INTERVAL '24 hours'
     """
     
@@ -50,10 +50,10 @@ def check_data_freshness(**context):
     last_transaction = result[0]
     total_24h = result[1]
     
-    # Alerte si pas de données depuis max_data_age_hours (from settings)
+    # Alert if no data since max_data_age_hours
     if last_transaction:
         hours_ago = (datetime.now() - last_transaction).total_seconds() / 3600
-        is_fresh = hours_ago < settings.max_data_age_hours
+        is_fresh = hours_ago < MAX_DATA_AGE_HOURS
     else:
         hours_ago = None
         is_fresh = False
@@ -68,18 +68,18 @@ def check_data_freshness(**context):
 
 
 def check_missing_values(**context):
-    """Vérifie valeurs manquantes using FraudPostgresHook"""
+    """Check missing values using FraudPostgresHook"""
     from plugins.hooks.postgres_hook import FraudPostgresHook
     hook = FraudPostgresHook()
     
-    # Check NULL values dans colonnes critiques
-    query = """
+    # Check NULL values in critical columns
+    query = f"""
         SELECT 
             COUNT(*) as total,
             SUM(CASE WHEN amount IS NULL THEN 1 ELSE 0 END) as null_amount,
             SUM(CASE WHEN customer_id IS NULL THEN 1 ELSE 0 END) as null_customer,
             SUM(CASE WHEN merchant_id IS NULL THEN 1 ELSE 0 END) as null_merchant
-        FROM transactions
+        FROM {TABLE_NAMES['TRANSACTIONS']}
         WHERE created_at >= NOW() - INTERVAL '24 hours'
     """
     
@@ -100,19 +100,19 @@ def check_missing_values(**context):
 
 
 def check_data_ranges(**context):
-    """Vérifie ranges des valeurs using FraudPostgresHook"""
+    """Check value ranges using FraudPostgresHook"""
     from plugins.hooks.postgres_hook import FraudPostgresHook
     hook = FraudPostgresHook()
     
-    query = """
+    # Check outliers in amounts
+    query = f"""
         SELECT 
             MIN(amount) as min_amount,
             MAX(amount) as max_amount,
             AVG(amount) as avg_amount,
-            STDDEV(amount) as stddev_amount,
-            COUNT(CASE WHEN amount < 0 THEN 1 END) as negative_amounts,
-            COUNT(CASE WHEN amount > 10000 THEN 1 END) as very_high_amounts
-        FROM transactions
+            PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY amount) as p99_amount,
+            COUNT(*) as total
+        FROM {TABLE_NAMES['TRANSACTIONS']}
         WHERE created_at >= NOW() - INTERVAL '24 hours'
     """
     
@@ -137,16 +137,16 @@ def check_data_ranges(**context):
 
 
 def check_duplicates(**context):
-    """Vérifie doublons using FraudPostgresHook"""
+    """Check duplicates using FraudPostgresHook"""
     from plugins.hooks.postgres_hook import FraudPostgresHook
     hook = FraudPostgresHook()
     
-    query = """
+    query = f"""
         SELECT 
             COUNT(*) as total,
             COUNT(DISTINCT transaction_id) as unique_ids,
             COUNT(*) - COUNT(DISTINCT transaction_id) as duplicates
-        FROM transactions
+        FROM {TABLE_NAMES['TRANSACTIONS']}
         WHERE created_at >= NOW() - INTERVAL '24 hours'
     """
     
@@ -162,17 +162,17 @@ def check_duplicates(**context):
 
 
 def check_prediction_coverage(**context):
-    """Vérifie que toutes transactions ont prédiction using FraudPostgresHook"""
+    """Check that all transactions have predictions using FraudPostgresHook"""
     from plugins.hooks.postgres_hook import FraudPostgresHook
     hook = FraudPostgresHook()
     
-    query = """
+    query = f"""
         SELECT 
             COUNT(DISTINCT t.transaction_id) as total_transactions,
             COUNT(DISTINCT p.transaction_id) as transactions_with_predictions,
             COUNT(DISTINCT t.transaction_id) - COUNT(DISTINCT p.transaction_id) as missing_predictions
-        FROM transactions t
-        LEFT JOIN predictions p ON t.transaction_id = p.transaction_id
+        FROM {TABLE_NAMES['TRANSACTIONS']} t
+        LEFT JOIN {TABLE_NAMES['PREDICTIONS']} p ON t.transaction_id = p.transaction_id
         WHERE t.created_at >= NOW() - INTERVAL '24 hours'
     """
     
@@ -180,8 +180,8 @@ def check_prediction_coverage(**context):
     
     coverage = (result[1] / (result[0] or 1)) * 100
     
-    # Use centralized coverage threshold
-    min_coverage = settings.min_prediction_coverage if hasattr(settings, 'min_prediction_coverage') else 95
+    # Use coverage threshold from environment
+    min_coverage = MIN_PREDICTION_COVERAGE
     
     return {
         'total_transactions': result[0],
@@ -193,7 +193,7 @@ def check_prediction_coverage(**context):
 
 
 def save_quality_metrics(**context):
-    """Sauvegarde métriques qualité using FraudPostgresHook"""
+    """Save quality metrics using FraudPostgresHook"""
     from plugins.hooks.postgres_hook import FraudPostgresHook
     
     ti = context['task_instance']
@@ -207,7 +207,7 @@ def save_quality_metrics(**context):
     # Use hook instead of direct SQLAlchemy
     hook = FraudPostgresHook()
     
-    # Sauvegarder dans data_quality_log
+    # Save to data_quality_log
     metrics = [
         ('data_freshness', 'hours_since_last', freshness['hours_since_last'] or 999, freshness['status']),
         ('missing_values', 'null_amount_pct', missing['null_amount_pct'], missing['status']),
@@ -276,8 +276,8 @@ def send_quality_alert(**context):
 with DAG(
     '04_data_quality',
     default_args=default_args,
-    description='Surveillance quotidienne de la qualité des données',
-    schedule_interval='0 3 * * *',  # 3 AM daily
+    description='Data quality monitoring and validation',
+    schedule_interval=SCHEDULES['DATA_QUALITY'],  # Daily at 2 AM
     start_date=days_ago(1),
     catchup=False,
     tags=['quality', 'monitoring', 'data']

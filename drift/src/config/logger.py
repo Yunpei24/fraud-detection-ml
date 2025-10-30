@@ -5,7 +5,7 @@ import logging
 import sys
 from typing import Optional
 import structlog
-from ..config.settings import settings
+from .settings import settings
 
 
 def get_logger(name: str, log_level: Optional[str] = None) -> logging.Logger:

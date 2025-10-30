@@ -29,21 +29,14 @@ def test_imports():
     tests = [
         ("Config", "config.settings", "Settings", False),
         ("Config", "config.constants", "BATCH_SIZE", False),
-        ("Ingestion", "ingestion.event_hub", "EventHubConsumer", False),
-        ("Ingestion", "ingestion.kafka", "KafkaTransactionConsumer", False),
         ("Validation", "validation.schema", "SchemaValidator", False),
         ("Validation", "validation.quality", "QualityValidator", False),
         ("Validation", "validation.anomalies", "AnomalyDetector", False),
         ("Transformation", "transformation.cleaner", "DataCleaner", False),
-        ("Transformation", "transformation.features", "FeatureEngineer", False),
-        ("Transformation", "transformation.aggregator", "TransactionAggregator", False),
         ("Storage", "storage.database", "DatabaseService", False),
-        ("Storage", "storage.data_lake", "DataLakeService", IS_PYTHON_311),  # Optional on Python 3.11
-        ("Storage", "storage.feature_store", "FeatureStoreService", False),
         ("Monitoring", "monitoring.metrics", "MetricsCollector", False),
         ("Monitoring", "monitoring.health", "HealthMonitor", False),
         ("Pipelines", "pipelines.realtime_pipeline", "RealtimePipeline", False),
-        ("Pipelines", "pipelines.batch_pipeline", "BatchPipeline", False),
     ]
     
     passed = 0
@@ -104,7 +97,7 @@ def test_basic_functionality():
             "merchant_id": ["MRCH001", "MRCH002"],
             "amount": [100.0, 150.0],
             "currency": ["USD", "EUR"],
-            "transaction_time": ["2025-10-18T10:00:00", "2025-10-18T11:00:00"],
+            "time": ["2025-10-18T10:00:00", "2025-10-18T11:00:00"],
             "customer_zip": ["12345", "54321"],
             "merchant_zip": ["98765", "56789"],
             "customer_country": ["US", "DE"],

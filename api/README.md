@@ -82,7 +82,7 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
 
 ### Predictions
 
-- `POST /api/v1/predict` - Single transaction prediction
+- `POST /api/v1/predict` - Single transaction prediction (requires API key)
   ```json
   {
     "transaction_id": "TXN-001",
@@ -90,7 +90,7 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
   }
   ```
 
-- `POST /api/v1/batch-predict` - Batch predictions
+- `POST /api/v1/batch-predict` - Batch predictions (requires API key)
   ```json
   {
     "transactions": [
@@ -304,11 +304,30 @@ Check that model files exist at the paths specified in `.env`. The API will log 
 
 ## Security
 
-- Non-root Docker user
-- API key authentication (optional)
-- CORS enabled
-- Rate limiting (Redis-backed)
-- Input validation (Pydantic)
+- **API Key Authentication**: Required for prediction endpoints
+- **JWT Authentication**: Required for sensitive operations (drift detection, explainability, audit)
+- **Admin Token Authentication**: Required for administrative operations
+- **Non-root Docker user**
+- **CORS enabled**
+- **Rate limiting** (Redis-backed)
+- **Input validation** (Pydantic)
+
+### API Key Usage
+
+Include the API key in the `X-API-Key` header:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/predict \
+  -H "X-API-Key: your-api-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{"transaction_id": "TXN-001", "features": [0.5, 0.3, 0.8]}'
+```
+
+Configure API keys via environment variables:
+```bash
+REQUIRE_API_KEY=true
+API_KEYS=key1,key2,key3
+```
 
 ## Deployment
 

@@ -46,17 +46,17 @@ def setup_logging() -> logging.Logger:
     """
     # Get logger
     logger = logging.getLogger("fraud_detection_api")
-    logger.setLevel(getattr(logging, settings.log_level))
+    logger.setLevel(getattr(logging, settings.monitoring.log_level))
     
     # Remove existing handlers
     logger.handlers.clear()
     
     # Create console handler
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(getattr(logging, settings.log_level))
+    console_handler.setLevel(getattr(logging, settings.monitoring.log_level))
     
     # Set formatter based on config
-    if settings.log_format == "json":
+    if settings.monitoring.log_format == "json":
         formatter = CustomJsonFormatter(
             fmt="%(timestamp)s %(level)s %(name)s %(message)s"
         )

@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .api.routes import admin_router, health_router, metrics_router, predict_router
+from .api.routes import admin_router, health_router, metrics_router, predict_router, explain_router, drift_router, audit_router, transaction_router
 from .config import constants, get_logger, settings
 from .monitoring.prometheus import (
     ACTIVE_CONNECTIONS,
@@ -42,10 +42,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.api.cors_origins,
+    allow_credentials=settings.api.cors_allow_credentials,
+    allow_methods=settings.api.cors_allow_methods,
+    allow_headers=settings.api.cors_allow_headers,
 )
 
 
@@ -166,6 +166,10 @@ app.include_router(health_router)
 app.include_router(predict_router)
 app.include_router(metrics_router)
 app.include_router(admin_router)
+app.include_router(explain_router)
+app.include_router(drift_router)
+app.include_router(audit_router)
+app.include_router(transaction_router)
 
 
 @app.get("/", tags=["root"])
@@ -182,8 +186,8 @@ async def root():
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",
-        host=settings.api_host,
-        port=settings.api_port,
+        host=settings.api.host,
+        port=settings.api.port,
         reload=settings.environment == "development",
-        log_level=settings.log_level.lower(),
+        log_level=settings.monitoring.log_level.lower(),
     )

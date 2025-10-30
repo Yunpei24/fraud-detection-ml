@@ -2,31 +2,42 @@
 """
 Standalone Prometheus metrics server for data pipeline monitoring.
 
-This script starts an HTTP server on port 9090 to expose metrics to Prometheus.
+This script starts an HTTP server to expose metrics to Prometheus.
+The port can be configured via PROMETHEUS_PORT environment variable (default: 9091).
 The server runs continuously until manually stopped.
 
 Usage:
     python metrics_server.py
+    PROMETHEUS_PORT=9091 python metrics_server.py
 
-The metrics will be available at: http://localhost:9090/metrics
+The metrics will be available at: http://localhost:<port>/metrics
 """
 
 import time
 import signal
 import sys
+import os
+import logging
 from src.monitoring.metrics import setup_prometheus_metrics
-import structlog
 
-logger = structlog.get_logger(__name__)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Global flag for graceful shutdown
 running = True
+
+# Get port from environment variable or use default
+PROMETHEUS_PORT = int(os.getenv("PROMETHEUS_PORT", "9091"))
 
 
 def signal_handler(sig, frame):
     """Handle shutdown signals gracefully."""
     global running
-    logger.info("shutdown_signal_received", signal=sig)
+    logger.info(f"Shutdown signal received: {sig}")
     running = False
     sys.exit(0)
 
@@ -37,13 +48,12 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    logger.info("starting_data_pipeline_metrics_server", port=9090)
+    logger.info(f"Starting data pipeline metrics server on port {PROMETHEUS_PORT}")
     
     try:
         # Start Prometheus HTTP server
-        setup_prometheus_metrics(port=9090)
-        logger.info("metrics_server_started_successfully", 
-                   endpoint="http://localhost:9090/metrics")
+        setup_prometheus_metrics(port=PROMETHEUS_PORT)
+        logger.info(f"✅ Metrics server started successfully at http://localhost:{PROMETHEUS_PORT}/metrics")
         
         # Keep the server running
         while running:
@@ -51,14 +61,13 @@ def main():
             
     except OSError as e:
         if "Address already in use" in str(e):
-            logger.error("port_already_in_use", port=9090, 
-                        error="Another process is using port 9090")
+            logger.error(f"❌ Port {PROMETHEUS_PORT} already in use. Another process is using this port.")
             sys.exit(1)
         else:
-            logger.error("server_startup_failed", error=str(e), exc_info=True)
+            logger.error(f"❌ Server startup failed: {e}", exc_info=True)
             sys.exit(1)
     except Exception as e:
-        logger.error("unexpected_error", error=str(e), exc_info=True)
+        logger.error(f"❌ Unexpected error: {e}", exc_info=True)
         sys.exit(1)
 
 

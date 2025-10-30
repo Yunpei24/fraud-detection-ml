@@ -4,9 +4,10 @@ Combines XGBoost, Random Forest, Neural Network, and Isolation Forest.
 """
 import os
 import pickle
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional
 import numpy as np
 from datetime import datetime
+import torch
 
 from ...config import settings, get_logger
 
@@ -66,7 +67,7 @@ class EnsembleModel:
             if os.path.exists(xgboost_path):
                 with open(xgboost_path, "rb") as f:
                     self.xgboost_model = pickle.load(f)
-                logger.info("✓ XGBoost model loaded")
+                logger.info(" XGBoost model loaded")
             else:
                 logger.warning(f"XGBoost model not found at {xgboost_path}, using mock")
                 self.xgboost_model = self._create_mock_model("xgboost")
@@ -79,7 +80,7 @@ class EnsembleModel:
             if os.path.exists(rf_path):
                 with open(rf_path, "rb") as f:
                     self.random_forest_model = pickle.load(f)
-                logger.info("✓ Random Forest model loaded")
+                logger.info(" Random Forest model loaded")
             else:
                 logger.warning(f"Random Forest model not found at {rf_path}, using mock")
                 self.random_forest_model = self._create_mock_model("random_forest")
@@ -87,10 +88,9 @@ class EnsembleModel:
             # Load Neural Network model
             nn_path = os.path.join(self.models_path, settings.nn_model_name)
             if os.path.exists(nn_path):
-                import torch
                 self.nn_model = torch.load(nn_path)
                 self.nn_model.eval()
-                logger.info("✓ Neural Network model loaded")
+                logger.info(" Neural Network model loaded")
             else:
                 logger.warning(f"NN model not found at {nn_path}, using mock")
                 self.nn_model = self._create_mock_model("neural_network")
@@ -103,7 +103,7 @@ class EnsembleModel:
             if os.path.exists(iforest_path):
                 with open(iforest_path, "rb") as f:
                     self.isolation_forest_model = pickle.load(f)
-                logger.info("✓ Isolation Forest model loaded")
+                logger.info(" Isolation Forest model loaded")
             else:
                 logger.warning(f"Isolation Forest not found at {iforest_path}, using mock")
                 self.isolation_forest_model = self._create_mock_model("isolation_forest")
@@ -113,7 +113,7 @@ class EnsembleModel:
             if os.path.exists(shap_xgb_path):
                 with open(shap_xgb_path, "rb") as f:
                     self.shap_explainer_xgb = pickle.load(f)
-                logger.info("✓ SHAP explainer (XGBoost) loaded")
+                logger.info(" SHAP explainer (XGBoost) loaded")
             else:
                 logger.warning(f"SHAP explainer (XGBoost) not found at {shap_xgb_path}")
             
@@ -122,7 +122,7 @@ class EnsembleModel:
             if os.path.exists(shap_rf_path):
                 with open(shap_rf_path, "rb") as f:
                     self.shap_explainer_rf = pickle.load(f)
-                logger.info("✓ SHAP explainer (Random Forest) loaded")
+                logger.info(" SHAP explainer (Random Forest) loaded")
             else:
                 logger.warning(f"SHAP explainer (RF) not found at {shap_rf_path}")
             
@@ -394,3 +394,43 @@ class EnsembleModel:
                 "isolation_forest": "loaded" if self.shap_explainer_iforest else "not loaded"
             }
         }
+    
+    def get_feature_importance(self, model_type: str) -> Dict[str, Any]:
+        """
+        Get global feature importance for a specific model.
+        
+        Args:
+            model_type: Type of model ('xgboost', 'neural_network', 'isolation_forest')
+            
+        Returns:
+            Dictionary with feature importance data
+        """
+        try:
+            if model_type == "xgboost" and self.xgboost_model:
+                # XGBoost has built-in feature importance
+                importance = self.xgboost_model.feature_importances_
+                feature_importance = {f"feature_{i}": float(imp) for i, imp in enumerate(importance)}
+                
+            elif model_type == "neural_network" and self.nn_model:
+                # For neural networks, we could use permutation importance or other methods
+                # For now, return a message that NN feature importance is not available
+                logger.warning("Neural network feature importance not implemented")
+                return {"message": "Feature importance not available for neural networks"}
+                
+            elif model_type == "isolation_forest" and self.isolation_forest_model:
+                # Isolation Forest doesn't have traditional feature importance
+                # Could use permutation importance or other methods
+                logger.warning("Isolation Forest feature importance not implemented")
+                return {"message": "Feature importance not available for Isolation Forest"}
+                
+            else:
+                return {"message": f"Model {model_type} not loaded or not supported"}
+            
+            return {
+                "feature_importance": feature_importance,
+                "model_type": model_type
+            }
+            
+        except Exception as e:
+            logger.error(f"Feature importance retrieval failed for {model_type}: {e}")
+            return {"message": f"Error retrieving feature importance: {str(e)}"}

@@ -1,4 +1,4 @@
-from training.src.data.splitter import save_splits  # Correct import
+from src.data.splitter import save_splits  # Correct import
 
 import numpy as np
 import pandas as pd

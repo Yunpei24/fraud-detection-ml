@@ -35,7 +35,7 @@ class TestSchemaValidator:
             'merchant_id': ['MRCH001', 'MRCH002', 'MRCH001'],
             'amount': [100.50, 250.00, 75.25],
             'currency': ['USD', 'USD', 'EUR'],
-            'transaction_time': ['2025-10-19 10:30:00', '2025-10-19 11:45:00', '2025-10-19 12:00:00'],
+            'time': ['2025-10-19 10:30:00', '2025-10-19 11:45:00', '2025-10-19 12:00:00'],
             'customer_zip': ['12345', '54321', '11111'],
             'merchant_zip': ['99999', '88888', '77777'],
             'customer_country': ['US', 'US', 'DE'],
@@ -57,7 +57,7 @@ class TestSchemaValidator:
             'customer_id': ['CUST001'],
             'amount': [100.50],
             'currency': ['USD'],
-            # Missing: merchant_id, transaction_time, customer_zip, merchant_zip, etc.
+            # Missing: merchant_id, time, customer_zip, merchant_zip, etc.
         })
         
         is_valid, report = validator.validate_batch(df, schema_type='production')
@@ -74,7 +74,7 @@ class TestSchemaValidator:
             'merchant_id': ['MRCH001'],
             'amount': [-100.50],  # Invalid: negative
             'currency': ['USD'],
-            'transaction_time': ['2025-10-19 10:30:00'],
+            'time': ['2025-10-19 10:30:00'],
             'customer_zip': ['12345'],
             'merchant_zip': ['99999'],
             'customer_country': ['US'],
@@ -95,7 +95,7 @@ class TestSchemaValidator:
             'merchant_id': ['MRCH001'],
             'amount': [100.50],
             'currency': ['INVALID'],  # Invalid: should be 3-letter code
-            'transaction_time': ['2025-10-19 10:30:00'],
+            'time': ['2025-10-19 10:30:00'],
             'customer_zip': ['12345'],
             'merchant_zip': ['99999'],
             'customer_country': ['US'],
@@ -148,7 +148,7 @@ class TestProductionSchemaValidator:
             'merchant_id': ['MRCH001'],
             'amount': [100.50],
             'currency': ['USD'],
-            'transaction_time': ['2025-10-19 10:30:00'],
+            'time': ['2025-10-19 10:30:00'],
             'customer_zip': ['12345'],
             'merchant_zip': ['99999'],
             'customer_country': ['US'],
@@ -183,7 +183,7 @@ class TestProductionSchemaValidator:
             'merchant_id': ['MRCH001', 'MRCH002'],
             'amount': [100.50, 250.00],
             'currency': ['USD', 'EUR'],
-            'transaction_time': ['2025-10-19 10:30:00', '2025-10-19 11:00:00'],
+            'time': ['2025-10-19 10:30:00', '2025-10-19 11:00:00'],
             'customer_zip': ['12345', '54321'],
             'merchant_zip': ['99999', '88888'],
             'customer_country': ['US', 'DE'],
@@ -204,7 +204,7 @@ class TestProductionSchemaValidator:
             'merchant_id': ['MRCH001'],
             'amount': [-50.00],  # Invalid
             'currency': ['USD'],
-            'transaction_time': ['2025-10-19 10:30:00'],
+            'time': ['2025-10-19 10:30:00'],
             'customer_zip': ['12345'],
             'merchant_zip': ['99999'],
             'customer_country': ['US'],
@@ -225,7 +225,7 @@ class TestProductionSchemaValidator:
             'merchant_id': ['MRCH001'],
             'amount': [100.50],
             'currency': ['USD'],
-            'transaction_time': ['2025-10-19 10:30:00'],
+            'time': ['2025-10-19 10:30:00'],
             'customer_zip': ['12345'],
             'merchant_zip': ['99999'],
             'customer_country': ['US'],
@@ -245,7 +245,7 @@ class TestProductionSchemaValidator:
             'merchant_id': ['MRCH001', 'MRCH002'],
             'amount': [100.50, 250.00],
             'currency': ['USD', 'EUR'],
-            'transaction_time': ['2025-10-19 10:30:00', '2025-10-19 11:00:00'],
+            'time': ['2025-10-19 10:30:00', '2025-10-19 11:00:00'],
             'customer_zip': ['12345', '54321'],
             'merchant_zip': ['99999', '88888'],
             'customer_country': ['US', 'DE'],

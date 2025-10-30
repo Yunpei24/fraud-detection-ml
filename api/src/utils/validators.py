@@ -9,7 +9,7 @@ from .exceptions import InvalidInputException
 
 
 def validate_features(features: List[float]) -> bool:
-    """Validate 30 transaction features (Time, V1-V28, Amount)."""
+    """Validate 30 transaction features (Time, v1-v28, amount)."""
     if not features:
         raise InvalidInputException("Features list cannot be empty", details={"field": "features"})
     

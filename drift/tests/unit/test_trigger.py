@@ -17,7 +17,7 @@ class TestRetrainingTrigger:
         trigger = RetrainingTrigger(test_settings)
         
         assert trigger.settings == test_settings
-        assert trigger.last_retrain_time is None
+        assert trigger.last_trigger_time is None
 
     def test_should_not_retrain_no_drift(self, test_settings):
         """Test that retraining is not triggered without drift."""
@@ -182,8 +182,8 @@ class TestRetrainingTrigger:
         trigger.update_last_retrain_time()
         after = datetime.utcnow()
         
-        assert trigger.last_retrain_time is not None
-        assert before <= trigger.last_retrain_time <= after
+        assert trigger.last_trigger_time is not None
+        assert before <= trigger.last_trigger_time <= after
 
     def test_mixed_severity_levels(self, test_settings):
         """Test priority with mixed severity levels."""
@@ -230,7 +230,7 @@ class TestRetrainingTrigger:
         trigger = RetrainingTrigger(test_settings)
         
         # Simulate old retrain (beyond cooldown)
-        trigger.last_retrain_time = datetime.utcnow() - timedelta(hours=25)
+        trigger.last_trigger_time = datetime.utcnow() - timedelta(hours=25)
         
         drift_results = {
             'data_drift': {'drift_detected': True, 'severity': 'MEDIUM'},

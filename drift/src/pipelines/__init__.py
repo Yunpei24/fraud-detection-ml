@@ -3,8 +3,7 @@ Pipelines module initialization.
 """
 
 from .hourly_monitoring import (
-    fetch_recent_predictions,
-    compute_all_drifts,
+    call_api_drift_detection,
     check_thresholds,
     trigger_alerts,
     update_dashboards,
@@ -19,8 +18,7 @@ from .daily_analysis import (
 )
 
 __all__ = [
-    "fetch_recent_predictions",
-    "compute_all_drifts",
+    "call_api_drift_detection",
     "check_thresholds",
     "trigger_alerts",
     "update_dashboards",

@@ -14,25 +14,21 @@ import os
 
 # Import modules to test
 from src.config.settings import Settings
-from src.detection.data_drift import DataDriftDetector
-from src.detection.target_drift import TargetDriftDetector
-from src.detection.concept_drift import ConceptDriftDetector
 
 
 @pytest.fixture
 def test_settings():
     """Create test settings with safe defaults."""
-    return Settings(
-        environment="test",
-        database_url="postgresql://test:test@localhost:5432/test_db",
-        log_level="DEBUG",
-        prometheus_enabled=False,
-        alert_email_enabled=False,
-        alert_slack_enabled=False,
-        drift_target_threshold=0.5,
-        drift_recall_threshold=0.95,
-        drift_fpr_threshold=0.02
-    )
+    settings = Settings()
+    settings.environment = "test"
+    settings.database_url = "postgresql://test:test@localhost:5432/test_db"
+    settings.log_level = "DEBUG"
+    settings.prometheus_enabled = False
+    settings.alert_email_enabled = False
+    settings.target_drift_threshold = 0.5
+    settings.data_drift_threshold = 0.3
+    settings.concept_drift_threshold = 0.05
+    return settings
 
 
 @pytest.fixture
@@ -48,7 +44,7 @@ def baseline_data():
         'V3': np.random.normal(0, 1, n_samples),
         'V4': np.random.normal(0, 1, n_samples),
         'V5': np.random.normal(0, 1, n_samples),
-        'Amount': np.random.exponential(88.35, n_samples),
+        'amount': np.random.exponential(88.35, n_samples),
         'Class': np.random.choice([0, 1], n_samples, p=[0.998, 0.002])
     })
     
@@ -87,7 +83,7 @@ def current_data_with_drift(baseline_data):
         'V3': np.random.normal(0, 1, n_samples),
         'V4': np.random.normal(0.2, 1.5, n_samples),
         'V5': np.random.normal(0, 1, n_samples),
-        'Amount': np.random.exponential(120, n_samples),  # Different scale
+        'amount': np.random.exponential(120, n_samples),  # Different scale
         'Class': np.random.choice([0, 1], n_samples, p=[0.99, 0.01])  # 1% fraud rate (5x increase)
     })
     
@@ -168,13 +164,13 @@ def drift_results_sample():
             "drift_detected": True,
             "avg_psi": 0.45,
             "threshold": 0.3,
-            "drifted_features": ["V1", "V2", "Amount"],
+            "drifted_features": ["V1", "V2", "amount"],
             "psi_scores": {
                 "V1": 0.52,
                 "V2": 0.38,
                 "V3": 0.15,
                 "V4": 0.22,
-                "Amount": 0.48
+                "amount": 0.48
             }
         },
         "target_drift": {

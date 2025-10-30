@@ -2,9 +2,9 @@
 Daily drift analysis pipeline.
 
 This pipeline runs daily to:
-1. Aggregate daily drift metrics
-2. Generate comprehensive reports
-3. Identify trends
+1. Run sliding window analysis via API
+2. Generate comprehensive reports via API
+3. Identify trends from API results
 4. Provide actionable recommendations
 """
 
@@ -13,9 +13,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import structlog
 
-from ..storage.database import DriftDatabaseService, query_historical_drift
-from ..analysis.reporting import generate_drift_report, export_to_html
-from ..analysis.comparison import compare_with_training, identify_new_patterns, extract_insights
+from ..api_client import FraudDetectionAPIClient
 from ..config.settings import Settings
 
 logger = structlog.get_logger(__name__)
@@ -23,98 +21,136 @@ logger = structlog.get_logger(__name__)
 
 def aggregate_daily_metrics(settings: Optional[Settings] = None) -> Dict[str, Any]:
     """
-    Aggregate drift metrics for the last 24 hours.
+    Run sliding window analysis via API to get historical drift metrics.
     
     Args:
         settings: Configuration settings
         
     Returns:
-        Dictionary with aggregated metrics
+        Dictionary with sliding window analysis results
     """
-    logger.info("aggregating_daily_metrics")
+    logger.info("running_sliding_window_analysis_via_api")
     
     settings = settings or Settings()
     
     try:
-        # Query last 24 hours of drift data
-        df = query_historical_drift(
-            time_range=timedelta(hours=24),
-            settings=settings
+        # Create API client
+        api_client = FraudDetectionAPIClient(
+            base_url=settings.api_base_url,
+            timeout=settings.api_timeout
         )
         
-        if df.empty:
-            logger.warning("no_drift_data_for_aggregation")
+        # Run sliding window analysis for the past 7 days
+        result = api_client.run_sliding_window_analysis(
+            window_size_hours=24,  # Daily windows
+            step_hours=24,         # Daily steps
+            analysis_period_days=7, # Past week
+            auth_token=getattr(settings, 'api_auth_token', None)
+        )
+        
+        if 'error' in result:
+            logger.error("sliding_window_analysis_failed", error=result['error'])
             return {}
         
-        # Aggregate by drift type
+        # Transform API results to expected format
         aggregated = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "period": "last_24h",
-            "data_drift": {},
-            "target_drift": {},
-            "concept_drift": {}
+            "timestamp": result.get('timestamp', datetime.utcnow().isoformat()),
+            "analysis_period": result.get('analysis_period', '7d'),
+            "window_size": result.get('window_size', '24h'),
+            "total_windows": len(result.get('windows', [])),
+            "windows": result.get('windows', []),
+            "drift_summary": _summarize_sliding_window_results(result.get('windows', []))
         }
         
-        for drift_type in ["data", "target", "concept"]:
-            type_data = df[df["drift_type"] == drift_type]
-            
-            if not type_data.empty:
-                aggregated[f"{drift_type}_drift"] = {
-                    "avg_score": float(type_data["metric_value"].mean()),
-                    "max_score": float(type_data["metric_value"].max()),
-                    "min_score": float(type_data["metric_value"].min()),
-                    "threshold_exceeded_count": int(type_data["threshold_exceeded"].sum()),
-                    "total_measurements": len(type_data)
-                }
-        
-        logger.info("daily_metrics_aggregated")
+        logger.info("sliding_window_analysis_completed", windows=len(result.get('windows', [])))
         return aggregated
     
     except Exception as e:
-        logger.error("failed_to_aggregate_daily_metrics", error=str(e))
+        logger.error("failed_to_run_sliding_window_analysis", error=str(e))
         return {}
+
+
+def _summarize_sliding_window_results(windows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Summarize sliding window analysis results.
+    
+    Args:
+        windows: List of window analysis results
+        
+    Returns:
+        Summary statistics
+    """
+    if not windows:
+        return {"total_windows": 0, "drift_detected_windows": 0, "avg_drift_score": 0.0}
+    
+    drift_detected_count = sum(1 for w in windows if w.get('drift_detected', False))
+    avg_drift_score = sum(w.get('drift_score', 0) for w in windows) / len(windows)
+    
+    return {
+        "total_windows": len(windows),
+        "drift_detected_windows": drift_detected_count,
+        "drift_detection_rate": drift_detected_count / len(windows),
+        "avg_drift_score": avg_drift_score,
+        "max_drift_score": max((w.get('drift_score', 0) for w in windows), default=0)
+    }
 
 
 def generate_daily_report(
     aggregated_metrics: Dict[str, Any],
     settings: Optional[Settings] = None
-) -> str:
+) -> Dict[str, Any]:
     """
-    Generate comprehensive daily drift report.
+    Generate comprehensive daily drift report via API.
     
     Args:
-        aggregated_metrics: Aggregated daily metrics
+        aggregated_metrics: Aggregated sliding window metrics
         settings: Configuration settings
         
     Returns:
-        Report string
+        Report dictionary from API
     """
-    logger.info("generating_daily_report")
+    logger.info("generating_daily_report_via_api")
+    
+    settings = settings or Settings()
     
     try:
-        report = generate_drift_report(
-            drift_results=aggregated_metrics,
-            time_period="last_24h"
+        # Create API client
+        api_client = FraudDetectionAPIClient(
+            base_url=settings.api_base_url,
+            timeout=settings.api_timeout
         )
         
-        # Save report to file
-        settings = settings or Settings()
+        # Generate report using API
+        report = api_client.generate_drift_report(
+            analysis_results=aggregated_metrics,
+            auth_token=getattr(settings, 'api_auth_token', None)
+        )
+        
+        if 'error' in report:
+            logger.error("api_report_generation_failed", error=report['error'])
+            return {}
+        
+        # Save report locally if configured
         if settings.report_output_dir:
             timestamp = datetime.utcnow().strftime("%Y%m%d")
-            output_path = f"{settings.report_output_dir}/drift_report_{timestamp}.html"
-            export_to_html(report, output_path, title="Daily Drift Report")
+            output_path = f"{settings.report_output_dir}/drift_report_{timestamp}.json"
+            
+            import json
+            with open(output_path, 'w') as f:
+                json.dump(report, f, indent=2, default=str)
+            
             logger.info("daily_report_saved", path=output_path)
         
         return report
     
     except Exception as e:
         logger.error("failed_to_generate_daily_report", error=str(e))
-        return ""
+        return {}
 
 
 def identify_trends(settings: Optional[Settings] = None) -> List[Dict[str, Any]]:
     """
-    Identify trends in drift metrics over the past week.
+    Identify trends from sliding window analysis results.
     
     Args:
         settings: Configuration settings
@@ -122,49 +158,44 @@ def identify_trends(settings: Optional[Settings] = None) -> List[Dict[str, Any]]
     Returns:
         List of identified trends
     """
-    logger.info("identifying_trends")
+    logger.info("identifying_trends_from_sliding_window")
     
     settings = settings or Settings()
     trends = []
     
     try:
-        # Query last 7 days of data
-        df = query_historical_drift(
-            time_range=timedelta(days=7),
-            settings=settings
-        )
+        # Get sliding window analysis results
+        aggregated_metrics = aggregate_daily_metrics(settings)
+        windows = aggregated_metrics.get('windows', [])
         
-        if df.empty:
-            logger.warning("no_data_for_trend_analysis")
+        if not windows:
+            logger.warning("no_sliding_window_data_for_trend_analysis")
             return trends
         
-        # Analyze trends by drift type
-        for drift_type in ["data", "target", "concept"]:
-            type_data = df[df["drift_type"] == drift_type].copy()
-            
-            if len(type_data) < 2:
-                continue
-            
-            # Sort by timestamp
-            type_data = type_data.sort_values("timestamp")
-            
-            # Calculate trend (simple linear regression)
-            x = range(len(type_data))
-            y = type_data["metric_value"].values
-            
-            # Simple trend calculation (increasing/decreasing)
-            if len(y) > 1:
-                trend_direction = "increasing" if y[-1] > y[0] else "decreasing"
-                trend_magnitude = abs(y[-1] - y[0]) / (y[0] + 1e-10)
-                
-                trends.append({
-                    "drift_type": drift_type,
-                    "direction": trend_direction,
-                    "magnitude": float(trend_magnitude),
-                    "start_value": float(y[0]),
-                    "end_value": float(y[-1]),
-                    "concern_level": "HIGH" if trend_magnitude > 0.5 else "MEDIUM" if trend_magnitude > 0.2 else "LOW"
-                })
+        # Extract drift scores over time
+        drift_scores = [w.get('drift_score', 0) for w in windows]
+        
+        if len(drift_scores) < 2:
+            logger.warning("insufficient_data_for_trend_analysis")
+            return trends
+        
+        # Calculate trend
+        trend_direction = "increasing" if drift_scores[-1] > drift_scores[0] else "decreasing"
+        trend_magnitude = abs(drift_scores[-1] - drift_scores[0]) / (drift_scores[0] + 1e-10)
+        
+        # Calculate drift detection frequency
+        drift_detected_count = sum(1 for w in windows if w.get('drift_detected', False))
+        detection_rate = drift_detected_count / len(windows)
+        
+        trends.append({
+            "drift_type": "overall",
+            "direction": trend_direction,
+            "magnitude": float(trend_magnitude),
+            "start_value": float(drift_scores[0]),
+            "end_value": float(drift_scores[-1]),
+            "detection_rate": detection_rate,
+            "concern_level": "HIGH" if trend_magnitude > 0.5 or detection_rate > 0.5 else "MEDIUM" if trend_magnitude > 0.2 or detection_rate > 0.3 else "LOW"
+        })
         
         logger.info("trends_identified", count=len(trends))
         return trends
@@ -179,10 +210,10 @@ def recommend_actions(
     trends: List[Dict[str, Any]]
 ) -> List[str]:
     """
-    Generate actionable recommendations based on metrics and trends.
+    Generate actionable recommendations based on sliding window metrics and trends.
     
     Args:
-        aggregated_metrics: Aggregated daily metrics
+        aggregated_metrics: Aggregated sliding window metrics
         trends: Identified trends
         
     Returns:
@@ -192,39 +223,40 @@ def recommend_actions(
     
     recommendations = []
     
-    # Check aggregated metrics
-    data_drift = aggregated_metrics.get("data_drift", {})
-    target_drift = aggregated_metrics.get("target_drift", {})
-    concept_drift = aggregated_metrics.get("concept_drift", {})
+    # Check sliding window summary
+    drift_summary = aggregated_metrics.get("drift_summary", {})
+    total_windows = drift_summary.get("total_windows", 0)
+    drift_detected_windows = drift_summary.get("drift_detected_windows", 0)
+    avg_drift_score = drift_summary.get("avg_drift_score", 0)
     
-    # Data drift recommendations
-    if data_drift.get("threshold_exceeded_count", 0) > 12:  # More than half of hourly checks
+    # High drift detection rate
+    if total_windows > 0 and (drift_detected_windows / total_windows) > 0.5:
         recommendations.append(
-            "🔴 URGENT: Data drift detected in >50% of checks - investigate feature distribution changes"
+            f" URGENT: Drift detected in {drift_detected_windows}/{total_windows} analysis windows - investigate immediately"
         )
     
-    # Target drift recommendations
-    if target_drift.get("threshold_exceeded_count", 0) > 5:
+    # High average drift score
+    if avg_drift_score > 0.3:
         recommendations.append(
-            "⚠️ Target drift detected - fraud rate has changed significantly, review business context"
-        )
-    
-    # Concept drift recommendations
-    if concept_drift.get("threshold_exceeded_count", 0) > 0:
-        recommendations.append(
-            "🔴 CRITICAL: Model performance degradation detected - schedule retraining immediately"
+            f" High average drift score ({avg_drift_score:.2f}) across analysis windows - monitor closely"
         )
     
     # Trend-based recommendations
     for trend in trends:
         if trend["direction"] == "increasing" and trend["concern_level"] in ["HIGH", "MEDIUM"]:
             recommendations.append(
-                f"⚠️ {trend['drift_type'].capitalize()} drift trend increasing ({trend['magnitude']:.1%}) - monitor closely"
+                f" Drift trend increasing ({trend['magnitude']:.1%}) with {trend['detection_rate']:.1%} detection rate - monitor closely"
+            )
+        
+        # High detection rate trend
+        if trend.get("detection_rate", 0) > 0.4:
+            recommendations.append(
+                " CRITICAL: High drift detection frequency - consider model retraining"
             )
     
     # General recommendations
     if not recommendations:
-        recommendations.append("✓ No immediate action required - continue monitoring")
+        recommendations.append("✓ No significant drift patterns detected - continue monitoring")
     
     logger.info("recommendations_generated", count=len(recommendations))
     return recommendations

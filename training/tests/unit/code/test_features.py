@@ -1,4 +1,4 @@
-from training.src.features.engineer import add_behavioral_features, build_feature_frame  # Corrected import path
+from src.features.engineer import add_behavioral_features, build_feature_frame  # Corrected import path
 
 import sys
 import os

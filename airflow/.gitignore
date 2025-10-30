@@ -17,6 +17,7 @@ __pycache__/
 venv/
 env/
 .venv
+venv_airflow
 
 # IDE
 .vscode/
@@ -41,3 +42,5 @@ REFACTORING_SUMMARY.md
 STRUCTURE_CORRECTIONS.md
 VISUAL_SUMMARY.md
 NEXT_STEPS.md
+
+logs

@@ -28,12 +28,6 @@ MAX_REQUEST_SIZE = 1048576  # 1MB
 TIMEOUT_SECONDS = 30
 MAX_BATCH_SIZE = 100
 
-# Feature Configuration
-EXPECTED_FEATURES = 30  # Number of features expected by models
-FEATURE_NAMES = [
-    f"feature_{i}" for i in range(EXPECTED_FEATURES)
-]
-
 # Ensemble Voting Configuration (4 models)
 ENSEMBLE_WEIGHTS = {
     "xgboost": 0.50,           # Best overall performance

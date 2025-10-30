@@ -1,0 +1,5 @@
+{
+  "canary_percentage": 25,
+  "canary_model_path": "/app/models/canary",
+  "champion_model_path": "/app/models/champion"
+}

@@ -1,0 +1,528 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ develop, main, feature/** ]
+  pull_request:
+    branches: [ develop, main ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: frauddetectionacr-bzbrfqcgdyapcag6.azurecr.io
+
+jobs:
+  # ==============================================================================
+  # CODE QUALITY CHECKS
+  # ==============================================================================
+
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 pylint mypy bandit black isort safety
+
+    - name: Run Black (code formatting)
+      run: |
+        black --check --diff . || (echo "Code is not formatted with Black. Run 'black .' to fix." && exit 1)
+
+    - name: Run isort (import sorting)
+      run: |
+        isort --check-only --diff . || (echo "Imports are not sorted. Run 'isort .' to fix." && exit 1)
+
+    - name: Run Flake8 (linting)
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Run Bandit (security)
+      run: |
+        bandit -r . -f json -o bandit-report.json || true
+        python -c "
+        import json
+        with open('bandit-report.json') as f:
+            data = json.load(f)
+        high_severity = [i for i in data.get('results', []) if i.get('issue_severity') == 'high']
+        if high_severity:
+            print(f'Found {len(high_severity)} high-severity security issues:')
+            for issue in high_severity:
+                print(f'  - {issue.get(\"filename\", \"unknown\")}:{issue.get(\"line_number\", \"?\")} - {issue.get(\"issue_text\", \"unknown\")}')
+            exit(1)
+        print('No high-severity security issues found.')
+        "
+
+    - name: Run Safety (vulnerability check)
+      run: |
+        safety check --full-report
+
+    - name: Run MyPy (type checking)
+      run: |
+        mypy . --ignore-missing-imports --no-strict-optional || true
+
+  # ==============================================================================
+  # UNIT TESTS
+  # ==============================================================================
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+    strategy:
+      matrix:
+        python-version: ["3.10"]
+        service: [api, data, drift, training]
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: fraud_user
+          POSTGRES_PASSWORD: fraud_pass_dev_2024
+          POSTGRES_DB: fraud_detection
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 3s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.service }}-${{ hashFiles(format('{0}/requirements*.txt', matrix.service)) }}
+        restore-keys: |
+          ${{ runner.os }}-pip-${{ matrix.service }}-
+
+    - name: Install common package
+      run: |
+        cd common
+        pip install -e .
+
+    - name: Install service dependencies
+      run: |
+        cd ${{ matrix.service }}
+        pip install -r requirements.txt
+        pip install -r ../requirements.txt
+
+    - name: Run unit tests with coverage
+      env:
+        POSTGRES_HOST: localhost
+        POSTGRES_PORT: 5432
+        POSTGRES_USER: fraud_user
+        POSTGRES_PASSWORD: fraud_pass_dev_2024
+        POSTGRES_DB: fraud_detection
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+      run: |
+        cd ${{ matrix.service }}
+        python -m pytest tests/ -v --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=80
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./${{ matrix.service }}/coverage.xml
+        flags: ${{ matrix.service }}
+        name: ${{ matrix.service }}-coverage
+
+  # ==============================================================================
+  # INTEGRATION TESTS
+  # ==============================================================================
+
+  # integration-tests:
+  #   name: Integration Tests
+  #   runs-on: ubuntu-latest
+  #   needs: unit-tests
+
+  #   services:
+  #     postgres:
+  #       image: postgres:15-alpine
+  #       env:
+  #         POSTGRES_USER: fraud_user
+  #         POSTGRES_PASSWORD: fraud_pass_dev
+  #         POSTGRES_DB: fraud_detection
+  #       options: >-
+  #         --health-cmd pg_isready
+  #         --health-interval 10s
+  #         --health-timeout 5s
+  #         --health-retries 5
+  #       ports:
+  #         - 5432:5432
+
+  #     redis:
+  #       image: redis:7-alpine
+  #       options: >-
+  #         --health-cmd "redis-cli ping"
+  #         --health-interval 10s
+  #         --health-timeout 3s
+  #         --health-retries 5
+  #       ports:
+  #         - 6379:6379
+
+  #     mlflow:
+  #       image: ghcr.io/mlflow/mlflow:v2.10.2
+  #       env:
+  #         MLFLOW_TRACKING_URI: http://localhost:5000
+  #       ports:
+  #         - 5000:5000
+
+  #   steps:
+  #   - name: Checkout code
+  #     uses: actions/checkout@v4
+
+  #   - name: Set up Python
+  #     uses: actions/setup-python@v4
+  #     with:
+  #       python-version: "3.10"
+
+  #   - name: Install Docker Compose
+  #     run: |
+  #       sudo apt-get update
+  #       sudo apt-get install -y docker-compose
+
+  #   - name: Run integration tests
+  #     run: |
+  #       # Start only essential services for integration tests
+  #       docker-compose -f docker-compose.local.yml up -d postgres redis mlflow airflow api
+
+  #       # Wait for services to be healthy
+  #       timeout 300 bash -c 'until docker-compose -f docker-compose.local.yml ps | grep -q "healthy"; do sleep 5; done'
+
+  #       # Run integration tests
+  #       python -m pytest tests/integration/ -v --tb=short
+
+  # ==============================================================================
+  # DOCKER BUILD & PUSH
+  # ==============================================================================
+
+  docker-build:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    needs: [unit-tests] # [unit-tests, integration-tests]
+    permissions:
+      contents: read
+      id-token: write
+
+    strategy:
+      matrix:
+        service: [api, data, drift, training, airflow, mlflow]
+        include:
+          - service: api
+            context: .
+            dockerfile: ./api/Dockerfile
+          - service: data
+            context: .
+            dockerfile: ./data/Dockerfile
+          - service: drift
+            context: .
+            dockerfile: ./drift/Dockerfile
+          - service: training
+            context: .
+            dockerfile: ./training/Dockerfile
+          - service: airflow
+            context: .
+            dockerfile: ./airflow/Dockerfile
+          - service: mlflow
+            context: .
+            dockerfile: ./mlflow/Dockerfile
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Azure Container Registry
+      if: github.event_name != 'pull_request'
+      uses: azure/docker-login@v1
+      with:
+        login-server: ${{ env.REGISTRY }}
+        username: ${{ secrets.AZURE_CLIENT_ID }}
+        password: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ matrix.service }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ matrix.context }}
+        file: ${{ matrix.dockerfile }}
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Generate artifact attestation
+      if: github.event_name != 'pull_request'
+      uses: actions/attest-build-provenance@v1
+      with:
+        subject-name: ${{ env.REGISTRY }}/${{ matrix.service}}
+        subject-digest: ${{ steps.build.outputs.digest }}
+        push-to-registry: true
+
+  # ==============================================================================
+  # DEPLOYMENT TO STAGING (Azure Container Instances)
+  # ==============================================================================
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: docker-build
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    environment: staging
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Deploy to Azure Container Instances (Staging)
+      uses: azure/aci-deploy@v1
+      with:
+        resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        dns-name-label: fraud-detection-staging
+        image: ${{ env.REGISTRY }}/api:develop
+        name: fraud-detection-api-staging
+        location: ${{ secrets.AZURE_LOCATION }}
+        ports: 8000
+        environment-variables: |
+          ENVIRONMENT=staging
+          POSTGRES_HOST=${{ secrets.DB_HOST_STAGING }}
+          POSTGRES_PORT=5432
+          POSTGRES_DB=fraud_detection
+          POSTGRES_USER=${{ secrets.DB_USER_STAGING }}
+          POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD_STAGING }}
+          REDIS_HOST=${{ secrets.REDIS_HOST_STAGING }}
+          REDIS_PORT=6379
+          MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI_STAGING }}
+          AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+
+    - name: Run health checks
+      run: |
+        # Wait for service to be healthy
+        timeout 600 bash -c '
+        while true; do
+          if curl -f -s http://fraud-detection-staging.${{ secrets.AZURE_LOCATION }}.azurecontainer.io:8000/health > /dev/null; then
+            echo "Service is healthy"
+            break
+          fi
+          echo "Waiting for service to be healthy..."
+          sleep 30
+        done
+        '
+
+    - name: Run smoke tests
+      run: |
+        # Run basic smoke tests against staging
+        python -m pytest tests/smoke/ -v --tb=short \
+          --api-url=http://fraud-detection-staging.${{ secrets.AZURE_LOCATION }}.azurecontainer.io:8000
+
+  # ==============================================================================
+  # DEPLOYMENT TO PRODUCTION (Azure Container Instances)
+  # ==============================================================================
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Deploy API to Azure Container Instances (Production)
+      uses: azure/aci-deploy@v1
+      with:
+        resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        dns-name-label: fraud-detection-prod
+        image: ${{ env.REGISTRY }}/api:latest
+        name: fraud-detection-api-prod
+        location: ${{ secrets.AZURE_LOCATION }}
+        ports: 8000
+        environment-variables: |
+          ENVIRONMENT=production
+          POSTGRES_HOST=${{ secrets.DB_HOST_PRODUCTION }}
+          POSTGRES_PORT=5432
+          POSTGRES_DB=fraud_detection
+          POSTGRES_USER=${{ secrets.DB_USER_PRODUCTION }}
+          POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD_PRODUCTION }}
+          REDIS_HOST=${{ secrets.REDIS_HOST_PRODUCTION }}
+          REDIS_PORT=6379
+          MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI_PRODUCTION }}
+          AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+
+    - name: Deploy Data Service to Azure Container Instances (Production)
+      uses: azure/aci-deploy@v1
+      with:
+        resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        dns-name-label: fraud-detection-data-prod
+        image: ${{ env.REGISTRY }}/data:latest
+        name: fraud-detection-data-prod
+        location: ${{ secrets.AZURE_LOCATION }}
+        ports: 8001
+        environment-variables: |
+          ENVIRONMENT=production
+          POSTGRES_HOST=${{ secrets.DB_HOST_PRODUCTION }}
+          POSTGRES_PORT=5432
+          POSTGRES_DB=fraud_detection
+          POSTGRES_USER=${{ secrets.DB_USER_PRODUCTION }}
+          POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD_PRODUCTION }}
+          AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+
+    - name: Deploy Drift Monitoring to Azure Container Instances (Production)
+      uses: azure/aci-deploy@v1
+      with:
+        resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        dns-name-label: fraud-detection-drift-prod
+        image: ${{ env.REGISTRY }}/drift:latest
+        name: fraud-detection-drift-prod
+        location: ${{ secrets.AZURE_LOCATION }}
+        ports: 8002
+        environment-variables: |
+          ENVIRONMENT=production
+          POSTGRES_HOST=${{ secrets.DB_HOST_PRODUCTION }}
+          POSTGRES_PORT=5432
+          POSTGRES_DB=fraud_detection
+          POSTGRES_USER=${{ secrets.DB_USER_PRODUCTION }}
+          POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD_PRODUCTION }}
+          AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+
+    - name: Deploy MLflow to Azure Container Instances (Production)
+      uses: azure/aci-deploy@v1
+      with:
+        resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        dns-name-label: fraud-detection-mlflow-prod
+        image: ${{ env.REGISTRY }}/mlflow:latest
+        name: fraud-detection-mlflow-prod
+        location: ${{ secrets.AZURE_LOCATION }}
+        ports: 5000
+        environment-variables: |
+          ENVIRONMENT=production
+          POSTGRES_HOST=${{ secrets.DB_HOST_PRODUCTION }}
+          POSTGRES_PORT=5432
+          POSTGRES_DB=mlflow_db
+          POSTGRES_USER=${{ secrets.DB_USER_PRODUCTION }}
+          POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD_PRODUCTION }}
+          MLFLOW_DEFAULT_ARTIFACT_ROOT=${{ secrets.MLFLOW_DEFAULT_ARTIFACT_ROOT_PRODUCTION }}
+
+    - name: Deploy Airflow Webserver to Azure Container Instances (Production)
+      uses: azure/aci-deploy@v1
+      with:
+        resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        dns-name-label: fraud-detection-airflow-prod
+        image: ${{ env.REGISTRY }}/airflow:latest
+        name: fraud-detection-airflow-prod
+        location: ${{ secrets.AZURE_LOCATION }}
+        ports: 8080
+        environment-variables: |
+          ENVIRONMENT=production
+          AIRFLOW__CORE__EXECUTOR=LocalExecutor
+          AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${{ secrets.DB_USER_PRODUCTION }}:${{ secrets.DB_PASSWORD_PRODUCTION }}@${{ secrets.DB_HOST_PRODUCTION }}:5432/fraud_detection
+          AIRFLOW__CORE__FERNET_KEY=${{ secrets.AIRFLOW_FERNET_KEY }}
+          AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+          AIRFLOW__CORE__LOAD_EXAMPLES=false
+          AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth
+          AIRFLOW__WEBSERVER__SECRET_KEY=${{ secrets.AIRFLOW_SECRET_KEY }}
+          AZURE_CONTAINER_REGISTRY=${{ env.REGISTRY }}
+          DOCKER_NETWORK=fraud-detection-network
+          MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI_PRODUCTION }}
+          ALERT_EMAIL=${{ secrets.ALERT_EMAIL }}
+          AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          PYTHONPATH=/opt/airflow:/opt/airflow/config:/opt/airflow/plugins
+
+    - name: Run health checks
+      run: |
+        # Wait for services to be healthy
+        timeout 600 bash -c '
+        while true; do
+          if curl -f -s http://fraud-detection-prod.${{ secrets.AZURE_LOCATION }}.azurecontainer.io:8000/health > /dev/null; then
+            echo "API service is healthy"
+            break
+          fi
+          echo "Waiting for API service to be healthy..."
+          sleep 30
+        done
+        '
+
+    - name: Run smoke tests
+      run: |
+        # Run basic smoke tests against production
+        python -m pytest tests/smoke/ -v --tb=short \
+          --api-url=http://fraud-detection-prod.${{ secrets.AZURE_LOCATION }}.azurecontainer.io:8000
+
+    - name: Notify deployment success
+      if: success()
+      run: |
+        # Send notification (Azure DevOps, Slack, Teams, etc.)
+        echo "Deployment to production successful"
+
+    - name: Notify deployment failure
+      if: failure()
+      run: |
+        # Send notification about deployment failure
+        echo "Deployment to production failed"

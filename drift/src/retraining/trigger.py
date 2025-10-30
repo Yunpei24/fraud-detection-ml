@@ -5,7 +5,7 @@ This module decides when to trigger model retraining based on drift detection re
 """
 
 import requests
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 import structlog
 
@@ -29,7 +29,9 @@ class RetrainingTrigger:
             settings: Configuration settings
         """
         self.settings = settings or Settings()
-        self.last_retrain_time: Optional[datetime] = None
+        self.last_trigger_time: Optional[datetime] = None
+        self.trigger_history: List[Dict[str, Any]] = []
+        self.cooldown_hours = self.settings.retraining_cooldown_hours
         self.consecutive_drift_count = 0
         
         logger.info("retraining_trigger_initialized")
@@ -43,7 +45,7 @@ class RetrainingTrigger:
         Determine if model retraining should be triggered.
         
         Args:
-            drift_results: Results from drift detection
+            drift_results: Results from API drift detection
             force: Force retraining regardless of cooldown
             
         Returns:
@@ -51,44 +53,65 @@ class RetrainingTrigger:
         """
         logger.info("evaluating_retraining_decision")
         
-        # Check for CRITICAL severity to bypass cooldown
-        data_drift = drift_results.get("data_drift", {})
-        target_drift = drift_results.get("target_drift", {})
-        concept_drift = drift_results.get("concept_drift", {})
+        # Check for CRITICAL severity from API drift summary
+        drift_summary = drift_results.get("drift_summary", {})
+        severity_score = drift_summary.get("severity_score", 0)
         
-        is_critical = (
-            data_drift.get("severity") == "CRITICAL" or
-            target_drift.get("severity") == "CRITICAL" or
-            concept_drift.get("severity") == "CRITICAL"
-        )
+        # CRITICAL: High severity score from API
+        if severity_score >= 3:
+            reason = f"Critical drift detected with severity score: {severity_score}"
+            logger.warning("retraining_triggered_critical_drift", severity_score=severity_score)
+            return True, reason
         
         # Check cooldown period (skip if CRITICAL or force)
-        if not force and not is_critical and not self._check_cooldown():
+        if not force and severity_score < 3 and not self._check_cooldown():
             reason = "In cooldown period since last retraining"
             logger.info("retraining_in_cooldown_period")
             return False, reason
         
-        # Check drift conditions
+        # Check drift conditions from API results or direct severity results
+        data_drift = drift_results.get("data_drift", {})
+        target_drift = drift_results.get("target_drift", {})
+        concept_drift = drift_results.get("concept_drift", {})
+        
+        # Check for drift detection (API format)
         data_drift_detected = data_drift.get("drift_detected", False)
         target_drift_detected = target_drift.get("drift_detected", False)
         concept_drift_detected = concept_drift.get("drift_detected", False)
+        multivariate_drift_detected = drift_results.get("multivariate_drift", {}).get("drift_detected", False)
+        
+        # Check for severity levels (direct format used in tests)
+        data_drift_severity = data_drift.get("severity", "").upper()
+        target_drift_severity = target_drift.get("severity", "").upper()
+        concept_drift_severity = concept_drift.get("severity", "").upper()
+        
+        # Overall drift detection from API summary
+        overall_drift_detected = drift_summary.get("overall_drift_detected", False)
+        
+        # CRITICAL: Any CRITICAL severity drift
+        if any(sev == "CRITICAL" for sev in [data_drift_severity, target_drift_severity, concept_drift_severity]):
+            reason = "Critical severity drift detected"
+            logger.warning("retraining_triggered_critical_severity")
+            return True, reason
         
         # Critical condition: concept drift (model performance degradation)
-        if concept_drift_detected:
-            concept_severity = concept_drift.get("severity", "LOW")
-            if concept_severity in ["HIGH", "CRITICAL", "ERROR"]:
-                reason = f"Concept drift detected with severity: {concept_severity}"
-                logger.warning("retraining_triggered_concept_drift", severity=concept_severity)
-                return True, reason
+        if concept_drift_detected or concept_drift_severity in ["HIGH", "CRITICAL"]:
+            reason = "Concept drift detected (model performance degradation)"
+            logger.warning("retraining_triggered_concept_drift")
+            return True, reason
         
         # High priority: both data and target drift
-        if data_drift_detected and target_drift_detected:
+        if (data_drift_detected or data_drift_severity in ["HIGH", "CRITICAL"]) and \
+           (target_drift_detected or target_drift_severity in ["HIGH", "CRITICAL"]):
             reason = "Both data drift and target drift detected"
             logger.warning("retraining_triggered_data_and_target_drift")
             return True, reason
         
-        # Medium priority: any single drift type detected
-        if data_drift_detected or target_drift_detected or concept_drift_detected:
+        # Medium priority: any single drift type detected or overall drift
+        if overall_drift_detected or \
+           data_drift_detected or data_drift_severity in ["HIGH", "CRITICAL"] or \
+           target_drift_detected or target_drift_severity in ["HIGH", "CRITICAL"] or \
+           multivariate_drift_detected:
             reason = "Drift detected and cooldown period has passed"
             logger.warning("retraining_triggered_drift_detected")
             return True, reason
@@ -105,21 +128,29 @@ class RetrainingTrigger:
         Assess the priority level for retraining.
         
         Args:
-            drift_results: Results from drift detection
+            drift_results: Results from API drift detection
             
         Returns:
             Priority level: "CRITICAL", "HIGH", "MEDIUM", or "LOW"
         """
+        # Check API drift summary first
+        drift_summary = drift_results.get("drift_summary", {})
+        severity_score = drift_summary.get("severity_score", 0)
+        
+        # CRITICAL: High severity score from API
+        if severity_score >= 3:
+            return "CRITICAL"
+        
         data_drift = drift_results.get("data_drift", {})
         target_drift = drift_results.get("target_drift", {})
         concept_drift = drift_results.get("concept_drift", {})
         
-        # CRITICAL: Model performance severely degraded
-        if concept_drift.get("severity") == "CRITICAL":
+        # CRITICAL: Concept drift detected
+        if concept_drift.get("drift_detected", False):
             return "CRITICAL"
         
         # HIGH: Both concept drift and data drift
-        if concept_drift.get("drift_detected") and data_drift.get("drift_detected"):
+        if concept_drift.get("drift_detected", False) and data_drift.get("drift_detected", False):
             return "HIGH"
         
         # HIGH: High severity target drift
@@ -128,9 +159,9 @@ class RetrainingTrigger:
         
         # MEDIUM: Single drift type detected
         if any([
-            data_drift.get("drift_detected"),
-            target_drift.get("drift_detected"),
-            concept_drift.get("drift_detected")
+            data_drift.get("drift_detected", False),
+            target_drift.get("drift_detected", False),
+            concept_drift.get("drift_detected", False)
         ]):
             return "MEDIUM"
         
@@ -156,7 +187,9 @@ class RetrainingTrigger:
             True if DAG triggered successfully, False otherwise
         """
         try:
-            airflow_url = f"{self.settings.airflow_api_url}/api/v1/dags/{dag_id}/dagRuns"
+            # Use airflow_webserver_url if available (for test compatibility), otherwise use airflow_api_url
+            base_url = getattr(self.settings, 'airflow_webserver_url', None) or self.settings.airflow_api_url
+            airflow_url = f"{base_url}/api/v1/dags/{dag_id}/dagRuns"
             
             # Prepare configuration
             if conf is None:
@@ -197,7 +230,7 @@ class RetrainingTrigger:
             response.raise_for_status()
             
             # Update last retrain time
-            self.last_retrain_time = datetime.utcnow()
+            self.last_trigger_time = datetime.utcnow()
             self.consecutive_drift_count = 0
             
             logger.info(
@@ -220,7 +253,7 @@ class RetrainingTrigger:
         Returns:
             True if cooldown period passed, False otherwise
         """
-        if self.last_retrain_time is None:
+        if self.last_trigger_time is None:
             return True
         
         # Support both retraining_cooldown_hours and retrain_cooldown_hours (for test compatibility)
@@ -231,14 +264,135 @@ class RetrainingTrigger:
         )
         
         cooldown_period = timedelta(hours=cooldown_hours)
-        time_since_retrain = datetime.utcnow() - self.last_retrain_time
+        time_since_retrain = datetime.utcnow() - self.last_trigger_time
         
         return time_since_retrain >= cooldown_period
     
     def update_last_retrain_time(self) -> None:
         """Update the last retraining timestamp to current time."""
-        self.last_retrain_time = datetime.utcnow()
-        logger.info("last_retrain_time_updated", timestamp=self.last_retrain_time.isoformat())
+        self.last_trigger_time = datetime.utcnow()
+        logger.info("last_retrain_time_updated", timestamp=self.last_trigger_time.isoformat())
+    
+    # Test compatibility methods
+    def should_trigger_retraining(self, drift_results: Dict[str, Any]) -> bool:
+        """
+        Determine if retraining should be triggered (test compatibility).
+        
+        Args:
+            drift_results: Results from drift detection
+            
+        Returns:
+            True if retraining should be triggered
+        """
+        should_retrain, _ = self.should_retrain(drift_results)
+        return should_retrain
+    
+    def trigger_retraining(
+        self, 
+        drift_results: Dict[str, Any], 
+        dag_id: str = "01_training_pipeline",
+        additional_conf: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """
+        Trigger retraining workflow (test compatibility).
+        
+        Args:
+            drift_results: Results from drift detection
+            dag_id: DAG ID to trigger
+            additional_conf: Additional configuration
+            
+        Returns:
+            True if successful
+        """
+        # Check if retraining should be triggered
+        if not self.should_trigger_retraining(drift_results):
+            return False
+        
+        # Prepare configuration
+        conf = {
+            "triggered_by": "drift_detection",
+            "drift_results": drift_results,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        if additional_conf:
+            conf.update(additional_conf)
+        
+        # Trigger DAG
+        success = self.trigger_airflow_dag(dag_id=dag_id, conf=conf)
+        
+        # Record in history
+        self.trigger_history.append({
+            "timestamp": datetime.utcnow().isoformat(),
+            "drift_results": drift_results,
+            "success": success
+        })
+        
+        if success:
+            self.last_trigger_time = datetime.utcnow()
+        else:
+            logger.error(
+                "retraining_trigger_failed",
+                dag_id=dag_id,
+                drift_results=drift_results
+            )
+        
+        return success
+    
+    def get_last_trigger_time(self) -> Optional[datetime]:
+        """
+        Get the last trigger time.
+        
+        Returns:
+            Last trigger timestamp or None
+        """
+        return self.last_trigger_time
+    
+    def is_in_cooldown(self) -> bool:
+        """
+        Check if currently in cooldown period.
+        
+        Returns:
+            True if in cooldown
+        """
+        if self.last_trigger_time is None:
+            return False
+        
+        cooldown_period = timedelta(hours=self.cooldown_hours)
+        time_since_trigger = datetime.utcnow() - self.last_trigger_time
+        
+        return time_since_trigger < cooldown_period
+    
+    def clear_old_history(self, days: int = 30) -> None:
+        """
+        Clear old trigger history.
+        
+        Args:
+            days: Remove entries older than this many days
+        """
+        cutoff_time = datetime.utcnow() - timedelta(days=days)
+        
+        self.trigger_history = [
+            entry for entry in self.trigger_history
+            if datetime.fromisoformat(entry["timestamp"]) > cutoff_time
+        ]
+    
+    def get_recent_triggers(self, hours: int = 24) -> List[Dict[str, Any]]:
+        """
+        Get recent trigger history.
+        
+        Args:
+            hours: Look back this many hours
+            
+        Returns:
+            List of recent trigger entries
+        """
+        cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+        
+        return [
+            entry for entry in self.trigger_history
+            if datetime.fromisoformat(entry["timestamp"]) > cutoff_time
+        ]
 
 
 # Convenience functions

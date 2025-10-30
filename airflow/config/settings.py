@@ -1,161 +1,85 @@
 """
 Configuration settings for Airflow module
+Migrated to use centralized configuration for consistency.
 """
-from typing import List, Optional
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
 
+# import sys
+# from pathlib import Path
+from typing import List
 
-class AirflowSettings(BaseSettings):
-    """Airflow module settings with environment variable support."""
-    
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        protected_namespaces=()
-    )
-    
+# Add project root to path to import centralized config
+# project_root = Path(__file__).parent.parent.parent
+# sys.path.insert(0, str(project_root))
+
+from config import get_settings
+
+# Get centralized settings
+settings = get_settings()
+
+class AirflowSettings:
+    """Airflow module settings migrated to centralized config."""
+
     # ========== Airflow Core ==========
-    airflow_home: str = Field(
-        default="/opt/airflow",
-        description="Airflow home directory"
-    )
-    
-    airflow_database_url: str = Field(
-        default="postgresql://airflow:airflow@postgres:5432/airflow_db",
-        description="Airflow metadata database (SEPARATE from fraud_db)"
-    )
-    
-    executor: str = Field(
-        default="LocalExecutor",
-        description="Airflow executor (LocalExecutor, CeleryExecutor)"
-    )
-    
-    parallelism: int = Field(
-        default=32,
-        description="Maximum parallel tasks across all DAGs"
-    )
-    
-    max_active_runs_per_dag: int = Field(
-        default=3,
-        description="Max concurrent runs per DAG"
-    )
-    
+    airflow_home: str = settings.airflow.home
+
+    airflow_database_url: str = settings.airflow.database_url
+
+    executor: str = settings.airflow.executor
+
+    parallelism: int = settings.airflow.parallelism
+
+    max_active_runs_per_dag: int = settings.airflow.max_active_runs_per_dag
+
     # ========== Fraud Detection Database (READ-ONLY pour Airflow) ==========
-    fraud_database_url: str = Field(
-        default="postgresql://postgres:postgres@localhost:5432/fraud_db",
-        description="Fraud detection application database"
-    )
-    
+    fraud_database_url: str = settings.database.url
+
     # ========== Modules Endpoints ==========
-    api_base_url: str = Field(
-        default="http://fraud-api:8000",
-        description="Fraud Detection API base URL"
-    )
-    
-    data_base_url: str = Field(
-        default="http://fraud-data:8001",
-        description="Data pipeline service base URL"
-    )
-    
-    drift_base_url: str = Field(
-        default="http://fraud-drift:8002",
-        description="Drift detection service base URL"
-    )
-    
+    api_base_url: str = settings.airflow.api_base_url
+
+    data_base_url: str = settings.airflow.data_base_url
+
+    drift_base_url: str = settings.airflow.drift_base_url
+
     # ========== MLflow ==========
-    mlflow_tracking_uri: str = Field(
-        default="http://mlflow:5000",
-        description="MLflow tracking server URI"
-    )
-    
-    mlflow_model_name: str = Field(
-        default="fraud_detection_ensemble",
-        description="MLflow registered model name"
-    )
-    
-    mlflow_experiment_name: str = Field(
-        default="/fraud-detection/experiments",
-        description="MLflow experiment name"
-    )
-    
+    mlflow_tracking_uri: str = settings.mlflow.tracking_uri
+
+    mlflow_model_name: str = settings.mlflow.model_name
+
+    mlflow_experiment_name: str = settings.mlflow.experiment_name
+
     # ========== Databricks ==========
-    databricks_host: str = Field(
-        default="https://adb-xxx.azuredatabricks.net",
-        description="Databricks workspace URL"
-    )
-    
-    databricks_token: str = Field(
-        default="",
-        description="Databricks access token"
-    )
-    
-    databricks_training_job_id: int = Field(
-        default=12345,
-        description="Databricks job ID for model training"
-    )
-    
+    databricks_host: str = settings.airflow.databricks_host
+
+    databricks_token: str = settings.airflow.databricks_token
+
+    databricks_training_job_id: int = settings.airflow.databricks_training_job_id
+
     # ========== Azure ==========
-    azure_storage_connection_string: str = Field(
-        default="",
-        description="Azure Storage connection string"
-    )
-    
-    azure_acr_login_server: str = Field(
-        default="frauddetection.azurecr.io",
-        description="Azure Container Registry server"
-    )
-    
+    azure_storage_connection_string: str = settings.azure.storage_connection_string
+
+    azure_acr_login_server: str = settings.airflow.azure_acr_login_server
+
     # ========== Training Configuration ==========
-    min_training_samples: int = Field(
-        default=10000,
-        description="Minimum new samples before retraining"
-    )
-    
-    training_cooldown_hours: int = Field(
-        default=48,
-        description="Minimum hours between trainings"
-    )
-    
+    min_training_samples: int = settings.airflow.min_training_samples
+
+    training_cooldown_hours: int = settings.airflow.training_cooldown_hours
+
     # ========== Drift Thresholds ==========
-    data_drift_threshold: float = Field(
-        default=0.3,
-        ge=0.0,
-        le=1.0,
-        description="PSI threshold for data drift"
-    )
-    
-    concept_drift_threshold: float = Field(
-        default=0.05,
-        ge=0.0,
-        le=1.0,
-        description="Performance drop threshold"
-    )
-    
+    data_drift_threshold: float = settings.drift.data_drift_threshold
+
+    concept_drift_threshold: float = settings.drift.concept_drift_threshold
+
     # ========== Alerting ==========
-    alert_email_enabled: bool = Field(
-        default=True,
-        description="Enable email alerts"
-    )
-    
-    alert_email_recipients: List[str] = Field(
-        default=["ml-team@example.com"],
-        description="Alert email recipients"
-    )
-    
+    alert_email_enabled: bool = settings.alerts.email_enabled
+
+    alert_email_recipients: List[str] = settings.alerts.email_recipients
+
     # ========== Logging ==========
-    log_level: str = Field(
-        default="INFO",
-        description="Logging level"
-    )
-    
+    log_level: str = settings.monitoring.log_level
+
     # ========== Environment ==========
-    environment: str = Field(
-        default="development",
-        description="Environment (development, staging, production)"
-    )
+    environment: str = settings.environment
 
 
 # Global settings instance
-settings = AirflowSettings()
+settings_instance = AirflowSettings()
