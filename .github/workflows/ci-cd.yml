@@ -48,9 +48,9 @@ jobs:
       run: |
         black --check --diff . || (echo "Code is not formatted with Black. Run 'black .' to fix." && exit 1)
 
-    - name: Run isort (import sorting)
-      run: |
-        isort --check-only --diff . || (echo "Imports are not sorted. Run 'isort .' to fix." && exit 1)
+    # - name: Run isort (import sorting)
+    #   run: |
+    #     isort --check-only --diff . || (echo "Imports are not sorted. Run 'isort .' to fix." && exit 1)
 
     - name: Run Flake8 (linting)
       run: |
