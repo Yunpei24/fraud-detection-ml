@@ -207,6 +207,7 @@ marimo/_lsp/
 __marimo__/
 DOCKER_COMPOSE_READINESS_ANALYSIS.md
 
+# Local virtual environment
 nb_venv
 load_creditcard_data.ipynb
 Guide
