@@ -26,12 +26,20 @@ def generate_shap_values(model, X_sample: np.ndarray):
             explainer = shap.TreeExplainer(model)
             shap_values = explainer.shap_values(X_sample)
         elif _is_linear_model(model):
-            explainer = shap.LinearExplainer(model, X_sample, feature_perturbation="interventional")
+            explainer = shap.LinearExplainer(
+                model, X_sample, feature_perturbation="interventional"
+            )
             shap_values = explainer.shap_values(X_sample)
         else:
             # Kernel (model-agnostic). Use a small background to speed up.
-            background = shap.sample(X_sample, 200) if X_sample.shape[0] > 200 else X_sample
-            explainer = shap.KernelExplainer(model.predict_proba, background) if hasattr(model, "predict_proba") else shap.KernelExplainer(model.predict, background)
+            background = (
+                shap.sample(X_sample, 200) if X_sample.shape[0] > 200 else X_sample
+            )
+            explainer = (
+                shap.KernelExplainer(model.predict_proba, background)
+                if hasattr(model, "predict_proba")
+                else shap.KernelExplainer(model.predict, background)
+            )
             shap_values = explainer.shap_values(X_sample)
     except Exception as e:
         raise RuntimeError(f"Failed to generate SHAP values: {e}") from e
@@ -39,12 +47,18 @@ def generate_shap_values(model, X_sample: np.ndarray):
     return explainer, shap_values
 
 
-def plot_shap_summary(shap_values, X: np.ndarray, feature_names: Optional[list] = None, *, title: str = "SHAP Summary"):
+def plot_shap_summary(
+    shap_values,
+    X: np.ndarray,
+    feature_names: Optional[list] = None,
+    *,
+    title: str = "SHAP Summary",
+):
     """
     Summary dot plot. Returns the Matplotlib figure.
     """
-    import shap
     import matplotlib.pyplot as plt
+    import shap
 
     fig = plt.figure(figsize=(8, 6))
     shap.summary_plot(shap_values, X, feature_names=feature_names, show=False)
@@ -62,7 +76,9 @@ def save_explainer(explainer, path: str):
         pickle.dump(explainer, f)
 
 
-def create_explanation_report(shap_values, X: np.ndarray, feature_names: Optional[list] = None, top_n: int = 20) -> Dict[str, float]:
+def create_explanation_report(
+    shap_values, X: np.ndarray, feature_names: Optional[list] = None, top_n: int = 20
+) -> Dict[str, float]:
     """
     Produce a simple global importance report: mean(|SHAP|) per feature.
     Works for both list-like outputs (multi-class) and arrays.
@@ -80,19 +96,26 @@ def create_explanation_report(shap_values, X: np.ndarray, feature_names: Optiona
     return {feature_names[i]: float(importance[i]) for i in order}
 
 
-def create_explanation_report_from_model(model, X_sample: np.ndarray, feature_names: Optional[list] = None, top_n: int = 20) -> Tuple[Dict[str, float], object]:
+def create_explanation_report_from_model(
+    model, X_sample: np.ndarray, feature_names: Optional[list] = None, top_n: int = 20
+) -> Tuple[Dict[str, float], object]:
     """
     Convenience wrapper: build SHAP explainer, compute values, and return (report, explainer).
     """
     explainer, shap_values = generate_shap_values(model, X_sample)
-    report = create_explanation_report(shap_values, X_sample, feature_names=feature_names, top_n=top_n)
+    report = create_explanation_report(
+        shap_values, X_sample, feature_names=feature_names, top_n=top_n
+    )
     return report, explainer
 
 
 # ---- helpers ----
 def _is_tree_model(model) -> bool:
     name = model.__class__.__name__.lower()
-    return any(k in name for k in ["xgb", "xgboost", "forest", "gbm", "gradientboost", "lightgbm"])
+    return any(
+        k in name
+        for k in ["xgb", "xgboost", "forest", "gbm", "gradientboost", "lightgbm"]
+    )
 
 
 def _is_linear_model(model) -> bool:

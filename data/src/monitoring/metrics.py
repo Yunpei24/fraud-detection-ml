@@ -4,9 +4,10 @@ Prometheus metrics for data pipeline monitoring.
 This module exposes data pipeline metrics in Prometheus format.
 """
 
-from prometheus_client import Counter, Gauge, Histogram, start_http_server
-from datetime import datetime
 import logging
+from datetime import datetime
+
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 logger = logging.getLogger(__name__)
 
@@ -19,19 +20,19 @@ NAMESPACE = "data_pipeline"
 PIPELINE_RUNS_TOTAL = Counter(
     f"{NAMESPACE}_runs_total",
     "Total number of pipeline runs",
-    ["pipeline_name", "status"]  # status: 'success' or 'failed'
+    ["pipeline_name", "status"],  # status: 'success' or 'failed'
 )
 
 PIPELINE_DURATION_SECONDS = Gauge(
     f"{NAMESPACE}_duration_seconds",
     "Duration of the last pipeline run in seconds",
-    ["pipeline_name"]
+    ["pipeline_name"],
 )
 
 PIPELINE_LAST_SUCCESS_TIMESTAMP = Gauge(
     f"{NAMESPACE}_last_success_timestamp",
     "Timestamp of the last successful pipeline run",
-    ["pipeline_name"]
+    ["pipeline_name"],
 )
 
 # -----------------------------------------------------------------------------
@@ -41,19 +42,19 @@ PIPELINE_LAST_SUCCESS_TIMESTAMP = Gauge(
 TRANSACTIONS_INGESTED_TOTAL = Counter(
     f"{NAMESPACE}_transactions_ingested_total",
     "Total number of transactions ingested from the source",
-    ["source"]  # e.g., 'azure_sql', 'event_hub', 'file'
+    ["source"],  # e.g., 'azure_sql', 'event_hub', 'file'
 )
 
 TRANSACTIONS_PROCESSED_TOTAL = Counter(
     f"{NAMESPACE}_transactions_processed_total",
     "Total number of transactions successfully processed",
-    ["destination"]  # e.g., 'feature_store', 's3', 'database'
+    ["destination"],  # e.g., 'feature_store', 's3', 'database'
 )
 
 TRANSACTIONS_REJECTED_TOTAL = Counter(
     f"{NAMESPACE}_transactions_rejected_total",
     "Total number of transactions rejected during processing",
-    ["reason"]  # e.g., 'validation_error', 'duplicate', 'missing_critical_field'
+    ["reason"],  # e.g., 'validation_error', 'duplicate', 'missing_critical_field'
 )
 
 # -----------------------------------------------------------------------------
@@ -63,13 +64,16 @@ TRANSACTIONS_REJECTED_TOTAL = Counter(
 VALIDATION_ERRORS_TOTAL = Counter(
     f"{NAMESPACE}_validation_errors_total",
     "Total number of data validation errors",
-    ["feature_name", "error_type"]  # error_type: 'missing', 'out_of_range', 'invalid_format'
+    [
+        "feature_name",
+        "error_type",
+    ],  # error_type: 'missing', 'out_of_range', 'invalid_format'
 )
 
 MISSING_VALUES_TOTAL = Counter(
     f"{NAMESPACE}_missing_values_total",
     "Total number of missing values found",
-    ["feature_name"]
+    ["feature_name"],
 )
 
 # -----------------------------------------------------------------------------
@@ -80,20 +84,22 @@ STEP_LATENCY_SECONDS = Histogram(
     f"{NAMESPACE}_step_latency_seconds",
     "Latency of individual pipeline steps in seconds",
     ["step_name"],  # e.g., 'ingestion', 'validation', 'feature_engineering', 'storage'
-    buckets=[1, 5, 15, 30, 60, 120, 300, 600, 1200]  # 1s to 20min
+    buckets=[1, 5, 15, 30, 60, 120, 300, 600, 1200],  # 1s to 20min
 )
 
 
 def setup_prometheus_metrics(port: int = 9090) -> None:
     """
     Start Prometheus metrics server for data pipeline.
-    
+
     Args:
         port: Port number for metrics server (default: 9090)
     """
     try:
         start_http_server(port)
-        logger.info(f"Prometheus metrics server started on port {port} (module: data_pipeline)")
+        logger.info(
+            f"Prometheus metrics server started on port {port} (module: data_pipeline)"
+        )
     except Exception as e:
         logger.error(f"Prometheus server start failed: {e} (module: data_pipeline)")
 
@@ -101,7 +107,7 @@ def setup_prometheus_metrics(port: int = 9090) -> None:
 def record_pipeline_success(pipeline_name: str, duration: float) -> None:
     """
     Record a successful pipeline run.
-    
+
     Args:
         pipeline_name: Name of the pipeline
         duration: Duration in seconds
@@ -117,7 +123,7 @@ def record_pipeline_success(pipeline_name: str, duration: float) -> None:
 def record_pipeline_failure(pipeline_name: str) -> None:
     """
     Record a failed pipeline run.
-    
+
     Args:
         pipeline_name: Name of the pipeline
     """

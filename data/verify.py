@@ -5,9 +5,10 @@ Tests that all modules can be imported correctly
 Handles Python 3.11 compatibility issues
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
+
 import pandas as pd
 
 # Add src to path
@@ -17,15 +18,18 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 PYTHON_VERSION = sys.version_info
 IS_PYTHON_311 = PYTHON_VERSION >= (3, 11)
 
+
 def test_imports():
     """Test all module imports"""
-    
+
     print("🔍 Testing Data Module Imports...")
-    print(f"📍 Python {PYTHON_VERSION.major}.{PYTHON_VERSION.minor}.{PYTHON_VERSION.micro}")
+    print(
+        f"📍 Python {PYTHON_VERSION.major}.{PYTHON_VERSION.minor}.{PYTHON_VERSION.micro}"
+    )
     if IS_PYTHON_311:
         print("⚠️  Python 3.11 detected - some Azure packages may not be available")
     print("=" * 60)
-    
+
     tests = [
         ("Config", "config.settings", "Settings", False),
         ("Config", "config.constants", "BATCH_SIZE", False),
@@ -38,11 +42,11 @@ def test_imports():
         ("Monitoring", "monitoring.health", "HealthMonitor", False),
         ("Pipelines", "pipelines.realtime_pipeline", "RealtimePipeline", False),
     ]
-    
+
     passed = 0
     failed = 0
     skipped = 0
-    
+
     for category, module_path, class_name, is_optional in tests:
         try:
             module = __import__(module_path, fromlist=[class_name])
@@ -51,19 +55,23 @@ def test_imports():
             passed += 1
         except Exception as e:
             if is_optional:
-                print(f"⏭️  {category:15} | {module_path:40} | Skipped (optional for Py3.11)")
+                print(
+                    f"⏭️  {category:15} | {module_path:40} | Skipped (optional for Py3.11)"
+                )
                 skipped += 1
             else:
                 print(f"❌ {category:15} | {module_path:40} | Error: {str(e)[:30]}")
                 failed += 1
-    
+
     print("=" * 60)
     print(f"\n📊 Results: {passed} passed, {failed} failed, {skipped} skipped")
-    
+
     if failed == 0:
         print("\n✨ All required modules imported successfully!")
         if IS_PYTHON_311:
-            print("\n💡 Note: Some optional modules skipped due to Python 3.11 limitations")
+            print(
+                "\n💡 Note: Some optional modules skipped due to Python 3.11 limitations"
+            )
             print("   See PYTHON311_COMPATIBILITY.md for more information")
         return True
     else:
@@ -80,16 +88,17 @@ def test_imports():
 
 def test_basic_functionality():
     """Test basic functionality"""
-    
+
     print("\n🧪 Testing Basic Functionality...")
     print("=" * 60)
-    
+
     try:
         # Test validation with production schema
-        from src.validation.schema import SchemaValidator, ProductionSchemaValidator
-        
+        from src.validation.schema import (ProductionSchemaValidator,
+                                           SchemaValidator)
+
         validator = SchemaValidator()
-        
+
         # Create test DataFrame with valid production schema data
         test_data = {
             "transaction_id": ["TEST001", "TEST002"],
@@ -101,81 +110,82 @@ def test_basic_functionality():
             "customer_zip": ["12345", "54321"],
             "merchant_zip": ["98765", "56789"],
             "customer_country": ["US", "DE"],
-            "merchant_country": ["US", "DE"]
+            "merchant_country": ["US", "DE"],
         }
-        
+
         df = pd.DataFrame(test_data)
-        is_valid, report = validator.validate_batch(df, schema_type='production')
+        is_valid, report = validator.validate_batch(df, schema_type="production")
         print(f"✅ Production schema batch validation: {is_valid}")
         print(f"   Report: Valid={is_valid}, Errors={len(report.get('errors', []))}")
-        
+
         # Test ProductionSchemaValidator directly
         prod_validator = ProductionSchemaValidator()
         print(f"✅ ProductionSchemaValidator schema name: {prod_validator.schema_name}")
         print(f"   Required fields: {len(prod_validator.required_fields)}")
         print(f"   Optional fields: {len(prod_validator.optional_fields)}")
-        
+
         print("\n✨ Basic functionality tests passed!")
         return True
-        
+
     except Exception as e:
         print(f"\n⚠️  Error in basic functionality test (optional): {str(e)}")
         print("   Note: This test is optional - core imports verified above")
         import traceback
+
         traceback.print_exc()
         return True  # Don't fail on optional functionality test
 
 
 def print_structure():
     """Print directory structure"""
-    
+
     print("\n📁 Data Module Structure")
     print("=" * 60)
-    
+
     base_path = Path(__file__).parent
-    
+
     for item in sorted(base_path.iterdir()):
-        if item.is_dir() and not item.name.startswith('.'):
+        if item.is_dir() and not item.name.startswith("."):
             print(f"\n📂 {item.name}/")
-            
+
             if item.name == "src":
                 for subitem in sorted(item.iterdir()):
-                    if subitem.is_dir() and not subitem.name.startswith('__'):
+                    if subitem.is_dir() and not subitem.name.startswith("__"):
                         count = len(list(subitem.glob("*.py")))
                         print(f"   ├─ {subitem.name}/ ({count} files)")
-            
+
             elif item.name == "tests":
                 for subitem in sorted(item.iterdir()):
-                    if subitem.is_dir() and not subitem.name.startswith('__'):
+                    if subitem.is_dir() and not subitem.name.startswith("__"):
                         count = len(list(subitem.glob("*.py")))
                         print(f"   ├─ {subitem.name}/ ({count} files)")
 
 
 def main():
     """Main function"""
-    
+
     print("\n" + "🚀 " * 10)
     print("DATA MODULE - VERIFICATION SCRIPT")
     print("🚀 " * 10)
-    
+
     # Print structure
     print_structure()
-    
+
     # Test imports
     print()
     imports_ok = test_imports()
-    
+
     # Test basic functionality
     if imports_ok:
         func_ok = test_basic_functionality()
     else:
         func_ok = False
-    
+
     # Summary
     print("\n" + "=" * 60)
     print("SUMMARY")
     print("=" * 60)
-    
+
     if imports_ok and func_ok:
         print("✅ All verification tests PASSED!")
         print("\nYou can now:")

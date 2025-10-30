@@ -18,15 +18,16 @@ from sklearn.metrics import precision_recall_fscore_support, roc_curve
 def set_seed(seed: int = 42):
     """Set the seed for reproducibility."""
     import random
+
     import numpy as np
     import torch
+
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-
 
 
 def ensure_dir(path: os.PathLike | str) -> Path:
@@ -123,7 +124,9 @@ def tune_threshold_for_recall(
     # Convert TPR -> recall; evaluate precision at each threshold
     for t, recall in zip(thr, tpr):
         y_hat = (y_proba >= t).astype(int)
-        prec, rec, f1, _ = precision_recall_fscore_support(y_true, y_hat, average="binary", zero_division=0)
+        prec, rec, f1, _ = precision_recall_fscore_support(
+            y_true, y_hat, average="binary", zero_division=0
+        )
         if rec >= target_recall and (min_precision is None or prec >= min_precision):
             best_thr = float(t)
             best = {"recall": float(rec), "precision": float(prec), "f1": float(f1)}

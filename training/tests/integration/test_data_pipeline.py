@@ -1,11 +1,11 @@
 """
 Simple integration tests for data processing pipeline.
 """
-import pytest
 import numpy as np
 import pandas as pd
-from src.models.random_forest import RandomForestModel
+import pytest
 from src.evaluation.metrics import calculate_all_metrics
+from src.models.random_forest import RandomForestModel
 
 
 def test_model_training_and_prediction(tiny_credit_df):

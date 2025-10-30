@@ -1,6 +1,7 @@
-import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from src.services.cache_service import CacheService
 
 
@@ -33,7 +34,9 @@ class TestCacheService:
     @pytest.mark.asyncio
     async def test_set_prediction_cache(self, cache_service, mock_redis):
         await cache_service.set_prediction_cache("key", {"prediction": 0.8}, 3600)
-        mock_redis.setex.assert_called_once_with("fraud_detection:prediction:key", 3600, '{"prediction": 0.8}')
+        mock_redis.setex.assert_called_once_with(
+            "fraud_detection:prediction:key", 3600, '{"prediction": 0.8}'
+        )
 
     @pytest.mark.asyncio
     async def test_invalidate_cache(self, cache_service, mock_redis):
@@ -54,7 +57,7 @@ class TestCacheService:
             "total_commands_processed": 20,
             "instantaneous_ops_per_sec": 5,
             "keyspace_hits": 100,
-            "keyspace_misses": 10
+            "keyspace_misses": 10,
         }
         result = cache_service.get_stats()
         expected = {
@@ -62,7 +65,7 @@ class TestCacheService:
             "total_commands_processed": 20,
             "instantaneous_ops_per_sec": 5,
             "keyspace_hits": 100,
-            "keyspace_misses": 10
+            "keyspace_misses": 10,
         }
         assert result == expected
         mock_redis.info.assert_called_once_with("stats")

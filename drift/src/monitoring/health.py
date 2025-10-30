@@ -2,8 +2,9 @@
 Health check module for drift monitoring system.
 """
 
-from typing import Dict, Any
 from datetime import datetime
+from typing import Any, Dict
+
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -12,7 +13,7 @@ logger = structlog.get_logger(__name__)
 def check_monitoring_status() -> Dict[str, Any]:
     """
     Check the health status of the drift monitoring system.
-    
+
     Returns:
         Dictionary with health status information
     """
@@ -22,33 +23,24 @@ def check_monitoring_status() -> Dict[str, Any]:
         "components": {
             "drift_detection": {
                 "status": "operational",
-                "last_check": datetime.utcnow().isoformat()
+                "last_check": datetime.utcnow().isoformat(),
             },
-            "database": {
-                "status": "operational",
-                "connection": "active"
-            },
-            "prometheus": {
-                "status": "operational",
-                "metrics_exported": True
-            },
-            "alerting": {
-                "status": "operational",
-                "channels": ["email", "slack"]
-            }
+            "database": {"status": "operational", "connection": "active"},
+            "prometheus": {"status": "operational", "metrics_exported": True},
+            "alerting": {"status": "operational", "channels": ["email", "slack"]},
         },
-        "version": "1.0.0"
+        "version": "1.0.0",
     }
-    
+
     logger.info("monitoring_health_check", status=status["status"])
-    
+
     return status
 
 
 def check_database_connection() -> bool:
     """
     Check if database connection is healthy.
-    
+
     Returns:
         True if connection is healthy, False otherwise
     """
@@ -64,7 +56,7 @@ def check_database_connection() -> bool:
 def check_prometheus_metrics() -> bool:
     """
     Check if Prometheus metrics are being exported.
-    
+
     Returns:
         True if metrics are available, False otherwise
     """

@@ -9,12 +9,11 @@ Dataset splitting utilities.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Tuple, Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-
 from src.config.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -37,7 +36,11 @@ def stratified_split(
     # compute val share relative to remaining pool
     val_rel = val_size / (1.0 - test_size)
     X_val, X_test, y_val, y_test = train_test_split(
-        X_temp, y_temp, test_size=(1 - val_rel), stratify=y_temp, random_state=random_state
+        X_temp,
+        y_temp,
+        test_size=(1 - val_rel),
+        stratify=y_temp,
+        random_state=random_state,
     )
 
     logger.info(
@@ -79,8 +82,8 @@ def time_aware_split(
         raise ValueError("Invalid sizes. Choose smaller test_size or val_size.")
 
     train_df = df_sorted.iloc[:n_train]
-    val_df = df_sorted.iloc[n_train:n_train + n_val]
-    test_df = df_sorted.iloc[n_train + n_val:]
+    val_df = df_sorted.iloc[n_train : n_train + n_val]
+    test_df = df_sorted.iloc[n_train + n_val :]
 
     X_train = train_df.drop(columns=[target_col])
     y_train = train_df[target_col].values

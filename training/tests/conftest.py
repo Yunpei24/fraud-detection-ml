@@ -1,11 +1,12 @@
 # training/tests/conftest.py
-import pytest
 import numpy as np
 import pandas as pd
+import pytest
+
 
 @pytest.fixture(scope="session")
 def tiny_credit_df():
-    """ A synthetic, tiny dataframe to use in tests """
+    """A synthetic, tiny dataframe to use in tests"""
     n = 80
     rng = np.random.default_rng(123)
     data = {f"v{i}": rng.normal(0, 1, n) for i in range(1, 29)}

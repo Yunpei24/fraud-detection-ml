@@ -1,21 +1,19 @@
 import time
-import uvicorn
 from contextlib import asynccontextmanager
 
+import uvicorn
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .api.routes import admin_router, health_router, metrics_router, predict_router, explain_router, drift_router, audit_router, transaction_router
+from .api.routes import (admin_router, audit_router, drift_router,
+                         explain_router, health_router, metrics_router,
+                         predict_router, transaction_router)
 from .config import constants, get_logger, settings
-from .monitoring.prometheus import (
-    ACTIVE_CONNECTIONS,
-    API_REQUESTS_TOTAL,
-    API_REQUEST_DURATION_SECONDS,
-    API_ERRORS_TOTAL,
-    INVALID_REQUESTS_TOTAL
-)
+from .monitoring.prometheus import (ACTIVE_CONNECTIONS, API_ERRORS_TOTAL,
+                                    API_REQUEST_DURATION_SECONDS,
+                                    API_REQUESTS_TOTAL, INVALID_REQUESTS_TOTAL)
 from .utils import FraudDetectionException
 
 logger = get_logger(__name__)
@@ -75,12 +73,11 @@ async def log_requests(request: Request, call_next):
     API_REQUESTS_TOTAL.labels(
         endpoint=request.url.path,
         method=request.method,
-        status_code=response.status_code
+        status_code=response.status_code,
     ).inc()
-    
+
     API_REQUEST_DURATION_SECONDS.labels(
-        endpoint=request.url.path,
-        method=request.method
+        endpoint=request.url.path, method=request.method
     ).observe(process_time)
 
     ACTIVE_CONNECTIONS.dec()
@@ -93,8 +90,7 @@ async def fraud_detection_exception_handler(
     request: Request, exc: FraudDetectionException
 ):
     API_ERRORS_TOTAL.labels(
-        error_type=exc.__class__.__name__, 
-        error_code=exc.error_code
+        error_type=exc.__class__.__name__, error_code=exc.error_code
     ).inc()
 
     logger.error(
@@ -118,9 +114,7 @@ async def fraud_detection_exception_handler(
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    INVALID_REQUESTS_TOTAL.labels(
-        validation_error=exc.__class__.__name__
-    ).inc()
+    INVALID_REQUESTS_TOTAL.labels(validation_error=exc.__class__.__name__).inc()
 
     logger.warning(
         f"Validation error: {exc}",
@@ -139,10 +133,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
-    API_ERRORS_TOTAL.labels(
-        error_type=exc.__class__.__name__, 
-        error_code="E999"
-    ).inc()
+    API_ERRORS_TOTAL.labels(error_type=exc.__class__.__name__, error_code="E999").inc()
 
     logger.error(
         f"Unhandled exception: {exc}",

@@ -7,8 +7,10 @@ from pathlib import Path
 from typing import Any, Dict
 
 try:
-    import mlflow  # type: ignore
     import mlflow.sklearn  # type: ignore
+
+    import mlflow  # type: ignore
+
     MLFLOW_AVAILABLE = True
 except Exception:
     mlflow = None  # type: ignore
@@ -16,8 +18,9 @@ except Exception:
 
 # xgboost is optional
 try:
-    import xgboost as xgb  # type: ignore
     import mlflow.xgboost  # type: ignore
+    import xgboost as xgb  # type: ignore
+
     _HAS_XGB = True
 except Exception:
     xgb = None  # type: ignore
@@ -51,7 +54,9 @@ def log_artifact(local_path: str, artifact_path: str | None = None) -> None:
         pass
 
 
-def log_model(model: Any, model_type: str | None = None, artifact_path: str = "model") -> None:
+def log_model(
+    model: Any, model_type: str | None = None, artifact_path: str = "model"
+) -> None:
     """
     Logs the underlying estimator to MLflow if available. Works with:
       - XGBClassifier (uses mlflow.xgboost when available)
@@ -77,10 +82,12 @@ def log_model(model: Any, model_type: str | None = None, artifact_path: str = "m
                 # Try joblib if available
                 try:
                     from joblib import dump  # type: ignore
+
                     dump(est, dump_dir / "model.joblib")
                 except Exception:
                     # Fall back to pickle
                     import pickle
+
                     with open(dump_dir / "model.pkl", "wb") as f:
                         pickle.dump(est, f)
                 mlflow.log_artifacts(str(dump_dir), artifact_path=artifact_path)

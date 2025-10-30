@@ -4,8 +4,10 @@ from __future__ import annotations
 from typing import Any, Optional
 
 try:
-    import mlflow  # type: ignore
     from mlflow.tracking import MlflowClient  # type: ignore
+
+    import mlflow  # type: ignore
+
     MLFLOW_AVAILABLE = True
 except Exception:
     mlflow = None  # type: ignore

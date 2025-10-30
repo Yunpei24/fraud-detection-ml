@@ -5,10 +5,11 @@ This module provides a simplified client to call the API's drift detection servi
 from the drift monitoring component.
 """
 
-import requests
 import json
-from typing import Dict, Any, Optional
 from datetime import datetime
+from typing import Any, Dict, Optional
+
+import requests
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -30,7 +31,7 @@ class FraudDetectionAPIClient:
             base_url: Base URL of the fraud detection API
             timeout: Request timeout in seconds
         """
-        self.base_url = base_url.rstrip('/')
+        self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
 
@@ -40,7 +41,7 @@ class FraudDetectionAPIClient:
         self,
         window_hours: int = 24,
         reference_window_days: int = 30,
-        auth_token: Optional[str] = None
+        auth_token: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Call the API's comprehensive drift detection endpoint.
@@ -61,17 +62,16 @@ class FraudDetectionAPIClient:
 
         payload = {
             "window_hours": window_hours,
-            "reference_window_days": reference_window_days
+            "reference_window_days": reference_window_days,
         }
 
         try:
-            logger.info("calling_api_drift_detection", url=url, window_hours=window_hours)
+            logger.info(
+                "calling_api_drift_detection", url=url, window_hours=window_hours
+            )
 
             response = self.session.post(
-                url,
-                json=payload,
-                headers=headers,
-                timeout=self.timeout
+                url, json=payload, headers=headers, timeout=self.timeout
             )
 
             response.raise_for_status()
@@ -84,13 +84,13 @@ class FraudDetectionAPIClient:
             logger.error("api_drift_detection_failed", error=str(e))
             return {
                 "error": f"API call failed: {str(e)}",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
         except json.JSONDecodeError as e:
             logger.error("api_response_parse_failed", error=str(e))
             return {
                 "error": f"Failed to parse API response: {str(e)}",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
 
     def run_sliding_window_analysis(
@@ -98,7 +98,7 @@ class FraudDetectionAPIClient:
         window_size_hours: int = 24,
         step_hours: int = 6,
         analysis_period_days: int = 7,
-        auth_token: Optional[str] = None
+        auth_token: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Call the API's sliding window analysis endpoint.
@@ -121,17 +121,14 @@ class FraudDetectionAPIClient:
         payload = {
             "window_size_hours": window_size_hours,
             "step_hours": step_hours,
-            "analysis_period_days": analysis_period_days
+            "analysis_period_days": analysis_period_days,
         }
 
         try:
             logger.info("calling_api_sliding_window_analysis", url=url)
 
             response = self.session.post(
-                url,
-                json=payload,
-                headers=headers,
-                timeout=self.timeout
+                url, json=payload, headers=headers, timeout=self.timeout
             )
 
             response.raise_for_status()
@@ -144,19 +141,17 @@ class FraudDetectionAPIClient:
             logger.error("api_sliding_window_analysis_failed", error=str(e))
             return {
                 "error": f"API call failed: {str(e)}",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
         except json.JSONDecodeError as e:
             logger.error("api_response_parse_failed", error=str(e))
             return {
                 "error": f"Failed to parse API response: {str(e)}",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
 
     def generate_drift_report(
-        self,
-        analysis_results: Dict[str, Any],
-        auth_token: Optional[str] = None
+        self, analysis_results: Dict[str, Any], auth_token: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Call the API's drift report generation endpoint.
@@ -180,10 +175,7 @@ class FraudDetectionAPIClient:
             logger.info("calling_api_generate_report", url=url)
 
             response = self.session.post(
-                url,
-                json=payload,
-                headers=headers,
-                timeout=self.timeout
+                url, json=payload, headers=headers, timeout=self.timeout
             )
 
             response.raise_for_status()
@@ -196,13 +188,13 @@ class FraudDetectionAPIClient:
             logger.error("api_generate_report_failed", error=str(e))
             return {
                 "error": f"API call failed: {str(e)}",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
         except json.JSONDecodeError as e:
             logger.error("api_response_parse_failed", error=str(e))
             return {
                 "error": f"Failed to parse API response: {str(e)}",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             }
 
     def health_check(self) -> bool:
@@ -225,7 +217,7 @@ def detect_drift_via_api(
     window_hours: int = 24,
     reference_window_days: int = 30,
     api_base_url: str = "http://localhost:8000",
-    auth_token: Optional[str] = None
+    auth_token: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Convenience function to detect drift via API.
@@ -243,5 +235,5 @@ def detect_drift_via_api(
     return client.detect_comprehensive_drift(
         window_hours=window_hours,
         reference_window_days=reference_window_days,
-        auth_token=auth_token
+        auth_token=auth_token,
     )

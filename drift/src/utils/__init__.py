@@ -10,5 +10,5 @@ __all__ = [
     "AlertException",
     "RetrainingTriggerException",
     "MetricsComputationException",
-    "StorageException"
+    "StorageException",
 ]

@@ -4,15 +4,14 @@ from __future__ import annotations
 from typing import Dict
 
 import numpy as np
+from sklearn.metrics import (average_precision_score,
+                             precision_recall_fscore_support, roc_auc_score)
 from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import (
-    average_precision_score,
-    precision_recall_fscore_support,
-    roc_auc_score,
-)
 
 
-def validate_recall(y_true: np.ndarray, y_pred: np.ndarray, min_recall: float = 0.95) -> bool:
+def validate_recall(
+    y_true: np.ndarray, y_pred: np.ndarray, min_recall: float = 0.95
+) -> bool:
     """
     Business rule: detect at least 95% of frauds.
     """
@@ -107,7 +106,7 @@ def validate_all_models(
     """
     ok = True
     for name, metrics in models_results.items():
-        if name=="isolation_forest":
+        if name == "isolation_forest":
             # Isolation Forest does not provide recall/fpr metrics
             continue
         r_ok = metrics.get("recall") >= min_recall

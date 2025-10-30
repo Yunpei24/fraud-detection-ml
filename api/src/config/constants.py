@@ -16,7 +16,7 @@ MODEL_PATHS = {
     "shap_explainer_xgb": "/app/models/shap_explainer_xgb.pkl",
     "shap_explainer_rf": "/app/models/shap_explainer_rf.pkl",
     "shap_explainer_nn": "/app/models/shap_explainer_nn.pkl",
-    "shap_explainer_iforest": "/app/models/shap_explainer_iforest.pkl"
+    "shap_explainer_iforest": "/app/models/shap_explainer_iforest.pkl",
 }
 
 # Prediction Thresholds
@@ -30,10 +30,10 @@ MAX_BATCH_SIZE = 100
 
 # Ensemble Voting Configuration (4 models)
 ENSEMBLE_WEIGHTS = {
-    "xgboost": 0.50,           # Best overall performance
-    "random_forest": 0.30,     # Second best (your test results)
-    "neural_network": 0.15,    # Captures complex patterns
-    "isolation_forest": 0.05   # Anomaly detection fallback
+    "xgboost": 0.50,  # Best overall performance
+    "random_forest": 0.30,  # Second best (your test results)
+    "neural_network": 0.15,  # Captures complex patterns
+    "isolation_forest": 0.05,  # Anomaly detection fallback
 }
 
 # Cache Configuration
@@ -60,7 +60,7 @@ ERROR_CODES = {
     "CACHE_ERROR": "E005",
     "TIMEOUT": "E006",
     "RATE_LIMIT_EXCEEDED": "E007",
-    "UNAUTHORIZED": "E008"
+    "UNAUTHORIZED": "E008",
 }
 
 # HTTP Status Codes
@@ -78,9 +78,4 @@ DEFAULT_RATE_LIMIT = 100  # requests per minute
 RATE_LIMIT_PERIOD = 60  # seconds
 
 # Health Check
-HEALTH_CHECK_DEPENDENCIES = [
-    "database",
-    "redis",
-    "models",
-    "azure_storage"
-]
+HEALTH_CHECK_DEPENDENCIES = ["database", "redis", "models", "azure_storage"]

@@ -2,8 +2,9 @@
 Retraining module initialization.
 """
 
-from .trigger import should_retrain, get_retrain_priority, trigger_airflow_dag
-from .strategy import immediate_retrain, incremental_learning, scheduled_retrain
+from .strategy import (immediate_retrain, incremental_learning,
+                       scheduled_retrain)
+from .trigger import get_retrain_priority, should_retrain, trigger_airflow_dag
 
 __all__ = [
     "should_retrain",

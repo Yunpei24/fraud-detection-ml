@@ -3,11 +3,12 @@ Authentication service for JWT token management.
 """
 import os
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
-from passlib.context import CryptContext
-from jose import JWTError, jwt
+from typing import Any, Dict, Optional
 
-from ..config import settings, get_logger
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+
+from ..config import get_logger, settings
 
 logger = get_logger(__name__)
 
@@ -29,13 +30,17 @@ class AuthService:
         """Hash a password."""
         return self.pwd_context.hash(password)
 
-    def create_access_token(self, data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+    def create_access_token(
+        self, data: Dict[str, Any], expires_delta: Optional[timedelta] = None
+    ) -> str:
         """Create a JWT access token."""
         to_encode = data.copy()
         if expires_delta:
             expire = datetime.utcnow() + expires_delta
         else:
-            expire = datetime.utcnow() + timedelta(minutes=self.access_token_expire_minutes)
+            expire = datetime.utcnow() + timedelta(
+                minutes=self.access_token_expire_minutes
+            )
 
         to_encode.update({"exp": expire})
         encoded_jwt = jwt.encode(to_encode, self.secret_key, algorithm=self.algorithm)
@@ -50,7 +55,9 @@ class AuthService:
             logger.warning(f"JWT verification failed: {e}")
             return None
 
-    def authenticate_user(self, username: str, password: str) -> Optional[Dict[str, Any]]:
+    def authenticate_user(
+        self, username: str, password: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Authenticate a user with username and password.
 
@@ -63,14 +70,14 @@ class AuthService:
                 "username": "admin",
                 "hashed_password": self.get_password_hash("admin123"),
                 "role": "admin",
-                "is_active": True
+                "is_active": True,
             },
             "analyst": {
                 "username": "analyst",
                 "hashed_password": self.get_password_hash("analyst123"),
                 "role": "analyst",
-                "is_active": True
-            }
+                "is_active": True,
+            },
         }
 
         user = demo_users.get(username)
@@ -83,7 +90,7 @@ class AuthService:
         return {
             "username": user["username"],
             "role": user["role"],
-            "is_active": user["is_active"]
+            "is_active": user["is_active"],
         }
 
 

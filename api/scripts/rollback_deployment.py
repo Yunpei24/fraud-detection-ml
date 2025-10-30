@@ -13,15 +13,16 @@ Usage:
     python rollback_deployment.py
 """
 import argparse
+import json
+import logging
 import os
 import sys
-from pathlib import Path
-import logging
-import json
 from datetime import datetime
+from pathlib import Path
+
+from mlflow.tracking import MlflowClient
 
 import mlflow
-from mlflow.tracking import MlflowClient
 
 # Setup logging
 logging.basicConfig(
@@ -33,35 +34,35 @@ logger = logging.getLogger(__name__)
 
 class DeploymentRollback:
     """Handle rollback logic."""
-    
+
     def __init__(self, mlflow_uri: str):
         """
         Initialize rollback handler.
-        
+
         Args:
             mlflow_uri: MLflow tracking URI
         """
         self.mlflow_uri = mlflow_uri
         mlflow.set_tracking_uri(mlflow_uri)
         self.client = MlflowClient()
-        
+
     def rollback(self) -> bool:
         """
         Rollback deployment to champion model.
-        
+
         Returns:
             True if rollback successful
         """
         logger.info(" Rolling back to champion model...")
-        
+
         try:
             # 1. Disable canary routing
             logger.info(" Disabling canary routing...")
             config_file = Path("/app/config/traffic_routing.json")
-            
+
             if not config_file.parent.exists():
                 config_file.parent.mkdir(parents=True, exist_ok=True)
-            
+
             config = {
                 "canary_enabled": False,
                 "canary_traffic_pct": 0,
@@ -69,20 +70,20 @@ class DeploymentRollback:
                 "champion_traffic_pct": 100,
                 "rollback_timestamp": datetime.utcnow().isoformat(),
             }
-            
+
             with open(config_file, "w") as f:
                 json.dump(config, f, indent=2)
-            
+
             logger.info(" Canary routing disabled")
             logger.info(" 100% traffic restored to champion")
-            
+
             # 2. Log rollback event
             logger.info(" Logging rollback event...")
             # In production, this would log to monitoring system
-            
+
             logger.info(" Rollback completed successfully")
             return True
-            
+
         except Exception as e:
             logger.error(f" Rollback failed: {e}")
             return False
@@ -97,13 +98,13 @@ def main():
         default=os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"),
         help="MLflow tracking URI",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Rollback
     rollback = DeploymentRollback(args.mlflow_uri)
     success = rollback.rollback()
-    
+
     if success:
         logger.info(" Rollback completed successfully")
         sys.exit(0)

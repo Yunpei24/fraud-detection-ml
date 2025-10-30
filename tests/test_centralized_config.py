@@ -2,9 +2,10 @@
 Comprehensive validation of centralized configuration system across all modules.
 This test ensures that all modules can properly access and use the centralized settings.
 """
-import pytest
 import sys
 from pathlib import Path
+
+import pytest
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -21,17 +22,17 @@ class TestCentralizedConfiguration:
         settings = get_settings()
 
         # Check main sections exist
-        assert hasattr(settings, 'database')
-        assert hasattr(settings, 'mlflow')
-        assert hasattr(settings, 'airflow')
-        assert hasattr(settings, 'drift')
-        assert hasattr(settings, 'training')
-        assert hasattr(settings, 'api')
-        assert hasattr(settings, 'alerts')
-        assert hasattr(settings, 'monitoring')
+        assert hasattr(settings, "database")
+        assert hasattr(settings, "mlflow")
+        assert hasattr(settings, "airflow")
+        assert hasattr(settings, "drift")
+        assert hasattr(settings, "training")
+        assert hasattr(settings, "api")
+        assert hasattr(settings, "alerts")
+        assert hasattr(settings, "monitoring")
 
         # Check environment
-        assert settings.environment in ['development', 'staging', 'production']
+        assert settings.environment in ["development", "staging", "production"]
 
     def test_database_config(self):
         """Test database configuration"""
@@ -41,7 +42,7 @@ class TestCentralizedConfiguration:
 
         # Check database settings
         assert settings.database.url
-        assert 'postgresql' in settings.database.url
+        assert "postgresql" in settings.database.url
         assert settings.database.pool_size > 0
         assert settings.database.max_overflow >= 0
 
@@ -77,7 +78,9 @@ class TestCentralizedConfiguration:
         # Check drift settings
         assert settings.drift.data_drift_threshold > 0
         assert settings.drift.concept_drift_threshold > 0
-        assert settings.drift.hourly_window_size > 0  # Changed from monitoring_window_hours
+        assert (
+            settings.drift.hourly_window_size > 0
+        )  # Changed from monitoring_window_hours
 
     def test_training_config(self):
         """Test training configuration"""
@@ -119,8 +122,16 @@ class TestCentralizedConfiguration:
         settings = get_settings()
 
         # Check monitoring settings
-        assert settings.monitoring.log_level in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
-        assert settings.monitoring.prometheus_enabled is not None  # Changed from metrics_enabled
+        assert settings.monitoring.log_level in [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL",
+        ]
+        assert (
+            settings.monitoring.prometheus_enabled is not None
+        )  # Changed from metrics_enabled
 
 
 class TestModuleIntegration:
@@ -134,8 +145,8 @@ class TestModuleIntegration:
             api_settings = get_api_settings()
 
             # Should be able to access API-specific settings
-            assert hasattr(api_settings, 'host')
-            assert hasattr(api_settings, 'port')
+            assert hasattr(api_settings, "host")
+            assert hasattr(api_settings, "port")
 
         except ImportError:
             pytest.skip("API module config not available")
@@ -148,8 +159,8 @@ class TestModuleIntegration:
             data_settings = get_data_settings()
 
             # Should be able to access data-specific settings
-            assert hasattr(data_settings, 'database')
-            assert hasattr(data_settings.database, 'url')
+            assert hasattr(data_settings, "database")
+            assert hasattr(data_settings.database, "url")
 
         except ImportError:
             pytest.skip("Data module config not available")
@@ -162,8 +173,8 @@ class TestModuleIntegration:
             drift_settings = get_drift_settings()
 
             # Should be able to access drift-specific settings
-            assert hasattr(drift_settings, 'drift')
-            assert hasattr(drift_settings.drift, 'data_drift_threshold')
+            assert hasattr(drift_settings, "drift")
+            assert hasattr(drift_settings.drift, "data_drift_threshold")
 
         except ImportError:
             pytest.skip("Drift module config not available")
@@ -171,13 +182,14 @@ class TestModuleIntegration:
     def test_training_module_config(self):
         """Test training module can load config"""
         try:
-            from training.src.config import get_settings as get_training_settings
+            from training.src.config import \
+                get_settings as get_training_settings
 
             training_settings = get_training_settings()
 
             # Should be able to access training-specific settings
-            assert hasattr(training_settings, 'training')
-            assert hasattr(training_settings.training, 'min_samples')
+            assert hasattr(training_settings, "training")
+            assert hasattr(training_settings.training, "min_samples")
 
         except ImportError:
             pytest.skip("Training module config not available")
@@ -190,8 +202,8 @@ class TestModuleIntegration:
             airflow_settings = AirflowSettings()
 
             # Should be able to access airflow-specific settings
-            assert hasattr(airflow_settings, 'fraud_database_url')
-            assert hasattr(airflow_settings, 'mlflow_tracking_uri')
+            assert hasattr(airflow_settings, "fraud_database_url")
+            assert hasattr(airflow_settings, "mlflow_tracking_uri")
 
         except ImportError:
             pytest.skip("Airflow module config not available")
@@ -209,6 +221,7 @@ class TestConfigurationConsistency:
         # Check that modules use the same database URL
         try:
             from api.src.config import get_settings as get_api_settings
+
             api_settings = get_api_settings()
             assert api_settings.database.url == central_settings.database.url
         except (ImportError, AttributeError):
@@ -222,9 +235,14 @@ class TestConfigurationConsistency:
 
         # Check that modules use the same MLflow URI
         try:
-            from training.src.config import get_settings as get_training_settings
+            from training.src.config import \
+                get_settings as get_training_settings
+
             training_settings = get_training_settings()
-            assert training_settings.mlflow.tracking_uri == central_settings.mlflow.tracking_uri
+            assert (
+                training_settings.mlflow.tracking_uri
+                == central_settings.mlflow.tracking_uri
+            )
         except (ImportError, AttributeError):
             pytest.skip("Training MLflow config not comparable")
 
@@ -237,6 +255,7 @@ class TestConfigurationConsistency:
         # Check that modules use the same environment
         try:
             from drift.src.config import get_settings as get_drift_settings
+
             drift_settings = get_drift_settings()
             assert drift_settings.environment == central_settings.environment
         except (ImportError, AttributeError):
@@ -249,11 +268,12 @@ class TestConfigurationValidation:
     def test_invalid_environment(self):
         """Test that invalid environment raises error"""
         import os
+
         from config import GlobalSettings  # Changed from Settings
 
         # Temporarily set invalid environment
-        original_env = os.environ.get('ENVIRONMENT')
-        os.environ['ENVIRONMENT'] = 'invalid'
+        original_env = os.environ.get("ENVIRONMENT")
+        os.environ["ENVIRONMENT"] = "invalid"
 
         try:
             # This should raise a validation error
@@ -262,20 +282,21 @@ class TestConfigurationValidation:
         finally:
             # Restore original environment
             if original_env is not None:
-                os.environ['ENVIRONMENT'] = original_env
+                os.environ["ENVIRONMENT"] = original_env
             else:
-                os.environ.pop('ENVIRONMENT', None)
+                os.environ.pop("ENVIRONMENT", None)
 
     def test_missing_required_settings(self):
         """Test that missing required settings are handled"""
         import os
+
         from config import GlobalSettings  # Changed from Settings
 
         # Temporarily remove required environment variable
-        original_db_url = os.environ.get('DATABASE_URL')
+        original_db_url = os.environ.get("DATABASE_URL")
 
-        if 'DATABASE_URL' in os.environ:
-            del os.environ['DATABASE_URL']
+        if "DATABASE_URL" in os.environ:
+            del os.environ["DATABASE_URL"]
 
         try:
             # This might work with defaults or raise an error
@@ -288,7 +309,7 @@ class TestConfigurationValidation:
         finally:
             # Restore original setting
             if original_db_url is not None:
-                os.environ['DATABASE_URL'] = original_db_url
+                os.environ["DATABASE_URL"] = original_db_url
 
 
 if __name__ == "__main__":

@@ -9,7 +9,6 @@ import logging
 import sys
 from pathlib import Path
 
-
 # ------------------------------------------------------------
 # 1. Log Directory and File Setup
 # ------------------------------------------------------------

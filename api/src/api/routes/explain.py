@@ -1,20 +1,17 @@
 """
 Model Explainability API routes for SHAP explanations and feature importance.
 """
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
 import time
+from typing import List
 
-from ...models import (
-    ExplanationRequest,
-    SHAPExplanationResponse,
-    FeatureImportanceResponse,
-    ErrorResponse
-)
-from ...services import PredictionService
+from fastapi import APIRouter, Depends, HTTPException, status
+
 from ...api.routes.auth import get_current_analyst_user
-from ...utils import InvalidInputException
 from ...config import get_logger
+from ...models import (ErrorResponse, ExplanationRequest,
+                       FeatureImportanceResponse, SHAPExplanationResponse)
+from ...services import PredictionService
+from ...utils import InvalidInputException
 
 logger = get_logger(__name__)
 
@@ -25,17 +22,13 @@ router = APIRouter(prefix="/api/v1/explain", tags=["explainability"])
     "/shap",
     response_model=SHAPExplanationResponse,
     status_code=status.HTTP_200_OK,
-    responses={
-        400: {"model": ErrorResponse},
-        500: {"model": ErrorResponse}
-    },
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
     summary="Get SHAP explanation",
     description="Generate SHAP explanation for a transaction prediction",
-    dependencies=[Depends(get_current_analyst_user)]
+    dependencies=[Depends(get_current_analyst_user)],
 )
 async def get_shap_explanation(
-    request: ExplanationRequest,
-    prediction_service: PredictionService = Depends()
+    request: ExplanationRequest, prediction_service: PredictionService = Depends()
 ):
     """
     Generate SHAP explanation for a transaction.
@@ -58,7 +51,7 @@ async def get_shap_explanation(
             transaction_id=transaction_id,
             features=request.features,
             model_type=request.model_type or "ensemble",
-            metadata=request.metadata
+            metadata=request.metadata,
         )
 
         # Add processing time
@@ -70,27 +63,29 @@ async def get_shap_explanation(
         return SHAPExplanationResponse(**explanation)
 
     except InvalidInputException as e:
-        logger.warning(f"Invalid input for SHAP explanation {transaction_id}: {e.message}")
+        logger.warning(
+            f"Invalid input for SHAP explanation {transaction_id}: {e.message}"
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error_code": e.error_code,
                 "message": e.message,
-                "details": e.details
-            }
+                "details": e.details,
+            },
         )
     except Exception as e:
         logger.error(
             f"SHAP explanation failed for transaction {transaction_id}: {e}",
-            exc_info=True
+            exc_info=True,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error_code": "E800",
                 "message": "SHAP explanation generation failed",
-                "details": {"error": str(e)}
-            }
+                "details": {"error": str(e)},
+            },
         )
 
 
@@ -98,17 +93,13 @@ async def get_shap_explanation(
     "/feature-importance/{model_type}",
     response_model=FeatureImportanceResponse,
     status_code=status.HTTP_200_OK,
-    responses={
-        400: {"model": ErrorResponse},
-        500: {"model": ErrorResponse}
-    },
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
     summary="Get feature importance",
     description="Get global feature importance for a specific model",
-    dependencies=[Depends(get_current_analyst_user)]
+    dependencies=[Depends(get_current_analyst_user)],
 )
 async def get_feature_importance(
-    model_type: str,
-    prediction_service: PredictionService = Depends()
+    model_type: str, prediction_service: PredictionService = Depends()
 ):
     """
     Get global feature importance for a model.
@@ -132,8 +123,8 @@ async def get_feature_importance(
             detail={
                 "error_code": "E801",
                 "message": f"Invalid model type. Must be one of: {valid_types}",
-                "details": {"provided": model_type, "valid_types": valid_types}
-            }
+                "details": {"provided": model_type, "valid_types": valid_types},
+            },
         )
 
     try:
@@ -151,15 +142,15 @@ async def get_feature_importance(
     except Exception as e:
         logger.error(
             f"Feature importance retrieval failed for model {model_type}: {e}",
-            exc_info=True
+            exc_info=True,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error_code": "E802",
                 "message": "Feature importance retrieval failed",
-                "details": {"error": str(e), "model_type": model_type}
-            }
+                "details": {"error": str(e), "model_type": model_type},
+            },
         )
 
 
@@ -169,7 +160,7 @@ async def get_feature_importance(
     status_code=status.HTTP_200_OK,
     summary="Get available models",
     description="Get list of models available for explanation",
-    dependencies=[Depends(get_current_analyst_user)]
+    dependencies=[Depends(get_current_analyst_user)],
 )
 async def get_available_models():
     """

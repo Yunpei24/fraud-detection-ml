@@ -1,6 +1,8 @@
+from typing import Sequence
+
 import numpy as np
 import pandas as pd
-from typing import Sequence
+
 
 def fill_na(
     df: pd.DataFrame,
@@ -26,9 +28,12 @@ def fill_na(
 
     if cat_strategy == "most_frequent":
         for c in cat_cols:
-            out[c] = out[c].fillna(out[c].mode().iloc[0] if not out[c].mode().empty else out[c].iloc[0])
+            out[c] = out[c].fillna(
+                out[c].mode().iloc[0] if not out[c].mode().empty else out[c].iloc[0]
+            )
 
     return out
+
 
 def check_data_quality(df: pd.DataFrame) -> dict:
     """
@@ -37,5 +42,5 @@ def check_data_quality(df: pd.DataFrame) -> dict:
     return {
         "n_rows": len(df),
         "n_cols": len(df.columns),
-        "null_counts": df.isnull().sum().to_dict()
+        "null_counts": df.isnull().sum().to_dict(),
     }

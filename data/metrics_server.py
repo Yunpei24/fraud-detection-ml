@@ -13,17 +13,17 @@ Usage:
 The metrics will be available at: http://localhost:<port>/metrics
 """
 
-import time
+import logging
+import os
 import signal
 import sys
-import os
-import logging
+import time
+
 from src.monitoring.metrics import setup_prometheus_metrics
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -47,21 +47,25 @@ def main():
     # Register signal handlers for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
+
     logger.info(f"Starting data pipeline metrics server on port {PROMETHEUS_PORT}")
-    
+
     try:
         # Start Prometheus HTTP server
         setup_prometheus_metrics(port=PROMETHEUS_PORT)
-        logger.info(f"✅ Metrics server started successfully at http://localhost:{PROMETHEUS_PORT}/metrics")
-        
+        logger.info(
+            f"✅ Metrics server started successfully at http://localhost:{PROMETHEUS_PORT}/metrics"
+        )
+
         # Keep the server running
         while running:
             time.sleep(60)  # Sleep for 1 minute
-            
+
     except OSError as e:
         if "Address already in use" in str(e):
-            logger.error(f"❌ Port {PROMETHEUS_PORT} already in use. Another process is using this port.")
+            logger.error(
+                f"❌ Port {PROMETHEUS_PORT} already in use. Another process is using this port."
+            )
             sys.exit(1)
         else:
             logger.error(f"❌ Server startup failed: {e}", exc_info=True)

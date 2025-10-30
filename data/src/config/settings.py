@@ -16,19 +16,25 @@ from config import get_settings
 # Get centralized settings
 settings = get_settings()
 
+
 # Azure settings
 class AzureSettings:
     """Azure cloud configuration"""
+
     connection_string: str = settings.azure.storage_connection_string
     event_hub_name: str = settings.azure.event_hub_name
-    event_hub_connection_string: Optional[str] = settings.azure.event_hub_connection_string
+    event_hub_connection_string: Optional[
+        str
+    ] = settings.azure.event_hub_connection_string
     storage_account: str = settings.azure.storage_account_name
     storage_key: str = settings.azure.storage_account_key
     data_lake_path: str = settings.azure.data_lake_path
 
+
 # Database settings
 class DatabaseSettings:
     """Database configuration"""
+
     server: str = settings.database.host
     database: str = settings.database.name
     username: str = settings.database.user
@@ -37,9 +43,11 @@ class DatabaseSettings:
     pool_size: int = settings.database.pool_size
     max_overflow: int = settings.database.max_overflow
 
+
 # Kafka settings
 class KafkaSettings:
     """Kafka configuration (alternative to Event Hub)"""
+
     bootstrap_servers: str = settings.kafka.bootstrap_servers
     topic: str = settings.kafka.topic_transactions
     group_id: str = settings.kafka.consumer_group
@@ -50,22 +58,27 @@ class KafkaSettings:
         """Convert comma-separated servers to list"""
         return settings.kafka.bootstrap_servers_list
 
+
 # Cache settings
 class CacheSettings:
     """Redis cache configuration"""
+
     host: str = settings.redis.host
     port: int = settings.redis.port
     db: int = settings.redis.db
     password: Optional[str] = settings.redis.password
     ttl_seconds: int = settings.redis.ttl_seconds
 
+
 # Monitoring settings
 class MonitoringSettings:
     """Monitoring and observability"""
+
     prometheus_port: int = settings.data.prometheus_port
     log_level: str = settings.monitoring.log_level
     enable_profiling: bool = settings.data.enable_profiling
     enable_data_validation: bool = settings.data.enable_data_validation
+
 
 # Main settings class
 class Settings:

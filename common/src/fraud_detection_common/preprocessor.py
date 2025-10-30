@@ -1,17 +1,18 @@
 # common/src/fraud_detection_common/preprocessor.py
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Optional, Tuple, Dict
+from typing import Dict, Iterable, Optional, Tuple
 
 import joblib
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-import logging
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class DataPreprocessor:
@@ -26,7 +27,9 @@ class DataPreprocessor:
             df["Class"] = df["Class"].astype(int)
         return df
 
-    def _remove_outliers_iqr(self, df: pd.DataFrame, cols: Iterable[str]) -> pd.DataFrame:
+    def _remove_outliers_iqr(
+        self, df: pd.DataFrame, cols: Iterable[str]
+    ) -> pd.DataFrame:
         """Clip outliers using IQR fences. Keeps shape stable."""
         for c in cols:
             if c not in df.columns:
@@ -48,14 +51,18 @@ class DataPreprocessor:
         if not self.scale_columns:
             return df
         self.scaler_ = StandardScaler()
-        df[list(self.scale_columns)] = self.scaler_.fit_transform(df[list(self.scale_columns)])
+        df[list(self.scale_columns)] = self.scaler_.fit_transform(
+            df[list(self.scale_columns)]
+        )
         logger.info(f"Fitted StandardScaler on columns {list(self.scale_columns)}")
         return df
 
     def _scale_transform(self, df: pd.DataFrame) -> pd.DataFrame:
         if self.scaler_ is None or not self.scale_columns:
             return df
-        df[list(self.scale_columns)] = self.scaler_.transform(df[list(self.scale_columns)])
+        df[list(self.scale_columns)] = self.scaler_.transform(
+            df[list(self.scale_columns)]
+        )
         return df
 
     def fit_transform(

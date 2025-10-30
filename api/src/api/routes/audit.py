@@ -1,21 +1,18 @@
 """
 Audit trails API routes for compliance reporting.
 """
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from datetime import datetime
 import time
+from datetime import datetime
+from typing import List
 
-from ...models import (
-    AuditLogsResponse,
-    AuditLogSummaryResponse,
-    AuditQueryRequest,
-    AuditLogEntry,
-    ErrorResponse
-)
-from ...services import DatabaseService
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
 from ...api.routes.auth import get_current_admin_user
 from ...config import get_logger
+from ...models import (AuditLogEntry, AuditLogsResponse,
+                       AuditLogSummaryResponse, AuditQueryRequest,
+                       ErrorResponse)
+from ...services import DatabaseService
 
 logger = get_logger(__name__)
 
@@ -26,17 +23,13 @@ router = APIRouter(prefix="/api/v1/audit", tags=["audit-trails"])
     "/logs",
     response_model=AuditLogsResponse,
     status_code=status.HTTP_200_OK,
-    responses={
-        400: {"model": ErrorResponse},
-        500: {"model": ErrorResponse}
-    },
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
     summary="Query audit logs",
     description="Query audit logs with optional filtering for compliance reporting",
-    dependencies=[Depends(get_current_admin_user)]
+    dependencies=[Depends(get_current_admin_user)],
 )
 async def query_audit_logs(
-    request: AuditQueryRequest,
-    database_service: DatabaseService = Depends()
+    request: AuditQueryRequest, database_service: DatabaseService = Depends()
 ):
     """
     Query audit logs with filtering options.
@@ -58,28 +51,32 @@ async def query_audit_logs(
         end_date = None
         if request.start_date:
             try:
-                start_date = datetime.fromisoformat(request.start_date.replace('Z', '+00:00'))
+                start_date = datetime.fromisoformat(
+                    request.start_date.replace("Z", "+00:00")
+                )
             except ValueError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail={
                         "error_code": "E901",
                         "message": "Invalid start_date format. Use ISO format (e.g., 2025-01-01T00:00:00Z)",
-                        "details": {"provided": request.start_date}
-                    }
+                        "details": {"provided": request.start_date},
+                    },
                 )
-        
+
         if request.end_date:
             try:
-                end_date = datetime.fromisoformat(request.end_date.replace('Z', '+00:00'))
+                end_date = datetime.fromisoformat(
+                    request.end_date.replace("Z", "+00:00")
+                )
             except ValueError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail={
                         "error_code": "E902",
                         "message": "Invalid end_date format. Use ISO format (e.g., 2025-01-31T23:59:59Z)",
-                        "details": {"provided": request.end_date}
-                    }
+                        "details": {"provided": request.end_date},
+                    },
                 )
 
         # Query audit logs
@@ -90,11 +87,15 @@ async def query_audit_logs(
             limit=request.limit,
             offset=request.offset,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
         )
 
         # Get total count (simplified - in production, you'd want a separate count query)
-        total_count = len(logs) + request.offset if len(logs) == request.limit else len(logs) + request.offset
+        total_count = (
+            len(logs) + request.offset
+            if len(logs) == request.limit
+            else len(logs) + request.offset
+        )
 
         # Convert to response format
         log_entries = [AuditLogEntry(**log) for log in logs]
@@ -105,7 +106,7 @@ async def query_audit_logs(
             logs=log_entries,
             total_count=total_count,
             limit=request.limit,
-            offset=request.offset
+            offset=request.offset,
         )
 
     except HTTPException:
@@ -117,8 +118,8 @@ async def query_audit_logs(
             detail={
                 "error_code": "E900",
                 "message": "Failed to query audit logs",
-                "details": {"error": str(e)}
-            }
+                "details": {"error": str(e)},
+            },
         )
 
 
@@ -128,11 +129,13 @@ async def query_audit_logs(
     status_code=status.HTTP_200_OK,
     summary="Get audit summary",
     description="Get audit log summary statistics for compliance reporting",
-    dependencies=[Depends(get_current_admin_user)]
+    dependencies=[Depends(get_current_admin_user)],
 )
 async def get_audit_summary(
-    days: int = Query(default=30, ge=1, le=365, description="Number of days to look back"),
-    database_service: DatabaseService = Depends()
+    days: int = Query(
+        default=30, ge=1, le=365, description="Number of days to look back"
+    ),
+    database_service: DatabaseService = Depends(),
 ):
     """
     Get audit log summary statistics.
@@ -160,8 +163,8 @@ async def get_audit_summary(
             detail={
                 "error_code": "E903",
                 "message": "Failed to get audit summary",
-                "details": {"error": str(e)}
-            }
+                "details": {"error": str(e)},
+            },
         )
 
 
@@ -171,12 +174,12 @@ async def get_audit_summary(
     status_code=status.HTTP_200_OK,
     summary="Get transaction audit logs",
     description="Get all audit logs for a specific transaction",
-    dependencies=[Depends(get_current_admin_user)]
+    dependencies=[Depends(get_current_admin_user)],
 )
 async def get_transaction_audit_logs(
     transaction_id: str,
     limit: int = Query(default=50, ge=1, le=500),
-    database_service: DatabaseService = Depends()
+    database_service: DatabaseService = Depends(),
 ):
     """
     Get audit logs for a specific transaction.
@@ -193,20 +196,17 @@ async def get_transaction_audit_logs(
     """
     try:
         logs = await database_service.get_audit_logs(
-            transaction_id=transaction_id,
-            limit=limit,
-            offset=0
+            transaction_id=transaction_id, limit=limit, offset=0
         )
 
         log_entries = [AuditLogEntry(**log) for log in logs]
 
-        logger.info(f"Retrieved {len(logs)} audit log entries for transaction {transaction_id}")
+        logger.info(
+            f"Retrieved {len(logs)} audit log entries for transaction {transaction_id}"
+        )
 
         return AuditLogsResponse(
-            logs=log_entries,
-            total_count=len(logs),
-            limit=limit,
-            offset=0
+            logs=log_entries, total_count=len(logs), limit=limit, offset=0
         )
 
     except Exception as e:
@@ -216,6 +216,6 @@ async def get_transaction_audit_logs(
             detail={
                 "error_code": "E904",
                 "message": "Failed to get transaction audit logs",
-                "details": {"transaction_id": transaction_id, "error": str(e)}
-            }
+                "details": {"transaction_id": transaction_id, "error": str(e)},
+            },
         )

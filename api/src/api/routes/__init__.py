@@ -1,13 +1,13 @@
 """
 API routes package.
 """
-from .predict import router as predict_router
+from .admin import router as admin_router
+from .audit import router as audit_router
+from .drift import router as drift_router
+from .explain import router as explain_router
 from .health import router as health_router
 from .metrics import router as metrics_router
-from .admin import router as admin_router
-from .explain import router as explain_router
-from .drift import router as drift_router
-from .audit import router as audit_router
+from .predict import router as predict_router
 from .transaction import router as transaction_router
 
 __all__ = [
@@ -18,5 +18,5 @@ __all__ = [
     "explain_router",
     "drift_router",
     "audit_router",
-    "transaction_router"
+    "transaction_router",
 ]

@@ -4,19 +4,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable, Optional
 
-import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import (
-    ConfusionMatrixDisplay,
-    PrecisionRecallDisplay,
-    RocCurveDisplay,
-    confusion_matrix,
-    precision_recall_curve,
-    roc_curve,
-)
+import numpy as np
+from sklearn.metrics import (ConfusionMatrixDisplay, PrecisionRecallDisplay,
+                             RocCurveDisplay, confusion_matrix,
+                             precision_recall_curve, roc_curve)
 
 
-def plot_roc_auc(y_true: np.ndarray, y_pred_proba: np.ndarray, *, title: str = "ROC AUC"):
+def plot_roc_auc(
+    y_true: np.ndarray, y_pred_proba: np.ndarray, *, title: str = "ROC AUC"
+):
     """
     Returns a Matplotlib figure with ROC curve.
     """

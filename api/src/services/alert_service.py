@@ -73,9 +73,11 @@ class AlertService:
                 return True
 
             except Exception as e:
-                logger.error(f"Email alert failed (attempt {attempt + 1}/{retry_count}): {e}")
+                logger.error(
+                    f"Email alert failed (attempt {attempt + 1}/{retry_count}): {e}"
+                )
                 if attempt < retry_count - 1:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
 
         return False
 

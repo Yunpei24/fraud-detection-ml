@@ -2,12 +2,13 @@
 Authentication API routes for JWT token management.
 """
 from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
+from ...config import get_logger
 from ...models import TokenResponse, UserResponse
 from ...services.auth_service import auth_service
-from ...config import get_logger
 
 logger = get_logger(__name__)
 
@@ -49,7 +50,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     user = {
         "username": username,
         "role": payload.get("role", "user"),
-        "is_active": True
+        "is_active": True,
     }
 
     return user
@@ -70,8 +71,7 @@ async def get_current_admin_user(current_user: dict = Depends(get_current_user))
     """
     if current_user.get("role") != "admin":
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
         )
     return current_user
 
@@ -93,7 +93,7 @@ async def get_current_analyst_user(current_user: dict = Depends(get_current_user
     if user_role not in ["admin", "analyst"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Analyst or admin access required"
+            detail="Analyst or admin access required",
         )
     return current_user
 
@@ -103,7 +103,7 @@ async def get_current_analyst_user(current_user: dict = Depends(get_current_user
     response_model=TokenResponse,
     status_code=status.HTTP_200_OK,
     summary="User login",
-    description="Authenticate user and return JWT access token"
+    description="Authenticate user and return JWT access token",
 )
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     """
@@ -130,7 +130,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     access_token_expires = timedelta(minutes=auth_service.access_token_expire_minutes)
     access_token = auth_service.create_access_token(
         data={"sub": user["username"], "role": user["role"]},
-        expires_delta=access_token_expires
+        expires_delta=access_token_expires,
     )
 
     logger.info(f"Successful login for user: {user['username']}")
@@ -139,7 +139,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         access_token=access_token,
         token_type="bearer",
         expires_in=auth_service.access_token_expire_minutes * 60,
-        user=UserResponse(**user)
+        user=UserResponse(**user),
     )
 
 
@@ -148,7 +148,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     response_model=TokenResponse,
     status_code=status.HTTP_200_OK,
     summary="Refresh token",
-    description="Refresh JWT access token"
+    description="Refresh JWT access token",
 )
 async def refresh_token(current_user: dict = Depends(get_current_user)):
     """
@@ -163,7 +163,7 @@ async def refresh_token(current_user: dict = Depends(get_current_user)):
     access_token_expires = timedelta(minutes=auth_service.access_token_expire_minutes)
     access_token = auth_service.create_access_token(
         data={"sub": current_user["username"], "role": current_user["role"]},
-        expires_delta=access_token_expires
+        expires_delta=access_token_expires,
     )
 
     logger.info(f"Token refreshed for user: {current_user['username']}")
@@ -172,7 +172,7 @@ async def refresh_token(current_user: dict = Depends(get_current_user)):
         access_token=access_token,
         token_type="bearer",
         expires_in=auth_service.access_token_expire_minutes * 60,
-        user=UserResponse(**current_user)
+        user=UserResponse(**current_user),
     )
 
 
@@ -181,7 +181,7 @@ async def refresh_token(current_user: dict = Depends(get_current_user)):
     response_model=UserResponse,
     status_code=status.HTTP_200_OK,
     summary="Get current user",
-    description="Get information about the currently authenticated user"
+    description="Get information about the currently authenticated user",
 )
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
     """

@@ -2,19 +2,17 @@
 Transaction update and analyst feedback endpoints.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List, Optional
 from datetime import datetime
+from typing import List, Optional
 
-from ...models.schemas import (
-    TransactionUpdateRequest,
-    TransactionUpdateResponse,
-    TransactionLabelHistoryResponse
-)
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from ...models.schemas import (TransactionLabelHistoryResponse,
+                               TransactionUpdateRequest,
+                               TransactionUpdateResponse)
+from ...services.auth_service import AuthService, auth_service
 from ...services.database_service import DatabaseService
-from ...services.auth_service import AuthService
 from ..dependencies import get_database_service
-from ...services.auth_service import auth_service
 from .auth import get_current_analyst_user
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -24,13 +22,13 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
     "/{transaction_id}/prediction",
     response_model=TransactionUpdateResponse,
     summary="Update transaction prediction with analyst feedback",
-    description="Allows analysts to update transaction predictions with their expert judgment"
+    description="Allows analysts to update transaction predictions with their expert judgment",
 )
 async def update_transaction_prediction(
     transaction_id: str,
     update_request: TransactionUpdateRequest,
     current_user: dict = Depends(get_current_analyst_user),
-    db_service: DatabaseService = Depends(get_database_service)
+    db_service: DatabaseService = Depends(get_database_service),
 ):
     """
     Update a transaction's prediction with analyst feedback.
@@ -55,7 +53,7 @@ async def update_transaction_prediction(
         if not current_prediction:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Transaction {transaction_id} not found"
+                detail=f"Transaction {transaction_id} not found",
             )
 
         # Save analyst label
@@ -65,13 +63,13 @@ async def update_transaction_prediction(
             analyst_label=update_request.analyst_label,
             analyst_id=current_user["user_id"],
             confidence=update_request.confidence,
-            notes=update_request.notes
+            notes=update_request.notes,
         )
 
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to save analyst feedback"
+                detail="Failed to save analyst feedback",
             )
 
         # Log the action for audit
@@ -83,8 +81,8 @@ async def update_transaction_prediction(
                 "original_prediction": current_prediction["prediction"],
                 "analyst_label": update_request.analyst_label,
                 "confidence": update_request.confidence,
-                "notes": update_request.notes
-            }
+                "notes": update_request.notes,
+            },
         )
 
         return TransactionUpdateResponse(
@@ -92,13 +90,13 @@ async def update_transaction_prediction(
             analyst_label=update_request.analyst_label,
             analyst_id=current_user["user_id"],
             updated_at=datetime.utcnow(),
-            message="Transaction prediction updated successfully"
+            message="Transaction prediction updated successfully",
         )
 
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update transaction prediction: {str(e)}"
+            detail=f"Failed to update transaction prediction: {str(e)}",
         )
 
 
@@ -106,12 +104,12 @@ async def update_transaction_prediction(
     "/{transaction_id}/labels",
     response_model=List[TransactionLabelHistoryResponse],
     summary="Get analyst label history for a transaction",
-    description="Retrieve the history of analyst feedback labels for a specific transaction"
+    description="Retrieve the history of analyst feedback labels for a specific transaction",
 )
 async def get_transaction_label_history(
     transaction_id: str,
     current_user: dict = Depends(get_current_analyst_user),
-    db_service: DatabaseService = Depends(get_database_service)
+    db_service: DatabaseService = Depends(get_database_service),
 ):
     """
     Get the history of analyst labels for a transaction.
@@ -132,30 +130,31 @@ async def get_transaction_label_history(
     try:
         # Get analyst labels for this transaction
         labels = await db_service.get_analyst_labels(
-            transaction_id=transaction_id,
-            limit=50  # Reasonable limit for history
+            transaction_id=transaction_id, limit=50  # Reasonable limit for history
         )
 
         # Convert to response format
         history = []
         for label in labels:
-            history.append(TransactionLabelHistoryResponse(
-                id=label["id"],
-                transaction_id=label["transaction_id"],
-                predicted_label=label["predicted_label"],
-                analyst_label=label["analyst_label"],
-                analyst_id=label["analyst_id"],
-                confidence=label["confidence"],
-                notes=label["notes"],
-                created_at=datetime.fromisoformat(label["created_at"])
-            ))
+            history.append(
+                TransactionLabelHistoryResponse(
+                    id=label["id"],
+                    transaction_id=label["transaction_id"],
+                    predicted_label=label["predicted_label"],
+                    analyst_label=label["analyst_label"],
+                    analyst_id=label["analyst_id"],
+                    confidence=label["confidence"],
+                    notes=label["notes"],
+                    created_at=datetime.fromisoformat(label["created_at"]),
+                )
+            )
 
         return history
 
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve label history: {str(e)}"
+            detail=f"Failed to retrieve label history: {str(e)}",
         )
 
 
@@ -163,7 +162,7 @@ async def get_transaction_label_history(
     "/labels",
     response_model=List[TransactionLabelHistoryResponse],
     summary="Get analyst labels with filtering",
-    description="Retrieve analyst labels with optional filtering by transaction or analyst"
+    description="Retrieve analyst labels with optional filtering by transaction or analyst",
 )
 async def get_analyst_labels(
     transaction_id: Optional[str] = None,
@@ -171,7 +170,7 @@ async def get_analyst_labels(
     limit: int = 100,
     offset: int = 0,
     current_user: dict = Depends(get_current_analyst_user),
-    db_service: DatabaseService = Depends(get_database_service)
+    db_service: DatabaseService = Depends(get_database_service),
 ):
     """
     Get analyst labels with optional filtering.
@@ -197,27 +196,29 @@ async def get_analyst_labels(
             transaction_id=transaction_id,
             analyst_id=analyst_id,
             limit=limit,
-            offset=offset
+            offset=offset,
         )
 
         # Convert to response format
         result = []
         for label in labels:
-            result.append(TransactionLabelHistoryResponse(
-                id=label["id"],
-                transaction_id=label["transaction_id"],
-                predicted_label=label["predicted_label"],
-                analyst_label=label["analyst_label"],
-                analyst_id=label["analyst_id"],
-                confidence=label["confidence"],
-                notes=label["notes"],
-                created_at=datetime.fromisoformat(label["created_at"])
-            ))
+            result.append(
+                TransactionLabelHistoryResponse(
+                    id=label["id"],
+                    transaction_id=label["transaction_id"],
+                    predicted_label=label["predicted_label"],
+                    analyst_label=label["analyst_label"],
+                    analyst_id=label["analyst_id"],
+                    confidence=label["confidence"],
+                    notes=label["notes"],
+                    created_at=datetime.fromisoformat(label["created_at"]),
+                )
+            )
 
         return result
 
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve analyst labels: {str(e)}"
+            detail=f"Failed to retrieve analyst labels: {str(e)}",
         )

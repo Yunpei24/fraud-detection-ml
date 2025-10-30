@@ -31,9 +31,7 @@ AMOUNT_COLUMN: str = "amount"
 TIME_COLUMN: str = "Time"
 
 # All 28 PCA-transformed feature names (V1–V28)
-PCA_FEATURES: List[str] = [
-    f"V{i}" for i in range(1, 29)
-]
+PCA_FEATURES: List[str] = [f"V{i}" for i in range(1, 29)]
 
 # Full feature set used for training
 FEATURE_COLUMNS: List[str] = PCA_FEATURES + [TIME_COLUMN, AMOUNT_COLUMN]

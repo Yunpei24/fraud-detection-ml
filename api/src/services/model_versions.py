@@ -70,8 +70,7 @@ class ModelVersion:
 class ModelRegistry:
     def __init__(self, registry_path: Optional[str] = None):
         self.registry_path = registry_path or os.getenv(
-            "MODEL_REGISTRY_PATH",
-            "./models"
+            "MODEL_REGISTRY_PATH", "./models"
         )
         self._versions: Dict[str, ModelVersion] = {}
         self._current_production: Optional[str] = None
@@ -148,7 +147,9 @@ class ModelRegistry:
         old_stage = version.stage
 
         if old_stage == ModelStage.ARCHIVED and new_stage != ModelStage.STAGING:
-            logger.error(f"Cannot transition from {old_stage.value} to {new_stage.value}")
+            logger.error(
+                f"Cannot transition from {old_stage.value} to {new_stage.value}"
+            )
             return False
 
         if archive_current and new_stage in [ModelStage.PRODUCTION, ModelStage.STAGING]:
@@ -184,7 +185,9 @@ class ModelRegistry:
             return {}
 
         if initial_traffic_percentage < 0 or initial_traffic_percentage > 100:
-            logger.error(f"Invalid initial traffic percentage: {initial_traffic_percentage}")
+            logger.error(
+                f"Invalid initial traffic percentage: {initial_traffic_percentage}"
+            )
             return {}
 
         canary_config = {
@@ -203,10 +206,12 @@ class ModelRegistry:
             "metrics_comparison": {
                 "new_vs_current": {
                     "accuracy_diff": round(
-                        new_version.metrics.accuracy - current_version.metrics.accuracy, 4
+                        new_version.metrics.accuracy - current_version.metrics.accuracy,
+                        4,
                     ),
                     "f1_score_diff": round(
-                        new_version.metrics.f1_score - current_version.metrics.f1_score, 4
+                        new_version.metrics.f1_score - current_version.metrics.f1_score,
+                        4,
                     ),
                     "auc_roc_diff": round(
                         new_version.metrics.auc_roc - current_version.metrics.auc_roc, 4
@@ -233,13 +238,19 @@ class ModelRegistry:
             current_prod.stage = ModelStage.ARCHIVED
             logger.info(f"Archived {current_prod.version_id}")
 
-        await self.transition_stage(new_version_id, ModelStage.PRODUCTION, archive_current=False)
+        await self.transition_stage(
+            new_version_id, ModelStage.PRODUCTION, archive_current=False
+        )
 
-        logger.info(f"Canary deployment completed, {new_version_id} is now in production")
+        logger.info(
+            f"Canary deployment completed, {new_version_id} is now in production"
+        )
 
         return True
 
-    def get_all_versions(self, stage: Optional[ModelStage] = None) -> List[ModelVersion]:
+    def get_all_versions(
+        self, stage: Optional[ModelStage] = None
+    ) -> List[ModelVersion]:
         versions = list(self._versions.values())
 
         if stage:

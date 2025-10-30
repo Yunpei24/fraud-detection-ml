@@ -6,6 +6,7 @@ from contextlib import contextmanager
 
 try:
     import mlflow  # type: ignore
+
     MLFLOW_AVAILABLE = True
 except Exception:
     mlflow = None  # type: ignore

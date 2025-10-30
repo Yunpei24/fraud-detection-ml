@@ -19,7 +19,11 @@ database_url = f"postgresql://{database_user}:{database_password}@{database_url}
 redis_host = os.getenv("REDIS_HOST", "localhost")
 redis_port = int(os.getenv("REDIS_PORT", "6379"))
 redis_password = os.getenv("REDIS_PASSWORD", "")
-redis_url = f"redis://:{redis_password}@{redis_host}:{redis_port}/0" if redis_password else f"redis://{redis_host}:{redis_port}/0"
+redis_url = (
+    f"redis://:{redis_password}@{redis_host}:{redis_port}/0"
+    if redis_password
+    else f"redis://{redis_host}:{redis_port}/0"
+)
 
 # Azure settings (optional)
 azure_storage_connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
@@ -62,9 +66,13 @@ rate_limit_period = int(os.getenv("RATE_LIMIT_PERIOD", "60"))
 enable_rate_limiting = rate_limit_enabled
 
 # CORS
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:8000").split(",")
+cors_origins = os.getenv(
+    "CORS_ORIGINS", "http://localhost:3000,http://localhost:8000"
+).split(",")
 cors_allow_credentials = os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower() == "true"
-cors_allow_methods = os.getenv("CORS_ALLOW_METHODS", "GET,POST,PUT,DELETE,OPTIONS").split(",")
+cors_allow_methods = os.getenv(
+    "CORS_ALLOW_METHODS", "GET,POST,PUT,DELETE,OPTIONS"
+).split(",")
 cors_allow_headers = os.getenv("CORS_ALLOW_HEADERS", "*").split(",")
 
 # Feature flags
@@ -74,25 +82,35 @@ enable_model_reload = os.getenv("ENABLE_MODEL_RELOAD", "true").lower() == "true"
 enable_cache = os.getenv("ENABLE_CACHE", "true").lower() == "true"
 
 # Model configuration
-model_path = os.getenv("MODEL_PATH", os.getenv("AZURE_STORAGE_MOUNT_PATH", "/mnt/fraud-models"))
+model_path = os.getenv(
+    "MODEL_PATH", os.getenv("AZURE_STORAGE_MOUNT_PATH", "/mnt/fraud-models")
+)
 model_version = os.getenv("MODEL_VERSION", "v1.0.0")
 xgboost_model_name = os.getenv("XGBOOST_MODEL_NAME", "xgboost_fraud_model.pkl")
-random_forest_model_name = os.getenv("RANDOM_FOREST_MODEL_NAME", "random_forest_fraud_model.pkl")
+random_forest_model_name = os.getenv(
+    "RANDOM_FOREST_MODEL_NAME", "random_forest_fraud_model.pkl"
+)
 nn_model_name = os.getenv("NN_MODEL_NAME", "nn_fraud_model.pth")
-isolation_forest_model_name = os.getenv("ISOLATION_FOREST_MODEL_NAME", "isolation_forest_model.pkl")
+isolation_forest_model_name = os.getenv(
+    "ISOLATION_FOREST_MODEL_NAME", "isolation_forest_model.pkl"
+)
 
 # SHAP explainers
 shap_explainer_xgb_name = os.getenv("SHAP_EXPLAINER_XGB_NAME", "shap_explainer_xgb.pkl")
 shap_explainer_rf_name = os.getenv("SHAP_EXPLAINER_RF_NAME", "shap_explainer_rf.pkl")
 shap_explainer_nn_name = os.getenv("SHAP_EXPLAINER_NN_NAME", "shap_explainer_nn.pkl")
-shap_explainer_iforest_name = os.getenv("SHAP_EXPLAINER_IFOREST_NAME", "shap_explainer_iforest.pkl")
+shap_explainer_iforest_name = os.getenv(
+    "SHAP_EXPLAINER_IFOREST_NAME", "shap_explainer_iforest.pkl"
+)
 
 # Environment
 environment = os.getenv("ENVIRONMENT", "development")
 debug = os.getenv("DEBUG", "false").lower() == "true"
 
 # Traffic routing
-traffic_routing_config = os.getenv("TRAFFIC_ROUTING_CONFIG", "/app/config/traffic_routing.json")
+traffic_routing_config = os.getenv(
+    "TRAFFIC_ROUTING_CONFIG", "/app/config/traffic_routing.json"
+)
 
 
 class Monitoring:
@@ -142,22 +160,22 @@ class Settings:
         self.api = API()
         self.auth = Auth()
         self.log_level = log_level
-        
+
         # Database and Redis
         self.database_url = database_url
         self.redis_url = redis_url
-        
+
         # Security
         self.require_api_key = require_api_key
         self.api_keys = api_keys
         self.secret_key = secret_key
         self.admin_token = admin_token
-        
+
         # Rate limiting
         self.enable_rate_limiting = enable_rate_limiting
         self.rate_limit_requests = rate_limit_requests
         self.rate_limit_period = rate_limit_period
-        
+
         # Caching
         self.enable_cache = enable_cache
 

@@ -1,9 +1,9 @@
 """
 Simple end-to-end test for training pipeline.
 """
-import pytest
 import numpy as np
 import pandas as pd
+import pytest
 from src.models.random_forest import RandomForestModel
 from src.models.xgboost_model import XGBoostModel
 
@@ -19,8 +19,11 @@ def test_multiple_models_can_be_trained(tiny_credit_df):
         pytest.skip("Need at least 2 samples per class")
 
     models = [
-        ("random_forest", RandomForestModel(use_smote=False, n_estimators=10, random_state=42)),
-        ("xgboost", XGBoostModel(use_smote=False, n_estimators=10, random_state=42))
+        (
+            "random_forest",
+            RandomForestModel(use_smote=False, n_estimators=10, random_state=42),
+        ),
+        ("xgboost", XGBoostModel(use_smote=False, n_estimators=10, random_state=42)),
     ]
 
     trained_models = {}

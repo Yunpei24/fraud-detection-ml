@@ -17,8 +17,8 @@ Connection URL format: postgresql://user:password@host:port/database
 """
 
 import logging
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -32,19 +32,19 @@ class DatabaseService:
     def __init__(self, connection_string: Optional[str] = None):
         """
         Initialize database service
-        
+
         Args:
             connection_string: Database connection URL (optional)
                               Format: postgresql://user:password@host:port/database
                               If not provided, will be loaded from settings.py on connect()
-                              
+
         Example:
             # Option 1: Explicit connection string
             db = DatabaseService("postgresql://user:pass@localhost:5432/frauddb")
-            
+
             # Option 2: Load from environment (via settings.py)
             db = DatabaseService()  # Reads DB_SERVER, DB_USER, DB_PASSWORD, etc.
-            
+
             # Option 3: Inject via pipeline
             from src.config.settings import settings
             db = DatabaseService(settings.database_url)
@@ -53,36 +53,41 @@ class DatabaseService:
         self.engine = None
         self.session = None
         self._initialized = False
-        
+
         # Log configuration source
         if connection_string:
             logger.debug("DatabaseService initialized with explicit connection string")
         else:
-            logger.debug("DatabaseService will load connection from settings on connect()")
+            logger.debug(
+                "DatabaseService will load connection from settings on connect()"
+            )
 
     def connect(self) -> None:
         """
         Establish database connection
-        
+
         Connection string resolution order:
         1. Use explicit connection_string from __init__ (if provided)
         2. Load from settings.database_url (reads environment variables)
-        
+
         Environment variables (loaded by settings.py):
         - DB_SERVER or POSTGRES_HOST (default: localhost)
         - DB_NAME or POSTGRES_DB (default: fraud_db)
-        - DB_USER or POSTGRES_USER (default: postgres)  
+        - DB_USER or POSTGRES_USER (default: postgres)
         - DB_PASSWORD or POSTGRES_PASSWORD (default: postgres)
         - DB_PORT or POSTGRES_PORT (default: 5432)
         """
         try:
             from sqlalchemy import create_engine
-            
+
             # Load connection string from settings if not provided
             if not self.connection_string:
                 from ..config.settings import settings
+
                 self.connection_string = settings.database.url
-                logger.info(f"Loading database config from settings: {settings.database.host}:{settings.database.port}/{settings.database.name}")
+                logger.info(
+                    f"Loading database config from settings: {settings.database.host}:{settings.database.port}/{settings.database.name}"
+                )
             else:
                 logger.info("Using explicit database connection string")
 
@@ -91,13 +96,13 @@ class DatabaseService:
                 pool_size=20,
                 max_overflow=40,
                 pool_recycle=3600,
-                echo=False
+                echo=False,
             )
-            
+
             # Test connection
             with self.engine.connect() as conn:
                 conn.execute("SELECT 1")
-            
+
             self._initialized = True
             logger.info("✅ Database connection established")
         except Exception as e:
@@ -114,10 +119,10 @@ class DatabaseService:
     def insert_transactions(self, transactions: List[Dict]) -> int:
         """
         Insert transaction records into database
-        
+
         Args:
             transactions: List of transaction dictionaries
-        
+
         Returns:
             Number of rows inserted
         """
@@ -126,9 +131,10 @@ class DatabaseService:
 
         try:
             from sqlalchemy import text
-            
+
             # Assuming table name is 'transactions'
-            insert_query = text("""
+            insert_query = text(
+                """
                 INSERT INTO transactions (
                     transaction_id, customer_id, merchant_id,
                     amount, currency, time,
@@ -148,14 +154,18 @@ class DatabaseService:
                     :is_fraud, :is_disputed,
                     :source_system, :ingestion_timestamp
                 )
-            """)
+            """
+            )
 
             with self.engine.connect() as conn:
                 for transaction in transactions:
                     # Add ingestion timestamp if not present
-                    if 'ingestion_timestamp' not in transaction or transaction['ingestion_timestamp'] is None:
-                        transaction['ingestion_timestamp'] = datetime.utcnow()
-                    
+                    if (
+                        "ingestion_timestamp" not in transaction
+                        or transaction["ingestion_timestamp"] is None
+                    ):
+                        transaction["ingestion_timestamp"] = datetime.utcnow()
+
                     conn.execute(insert_query, transaction)
                 conn.commit()
 
@@ -169,11 +179,11 @@ class DatabaseService:
     def insert_predictions(self, predictions: List[Dict]) -> int:
         """
         Insert prediction records into database
-        
+
         Args:
             predictions: List of prediction dictionaries
                         Should contain: transaction_id, fraud_score, is_fraud_predicted, model_version, etc
-        
+
         Returns:
             Number of rows inserted
         """
@@ -182,8 +192,9 @@ class DatabaseService:
 
         try:
             from sqlalchemy import text
-            
-            insert_query = text("""
+
+            insert_query = text(
+                """
                 INSERT INTO predictions (
                     transaction_id, fraud_score, is_fraud_predicted,
                     model_version, prediction_time, confidence
@@ -191,14 +202,15 @@ class DatabaseService:
                     :transaction_id, :fraud_score, :is_fraud_predicted,
                     :model_version, :prediction_time, :confidence
                 )
-            """)
+            """
+            )
 
             with self.engine.connect() as conn:
                 for pred in predictions:
                     # Add prediction timestamp if not present
-                    if 'prediction_time' not in pred or pred['prediction_time'] is None:
-                        pred['prediction_time'] = datetime.utcnow()
-                    
+                    if "prediction_time" not in pred or pred["prediction_time"] is None:
+                        pred["prediction_time"] = datetime.utcnow()
+
                     conn.execute(insert_query, pred)
                 conn.commit()
 
@@ -212,11 +224,11 @@ class DatabaseService:
     def query_transactions(self, limit: int = 1000, offset: int = 0) -> List[Dict]:
         """
         Query transaction records
-        
+
         Args:
             limit: Maximum number of records
             offset: Number of records to skip
-        
+
         Returns:
             List of transaction records
         """
@@ -225,14 +237,16 @@ class DatabaseService:
 
         try:
             from sqlalchemy import text
-            
-            query = text("SELECT * FROM transactions ORDER BY time DESC LIMIT :limit OFFSET :offset")
-            
+
+            query = text(
+                "SELECT * FROM transactions ORDER BY time DESC LIMIT :limit OFFSET :offset"
+            )
+
             with self.engine.connect() as conn:
                 result = conn.execute(query, {"limit": limit, "offset": offset})
                 columns = result.keys()
                 rows = [dict(zip(columns, row)) for row in result]
-            
+
             logger.info(f"Retrieved {len(rows)} transactions from database")
             return rows
 
@@ -243,7 +257,7 @@ class DatabaseService:
     def get_statistics(self) -> Dict[str, Any]:
         """
         Get database statistics
-        
+
         Returns:
             Dictionary with statistics
         """
@@ -252,25 +266,35 @@ class DatabaseService:
 
         try:
             from sqlalchemy import text
-            
+
             with self.engine.connect() as conn:
                 # Transaction count
-                result = conn.execute(text("SELECT COUNT(*) as count FROM transactions"))
+                result = conn.execute(
+                    text("SELECT COUNT(*) as count FROM transactions")
+                )
                 transaction_count = result.scalar()
-                
+
                 # Fraud count
-                result = conn.execute(text("SELECT COUNT(*) as count FROM transactions WHERE is_fraud = 1"))
+                result = conn.execute(
+                    text(
+                        "SELECT COUNT(*) as count FROM transactions WHERE is_fraud = 1"
+                    )
+                )
                 fraud_count = result.scalar()
-                
+
                 # Average amount
-                result = conn.execute(text("SELECT AVG(amount) as avg_amount FROM transactions"))
+                result = conn.execute(
+                    text("SELECT AVG(amount) as avg_amount FROM transactions")
+                )
                 avg_amount = result.scalar()
 
             return {
                 "total_transactions": transaction_count,
                 "total_frauds": fraud_count,
-                "fraud_rate": fraud_count / transaction_count if transaction_count > 0 else 0,
-                "average_amount": avg_amount
+                "fraud_rate": fraud_count / transaction_count
+                if transaction_count > 0
+                else 0,
+                "average_amount": avg_amount,
             }
 
         except Exception as e:

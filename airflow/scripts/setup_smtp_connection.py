@@ -5,22 +5,25 @@ Run this script to create the SMTP connection in Airflow database.
 """
 
 import os
-from airflow import settings
+
 from airflow.models import Connection
+
+from airflow import settings
+
 
 def setup_smtp_connection():
     """Set up Gmail SMTP connection in Airflow."""
 
     # Gmail SMTP settings
-    conn_id = 'smtp_default'
-    conn_type = 'smtp'
-    host = 'smtp.gmail.com'
-    login = 'emmanuelyunpei@gmail.com'  # Your Gmail address
-    schema = ''  # Not used for SMTP
+    conn_id = "smtp_default"
+    conn_type = "smtp"
+    host = "smtp.gmail.com"
+    login = "emmanuelyunpei@gmail.com"  # Your Gmail address
+    schema = ""  # Not used for SMTP
     port = 587
 
     # Get password from environment variable (set this securely)
-    password = os.getenv('AIRFLOW_SMTP_PASSWORD')
+    password = os.getenv("AIRFLOW_SMTP_PASSWORD")
 
     if not password:
         print("AIRFLOW_SMTP_PASSWORD environment variable not set")
@@ -30,7 +33,9 @@ def setup_smtp_connection():
 
     # Check if connection already exists
     session = settings.Session()
-    existing_conn = session.query(Connection).filter(Connection.conn_id == conn_id).first()
+    existing_conn = (
+        session.query(Connection).filter(Connection.conn_id == conn_id).first()
+    )
 
     if existing_conn:
         print(f"SMTP connection '{conn_id}' already exists. Updating...")
@@ -48,7 +53,7 @@ def setup_smtp_connection():
             host=host,
             login=login,
             schema=schema,
-            port=port
+            port=port,
         )
         new_conn.set_password(password)
         session.add(new_conn)
@@ -62,6 +67,7 @@ def setup_smtp_connection():
     print(f"   User: {login}")
     print("   Use STARTTLS: True")
     return True
+
 
 if __name__ == "__main__":
     print("🔧 Setting up Airflow SMTP connection for Gmail...")

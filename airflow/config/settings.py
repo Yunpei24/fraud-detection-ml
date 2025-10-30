@@ -7,14 +7,16 @@ Migrated to use centralized configuration for consistency.
 # from pathlib import Path
 from typing import List
 
+from config import get_settings
+
 # Add project root to path to import centralized config
 # project_root = Path(__file__).parent.parent.parent
 # sys.path.insert(0, str(project_root))
 
-from config import get_settings
 
 # Get centralized settings
 settings = get_settings()
+
 
 class AirflowSettings:
     """Airflow module settings migrated to centralized config."""

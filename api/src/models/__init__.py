@@ -1,39 +1,22 @@
 """
 Models module containing schemas and ML models.
 """
-from .schemas import (
-    TransactionRequest,
-    BatchTransactionRequest,
-    PredictionResponse,
-    BatchPredictionResponse,
-    HealthCheckResponse,
-    DetailedHealthCheckResponse,
-    ErrorResponse,
-    TokenResponse,
-    UserResponse,
-    ModelVersionResponse,
-    ExplanationRequest,
-    FeatureImportance,
-    SHAPExplanationResponse,
-    FeatureImportanceResponse,
-    DriftStatusResponse,
-    DriftDetectionRequest,
-    DriftDetectionResponse,
-    BaselineUpdateRequest,
-    BaselineUpdateResponse,
-    BaselineInfoResponse,
-    ComprehensiveDriftResponse,
-    SlidingWindowAnalysisResponse,
-    DriftReportResponse,
-    AuditLogEntry,
-    AuditLogsResponse,
-    AuditLogSummaryResponse,
-    AuditQueryRequest,
-    TransactionUpdateRequest,
-    TransactionUpdateResponse,
-    TransactionLabelHistoryResponse
-)
 from .ml_models import EnsembleModel
+from .schemas import (AuditLogEntry, AuditLogsResponse,
+                      AuditLogSummaryResponse, AuditQueryRequest,
+                      BaselineInfoResponse, BaselineUpdateRequest,
+                      BaselineUpdateResponse, BatchPredictionResponse,
+                      BatchTransactionRequest, ComprehensiveDriftResponse,
+                      DetailedHealthCheckResponse, DriftDetectionRequest,
+                      DriftDetectionResponse, DriftReportResponse,
+                      DriftStatusResponse, ErrorResponse, ExplanationRequest,
+                      FeatureImportance, FeatureImportanceResponse,
+                      HealthCheckResponse, ModelVersionResponse,
+                      PredictionResponse, SHAPExplanationResponse,
+                      SlidingWindowAnalysisResponse, TokenResponse,
+                      TransactionLabelHistoryResponse, TransactionRequest,
+                      TransactionUpdateRequest, TransactionUpdateResponse,
+                      UserResponse)
 
 __all__ = [
     "TransactionRequest",
@@ -66,5 +49,5 @@ __all__ = [
     "TransactionUpdateRequest",
     "TransactionUpdateResponse",
     "TransactionLabelHistoryResponse",
-    "EnsembleModel"
+    "EnsembleModel",
 ]

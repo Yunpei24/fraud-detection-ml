@@ -4,13 +4,9 @@ from __future__ import annotations
 from typing import Dict, Tuple
 
 import numpy as np
-from sklearn.metrics import (
-    average_precision_score,
-    confusion_matrix,
-    precision_recall_curve,
-    precision_recall_fscore_support,
-    roc_auc_score,
-)
+from sklearn.metrics import (average_precision_score, confusion_matrix,
+                             precision_recall_curve,
+                             precision_recall_fscore_support, roc_auc_score)
 
 
 def calculate_auc_roc(y_true: np.ndarray, y_pred_proba: np.ndarray) -> float:
@@ -24,7 +20,9 @@ def calculate_auc_roc(y_true: np.ndarray, y_pred_proba: np.ndarray) -> float:
         return float("nan")
 
 
-def calculate_precision_recall(y_true: np.ndarray, y_pred: np.ndarray) -> Tuple[float, float]:
+def calculate_precision_recall(
+    y_true: np.ndarray, y_pred: np.ndarray
+) -> Tuple[float, float]:
     """
     Precision and recall for binary classification (fraud is positive class=1).
     """
@@ -38,7 +36,7 @@ def calculate_f2_score(precision: float, recall: float) -> float:
     """
     F-beta with beta=2 (recall-weighted).
     """
-    beta2 = 2.0 ** 2
+    beta2 = 2.0**2
     denom = beta2 * precision + recall
     if denom <= 0:
         return 0.0
@@ -92,7 +90,9 @@ def calculate_all_metrics(
         # sometimes thresholds length != precisions length
         best_f1 = 0.0
         if len(thresholds) > 0:
-            f1s = (2 * precisions[:-1] * recalls[:-1]) / np.clip(precisions[:-1] + recalls[:-1], 1e-12, None)
+            f1s = (2 * precisions[:-1] * recalls[:-1]) / np.clip(
+                precisions[:-1] + recalls[:-1], 1e-12, None
+            )
             best_f1 = float(np.nanmax(f1s))
     except Exception:
         best_f1 = float("nan")

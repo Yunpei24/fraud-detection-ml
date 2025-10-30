@@ -1,11 +1,17 @@
-import sys
 import os
+import sys
+
 import numpy as np
 
 # Correct sys.path to point to the 'training/src' directory
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'training', 'src')))
+sys.path.append(
+    os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "training", "src")
+    )
+)
 
 from src.utils.helpers import set_seed  # Correct import
+
 
 def test_set_seed_idempotent():
     set_seed(42)

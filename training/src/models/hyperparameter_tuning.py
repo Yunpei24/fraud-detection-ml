@@ -22,15 +22,15 @@ Hypedef tune_xgboost_hyperparameters(
 """
 from __future__ import annotations
 
-from typing import Dict, Any
+from typing import Any, Dict
+
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
-from sklearn.metrics import make_scorer, roc_auc_score, precision_recall_curve
 import xgboost as xgb
 from sklearn.ensemble import IsolationForest, RandomForestClassifier
+from sklearn.metrics import make_scorer, precision_recall_curve, roc_auc_score
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.neural_network import MLPClassifier
-
 from src.config.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -40,6 +40,7 @@ def create_custom_scorer():
     """
     Create a custom scorer that balances AUC, recall, and precision for fraud detection.
     """
+
     def fraud_score(y_true, y_pred_proba):
         """
         Custom scoring function that considers:
@@ -59,7 +60,10 @@ def create_custom_scorer():
             logger.warning(f"Error in fraud_score calculation: {e}")
             # Fallback to AUC only
             try:
-                auc = roc_auc_score(y_true, y_pred_proba[:, 1] if len(y_pred_proba.shape) > 1 else y_pred_proba)
+                auc = roc_auc_score(
+                    y_true,
+                    y_pred_proba[:, 1] if len(y_pred_proba.shape) > 1 else y_pred_proba,
+                )
                 return auc
             except:
                 return 0.5  # Neutral score
@@ -76,7 +80,7 @@ def tune_xgboost_hyperparameters(
     use_random_search: bool = True,
     n_iter: int = 3,  # Reduced from 5
     cv_folds: int = 2,
-    random_state: int = 24
+    random_state: int = 24,
 ) -> Dict[str, Any]:
     """
     Tune XGBoost hyperparameters using grid or random search.
@@ -88,7 +92,9 @@ def tune_xgboost_hyperparameters(
     # Sample a subset of data for hyperparameter tuning to reduce memory usage
     sample_size = min(50000, len(X_train))  # Limit to 50k samples max
     if len(X_train) > sample_size:
-        logger.info(f"Sampling {sample_size} examples from {len(X_train)} for hyperparameter tuning")
+        logger.info(
+            f"Sampling {sample_size} examples from {len(X_train)} for hyperparameter tuning"
+        )
         np.random.seed(random_state)
         sample_indices = np.random.choice(len(X_train), size=sample_size, replace=False)
         X_train_sample = X_train[sample_indices]
@@ -99,26 +105,27 @@ def tune_xgboost_hyperparameters(
 
     # Base model with current good defaults
     base_model = xgb.XGBClassifier(
-        objective='binary:logistic',
-        eval_metric='auc',
+        objective="binary:logistic",
+        eval_metric="auc",
         random_state=random_state,
-        scale_pos_weight=len(y_train_sample[y_train_sample == 0]) / len(y_train_sample[y_train_sample == 1]),  # Handle imbalance
+        scale_pos_weight=len(y_train_sample[y_train_sample == 0])
+        / len(y_train_sample[y_train_sample == 1]),  # Handle imbalance
         # Removed deprecated use_label_encoder parameter
-        n_jobs=1  # Use single thread to reduce memory usage
+        n_jobs=1,  # Use single thread to reduce memory usage
     )
 
     if use_random_search:
         # Reduced parameter space for memory efficiency
         param_dist = {
-            'n_estimators': [100, 200],
-            'max_depth': [3, 4, 5],
-            'learning_rate': [0.01, 0.05, 0.1],
-            'subsample': [0.7, 0.8],
-            'colsample_bytree': [0.7, 0.8],
-            'min_child_weight': [1, 3],
-            'gamma': [0.1, 0.2],
-            'reg_alpha': [0.01, 0.1],
-            'reg_lambda': [0.1, 1]
+            "n_estimators": [100, 200],
+            "max_depth": [3, 4, 5],
+            "learning_rate": [0.01, 0.05, 0.1],
+            "subsample": [0.7, 0.8],
+            "colsample_bytree": [0.7, 0.8],
+            "min_child_weight": [1, 3],
+            "gamma": [0.1, 0.2],
+            "reg_alpha": [0.01, 0.1],
+            "reg_lambda": [0.1, 1],
         }
 
         search = RandomizedSearchCV(
@@ -129,17 +136,17 @@ def tune_xgboost_hyperparameters(
             cv=cv_folds,
             random_state=random_state,
             n_jobs=1,  # Sequential processing to reduce memory usage
-            verbose=1
+            verbose=1,
         )
     else:
         # Grid search (smaller parameter space for faster execution)
         param_grid = {
-            'n_estimators': [100, 200],
-            'max_depth': [4, 6],
-            'learning_rate': [0.05, 0.1],
-            'subsample': [0.8, 0.9],
-            'colsample_bytree': [0.8, 0.9],
-            'min_child_weight': [1, 3]
+            "n_estimators": [100, 200],
+            "max_depth": [4, 6],
+            "learning_rate": [0.05, 0.1],
+            "subsample": [0.8, 0.9],
+            "colsample_bytree": [0.8, 0.9],
+            "min_child_weight": [1, 3],
         }
 
         search = GridSearchCV(
@@ -148,7 +155,7 @@ def tune_xgboost_hyperparameters(
             scoring=create_custom_scorer(),
             cv=cv_folds,
             n_jobs=1,  # Sequential processing to reduce memory usage
-            verbose=1
+            verbose=1,
         )
 
     # Fit search on sampled data
@@ -176,11 +183,11 @@ def tune_xgboost_hyperparameters(
     logger.info(f"   Optimal threshold: {optimal_threshold:.4f}")
 
     return {
-        'best_params': best_params,
-        'best_cv_score': best_score,
-        'val_auc': val_auc,
-        'optimal_threshold': optimal_threshold,
-        'best_model': best_model
+        "best_params": best_params,
+        "best_cv_score": best_score,
+        "val_auc": val_auc,
+        "optimal_threshold": optimal_threshold,
+        "best_model": best_model,
     }
 
 
@@ -192,7 +199,7 @@ def tune_random_forest_hyperparameters(
     use_random_search: bool = True,
     n_iter: int = 3,  # Reduced from 5
     cv_folds: int = 2,
-    random_state: int = 42
+    random_state: int = 42,
 ) -> Dict[str, Any]:
     """
     Tune Random Forest hyperparameters.
@@ -202,7 +209,9 @@ def tune_random_forest_hyperparameters(
     # Sample a subset of data for hyperparameter tuning to reduce memory usage
     sample_size = min(50000, len(X_train))  # Limit to 50k samples max
     if len(X_train) > sample_size:
-        logger.info(f"Sampling {sample_size} examples from {len(X_train)} for hyperparameter tuning")
+        logger.info(
+            f"Sampling {sample_size} examples from {len(X_train)} for hyperparameter tuning"
+        )
         np.random.seed(random_state)
         sample_indices = np.random.choice(len(X_train), size=sample_size, replace=False)
         X_train_sample = X_train[sample_indices]
@@ -214,18 +223,18 @@ def tune_random_forest_hyperparameters(
     base_model = RandomForestClassifier(
         random_state=random_state,
         n_jobs=1,  # Use single core to reduce memory usage
-        class_weight='balanced'
+        class_weight="balanced",
     )
 
     if use_random_search:
         # Reduced parameter space for memory efficiency
         param_dist = {
-            'n_estimators': [100, 200],  # Reduced options
-            'max_depth': [10, 15],  # Reduced options
-            'min_samples_split': [2, 5],  # Reduced options
-            'min_samples_leaf': [1, 2],  # Reduced options
-            'max_features': ['sqrt'],  # Single option
-            'bootstrap': [True],  # Single option
+            "n_estimators": [100, 200],  # Reduced options
+            "max_depth": [10, 15],  # Reduced options
+            "min_samples_split": [2, 5],  # Reduced options
+            "min_samples_leaf": [1, 2],  # Reduced options
+            "max_features": ["sqrt"],  # Single option
+            "bootstrap": [True],  # Single option
         }
 
         search = RandomizedSearchCV(
@@ -236,16 +245,16 @@ def tune_random_forest_hyperparameters(
             cv=cv_folds,
             random_state=random_state,
             n_jobs=1,  # Sequential processing to reduce memory usage
-            verbose=1
+            verbose=1,
         )
     else:
         # Simplified grid search
         param_grid = {
-            'n_estimators': [100, 200],
-            'max_depth': [10, 15],
-            'min_samples_split': [2, 5],
-            'min_samples_leaf': [1, 2],
-            'max_features': ['sqrt']
+            "n_estimators": [100, 200],
+            "max_depth": [10, 15],
+            "min_samples_split": [2, 5],
+            "min_samples_leaf": [1, 2],
+            "max_features": ["sqrt"],
         }
 
         search = GridSearchCV(
@@ -254,7 +263,7 @@ def tune_random_forest_hyperparameters(
             scoring=create_custom_scorer(),
             cv=cv_folds,
             n_jobs=1,  # Sequential processing to reduce memory usage
-            verbose=1
+            verbose=1,
         )
 
     # Fit search on sampled data
@@ -274,10 +283,10 @@ def tune_random_forest_hyperparameters(
     logger.info(f"   Validation AUC: {val_auc:.4f}")
 
     return {
-        'best_params': best_params,
-        'best_cv_score': best_score,
-        'val_auc': val_auc,
-        'best_model': best_model
+        "best_params": best_params,
+        "best_cv_score": best_score,
+        "val_auc": val_auc,
+        "best_model": best_model,
     }
 
 
@@ -287,7 +296,7 @@ def tune_neural_network_hyperparameters(
     X_val: np.ndarray,
     y_val: np.ndarray,
     cv_folds: int = 2,
-    random_state: int = 24
+    random_state: int = 24,
 ) -> Dict[str, Any]:
     """
     Tune Neural Network hyperparameters using grid search.
@@ -297,7 +306,9 @@ def tune_neural_network_hyperparameters(
     # Sample a smaller subset for neural network tuning (they're very memory intensive)
     sample_size = min(25000, len(X_train))  # Limit to 25k samples for NN
     if len(X_train) > sample_size:
-        logger.info(f"Sampling {sample_size} examples from {len(X_train)} for neural network hyperparameter tuning")
+        logger.info(
+            f"Sampling {sample_size} examples from {len(X_train)} for neural network hyperparameter tuning"
+        )
         np.random.seed(random_state)
         sample_indices = np.random.choice(len(X_train), size=sample_size, replace=False)
         X_train_sample = X_train[sample_indices]
@@ -310,14 +321,14 @@ def tune_neural_network_hyperparameters(
 
     # Neural networks are expensive, so use smaller parameter space
     param_grid = {
-        'hidden_layer_sizes': [(64,), (64, 32)],  # Reduced options
-        'activation': ['relu'],
-        'solver': ['adam'],
-        'alpha': [0.0001, 0.001],
-        'learning_rate': ['constant'],
-        'learning_rate_init': [0.001],
-        'batch_size': [64, 128],  # Smaller batches
-        'max_iter': [200]  # Limit iterations
+        "hidden_layer_sizes": [(64,), (64, 32)],  # Reduced options
+        "activation": ["relu"],
+        "solver": ["adam"],
+        "alpha": [0.0001, 0.001],
+        "learning_rate": ["constant"],
+        "learning_rate_init": [0.001],
+        "batch_size": [64, 128],  # Smaller batches
+        "max_iter": [200],  # Limit iterations
     }
 
     search = GridSearchCV(
@@ -326,7 +337,7 @@ def tune_neural_network_hyperparameters(
         scoring=create_custom_scorer(),
         cv=cv_folds,
         n_jobs=1,  # Sequential processing to reduce memory usage
-        verbose=1
+        verbose=1,
     )
 
     # Fit on sampled data
@@ -346,10 +357,10 @@ def tune_neural_network_hyperparameters(
     logger.info(f"   Validation AUC: {val_auc:.4f}")
 
     return {
-        'best_params': best_params,
-        'best_cv_score': best_score,
-        'val_auc': val_auc,
-        'best_model': best_model
+        "best_params": best_params,
+        "best_cv_score": best_score,
+        "val_auc": val_auc,
+        "best_model": best_model,
     }
 
 
@@ -358,7 +369,7 @@ def tune_isolation_forest_hyperparameters(
     y_train: np.ndarray,
     X_val: np.ndarray,
     y_val: np.ndarray,
-    random_state: int = 42
+    random_state: int = 42,
 ) -> Dict[str, Any]:
     """
     Tune Isolation Forest hyperparameters using validation-based approach.
@@ -375,9 +386,9 @@ def tune_isolation_forest_hyperparameters(
     # Test different contamination rates around the actual fraud rate
     contamination_candidates = [
         max(0.001, fraud_rate * 0.5),  # Half the fraud rate
-        fraud_rate,                    # Actual fraud rate
-        min(0.05, fraud_rate * 2),     # Double the fraud rate (max 5%)
-        min(0.1, fraud_rate * 3),      # Triple (max 10%)
+        fraud_rate,  # Actual fraud rate
+        min(0.05, fraud_rate * 2),  # Double the fraud rate (max 5%)
+        min(0.1, fraud_rate * 3),  # Triple (max 10%)
     ]
     contamination_candidates = list(set(contamination_candidates))  # Remove duplicates
 
@@ -400,7 +411,7 @@ def tune_isolation_forest_hyperparameters(
                 **params,
                 "contamination": contamination,
                 "random_state": random_state,
-                "n_jobs": 1
+                "n_jobs": 1,
             }
 
             model = IsolationForest(**model_params)
@@ -444,8 +455,8 @@ def tune_isolation_forest_hyperparameters(
     logger.info(f"   Best threshold: {best_threshold:.4f}")
 
     return {
-        'best_params': best_params,
-        'best_cv_score': best_score,
-        'best_model': best_model,
-        'optimal_threshold': best_threshold
+        "best_params": best_params,
+        "best_cv_score": best_score,
+        "best_model": best_model,
+        "optimal_threshold": best_threshold,
     }

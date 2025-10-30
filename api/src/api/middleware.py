@@ -97,9 +97,7 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
 
 
 class RateLimitingMiddleware(BaseHTTPMiddleware):
-    def __init__(
-        self, app, redis_client=None, requests_per_minute: int = 1000
-    ):
+    def __init__(self, app, redis_client=None, requests_per_minute: int = 1000):
         super().__init__(app)
         self.redis_client = redis_client
         self.requests_per_minute = requests_per_minute
@@ -153,11 +151,21 @@ class RateLimitingMiddleware(BaseHTTPMiddleware):
 
 class CORSMiddleware(BaseHTTPMiddleware):
     def __init__(
-        self, app, allow_origins: list = None, allow_methods: list = None, allow_headers: list = None
+        self,
+        app,
+        allow_origins: list = None,
+        allow_methods: list = None,
+        allow_headers: list = None,
     ):
         super().__init__(app)
         self.allow_origins = allow_origins or ["*"]
-        self.allow_methods = allow_methods or ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+        self.allow_methods = allow_methods or [
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE",
+            "OPTIONS",
+        ]
         self.allow_headers = allow_headers or ["*"]
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:

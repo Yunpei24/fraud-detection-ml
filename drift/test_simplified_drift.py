@@ -14,9 +14,11 @@ project_root = Path(__file__).parent
 src_path = project_root / "src"
 sys.path.insert(0, str(src_path))
 
+from api_client import FraudDetectionAPIClient
+
 # Import required modules
 from config.settings import Settings
-from api_client import FraudDetectionAPIClient
+
 
 def test_api_client():
     """Test that the API client can be instantiated."""
@@ -24,13 +26,14 @@ def test_api_client():
 
     try:
         from api_client import FraudDetectionAPIClient
+
         from config.settings import Settings
 
         # Test with default settings
         settings = Settings()
         client = FraudDetectionAPIClient(
-            base_url=getattr(settings, 'api_base_url', 'http://localhost:8000'),
-            timeout=getattr(settings, 'api_timeout', 30)
+            base_url=getattr(settings, "api_base_url", "http://localhost:8000"),
+            timeout=getattr(settings, "api_timeout", 30),
         )
 
         print(f"✅ API client created with base_url: {client.base_url}")
@@ -38,6 +41,7 @@ def test_api_client():
     except Exception as e:
         print(f"❌ API client test failed: {e}")
         return False
+
 
 def test_settings():
     """Test that settings are properly configured."""
@@ -50,16 +54,16 @@ def test_settings():
 
         # Check essential settings
         required_attrs = [
-            'database_url',
-            'api_base_url',
-            'api_timeout',
-            'data_drift_threshold',
-            'target_drift_threshold',
-            'concept_drift_threshold',
-            'retraining_cooldown_hours',
-            'alert_email_enabled',
-            'prometheus_enabled',
-            'airflow_api_url'
+            "database_url",
+            "api_base_url",
+            "api_timeout",
+            "data_drift_threshold",
+            "target_drift_threshold",
+            "concept_drift_threshold",
+            "retraining_cooldown_hours",
+            "alert_email_enabled",
+            "prometheus_enabled",
+            "airflow_api_url",
         ]
 
         for attr in required_attrs:
@@ -75,22 +79,23 @@ def test_settings():
         print(f"❌ Settings test failed: {e}")
         return False
 
+
 def test_pipeline_import():
     """Test that the pipeline can be imported."""
     print("Testing pipeline import...")
 
     try:
-        from pipelines.hourly_monitoring import (
-            call_api_drift_detection,
-            check_thresholds,
-            trigger_alerts,
-            run_hourly_monitoring
-        )
+        from pipelines.hourly_monitoring import (call_api_drift_detection,
+                                                 check_thresholds,
+                                                 run_hourly_monitoring,
+                                                 trigger_alerts)
+
         print("✅ Pipeline functions imported successfully")
         return True
     except ImportError as e:
         print(f"❌ Pipeline import failed: {e}")
         return False
+
 
 def test_retraining_trigger():
     """Test that retraining trigger works with API results."""
@@ -106,11 +111,11 @@ def test_retraining_trigger():
             "drift_summary": {
                 "overall_drift_detected": True,
                 "severity_score": 2.5,
-                "drift_types_detected": ["data_drift"]
+                "drift_types_detected": ["data_drift"],
             },
             "data_drift": {"drift_detected": True},
             "target_drift": {"drift_detected": False},
-            "concept_drift": {"drift_detected": False}
+            "concept_drift": {"drift_detected": False},
         }
 
         should_retrain, reason = trigger.should_retrain(mock_api_results)
@@ -124,6 +129,7 @@ def test_retraining_trigger():
         print(f"❌ Retraining trigger test failed: {e}")
         return False
 
+
 def test_api_client():
     """Test that the API client can be instantiated."""
     print("Testing API client instantiation...")
@@ -131,12 +137,13 @@ def test_api_client():
     # Test with default settings
     settings = Settings()
     client = FraudDetectionAPIClient(
-        base_url=getattr(settings, 'api_base_url', 'http://localhost:8000'),
-        timeout=getattr(settings, 'api_timeout', 30)
+        base_url=getattr(settings, "api_base_url", "http://localhost:8000"),
+        timeout=getattr(settings, "api_timeout", 30),
     )
 
     print(f"✅ API client created with base_url: {client.base_url}")
     return True
+
 
 def test_settings():
     """Test that settings are properly configured."""
@@ -146,16 +153,16 @@ def test_settings():
 
     # Check essential settings
     required_attrs = [
-        'database_url',
-        'api_base_url',
-        'api_timeout',
-        'data_drift_threshold',
-        'target_drift_threshold',
-        'concept_drift_threshold',
-        'retraining_cooldown_hours',
-        'alert_email_enabled',
-        'prometheus_enabled',
-        'airflow_api_url'
+        "database_url",
+        "api_base_url",
+        "api_timeout",
+        "data_drift_threshold",
+        "target_drift_threshold",
+        "concept_drift_threshold",
+        "retraining_cooldown_hours",
+        "alert_email_enabled",
+        "prometheus_enabled",
+        "airflow_api_url",
     ]
 
     for attr in required_attrs:
@@ -168,22 +175,23 @@ def test_settings():
 
     return True
 
+
 def test_pipeline_import():
     """Test that the pipeline can be imported."""
     print("Testing pipeline import...")
 
     try:
-        from pipelines.hourly_monitoring import (
-            call_api_drift_detection,
-            check_thresholds,
-            trigger_alerts,
-            run_hourly_monitoring
-        )
+        from pipelines.hourly_monitoring import (call_api_drift_detection,
+                                                 check_thresholds,
+                                                 run_hourly_monitoring,
+                                                 trigger_alerts)
+
         print("✅ Pipeline functions imported successfully")
         return True
     except ImportError as e:
         print(f"❌ Pipeline import failed: {e}")
         return False
+
 
 def test_retraining_trigger():
     """Test that retraining trigger works with API results."""
@@ -199,11 +207,11 @@ def test_retraining_trigger():
             "drift_summary": {
                 "overall_drift_detected": True,
                 "severity_score": 2.5,
-                "drift_types_detected": ["data_drift"]
+                "drift_types_detected": ["data_drift"],
             },
             "data_drift": {"drift_detected": True},
             "target_drift": {"drift_detected": False},
-            "concept_drift": {"drift_detected": False}
+            "concept_drift": {"drift_detected": False},
         }
 
         should_retrain, reason = trigger.should_retrain(mock_api_results)
@@ -217,6 +225,7 @@ def test_retraining_trigger():
         print(f"❌ Retraining trigger test failed: {e}")
         return False
 
+
 def main():
     """Run all tests."""
     print("🧪 Testing Simplified Drift Component")
@@ -226,7 +235,7 @@ def main():
         test_api_client,
         test_settings,
         test_pipeline_import,
-        test_retraining_trigger
+        test_retraining_trigger,
     ]
 
     passed = 0
@@ -250,6 +259,7 @@ def main():
     else:
         print("⚠️  Some tests failed. Please check the implementation.")
         return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

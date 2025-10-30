@@ -4,14 +4,16 @@ Migrated to use centralized configuration for consistency.
 """
 
 import sys
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
+
+from config import get_settings
 
 # Add project root to path to import centralized config
 # project_root = Path(__file__).parent.parent.parent.parent
 # sys.path.insert(0, str(project_root))
 
-from config import get_settings
+
 # try:
 #     from config import get_settings
 # except ImportError:
@@ -22,6 +24,7 @@ from config import get_settings
 
 # Get centralized settings
 settings = get_settings()
+
 
 # ------------------------------------------------------------
 # 1. Data paths
@@ -114,6 +117,7 @@ class TrainingConfig:
     Master configuration object to access all sub-configs.
     Migrated to use centralized settings.
     """
+
     data: DataPaths = DataPaths()
     model: ModelParameters = ModelParameters()
     training: TrainingParameters = TrainingParameters()

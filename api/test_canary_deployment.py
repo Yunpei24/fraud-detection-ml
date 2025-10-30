@@ -13,13 +13,13 @@ This script:
 Usage:
     python test_canary_deployment.py
 """
-import os
-import sys
 import json
-import tempfile
-import shutil
-from pathlib import Path
 import logging
+import os
+import shutil
+import sys
+import tempfile
+from pathlib import Path
 
 # Setup logging
 logging.basicConfig(
@@ -63,14 +63,16 @@ def test_canary_deployment_flow():
         (canary_dir / "xgboost_model.pkl").write_text("mock canary xgboost model")
         (canary_dir / "random_forest_model.pkl").write_text("mock canary rf model")
         (canary_dir / "nn_model.pth").write_text("mock canary nn model")
-        (canary_dir / "isolation_forest_model.pkl").write_text("mock canary iforest model")
+        (canary_dir / "isolation_forest_model.pkl").write_text(
+            "mock canary iforest model"
+        )
 
         # Create traffic routing config for 25% canary
         config_file = config_dir / "traffic_routing.json"
         config = {
             "canary_percentage": 25,
             "canary_model_path": str(canary_dir),
-            "champion_model_path": str(champion_dir)
+            "champion_model_path": str(champion_dir),
         }
 
         with open(config_file, "w") as f:
@@ -83,7 +85,7 @@ def test_canary_deployment_flow():
 
         # Import and test TrafficRouter
         sys.path.insert(0, str(api_dir))
-        os.environ['TRAFFIC_ROUTING_CONFIG'] = str(config_file)
+        os.environ["TRAFFIC_ROUTING_CONFIG"] = str(config_file)
 
         from src.services.traffic_router import TrafficRouter
 
@@ -101,10 +103,14 @@ def test_canary_deployment_flow():
                 canary_count += 1
 
         canary_rate = canary_count / total_tests
-        logger.info(f"   Traffic routing test: {canary_rate:.1%} canary (expected ~25%)")
+        logger.info(
+            f"   Traffic routing test: {canary_rate:.1%} canary (expected ~25%)"
+        )
 
         # Verify routing is approximately correct
-        assert 0.20 <= canary_rate <= 0.30, f"Traffic routing incorrect: {canary_rate:.1%}"
+        assert (
+            0.20 <= canary_rate <= 0.30
+        ), f"Traffic routing incorrect: {canary_rate:.1%}"
 
         # Step 3: Simulate promotion to production
         logger.info("🎯 Step 3: Simulating promotion to production...")
@@ -117,7 +123,7 @@ def test_canary_deployment_flow():
         config = {
             "canary_percentage": 0,
             "canary_model_path": str(canary_dir),
-            "champion_model_path": str(champion_dir)
+            "champion_model_path": str(champion_dir),
         }
 
         with open(config_file, "w") as f:
@@ -141,7 +147,9 @@ def test_canary_deployment_flow():
         logger.info(f"   Post-promotion routing: {canary_count}% canary (expected 0%)")
 
         # Verify no canary traffic after promotion
-        assert canary_count == 0, f"Traffic routing incorrect after promotion: {canary_count}% canary"
+        assert (
+            canary_count == 0
+        ), f"Traffic routing incorrect after promotion: {canary_count}% canary"
 
         # Step 5: Verify model files
         logger.info("📁 Step 5: Verifying model files...")
@@ -158,9 +166,16 @@ def test_canary_deployment_flow():
             logger.info("   Canary directory removed")
 
         # Verify champion models exist
-        expected_files = ["xgboost_model.pkl", "random_forest_model.pkl", "nn_model.pth", "isolation_forest_model.pkl"]
+        expected_files = [
+            "xgboost_model.pkl",
+            "random_forest_model.pkl",
+            "nn_model.pth",
+            "isolation_forest_model.pkl",
+        ]
         actual_files = [f.name for f in champion_files]
-        assert set(expected_files) == set(actual_files), f"Champion models incorrect: {actual_files}"
+        assert set(expected_files) == set(
+            actual_files
+        ), f"Champion models incorrect: {actual_files}"
 
         logger.info("🎉 Canary deployment flow test completed successfully!")
         return True
@@ -179,6 +194,7 @@ def main():
     except Exception as e:
         logger.error(f"❌ Test failed with error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

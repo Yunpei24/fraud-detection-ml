@@ -1,9 +1,14 @@
 # training/tests/unit/models/test_validation.py
-import numpy as np
-from unittest.mock import Mock
-import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'src')))
+import sys
+from unittest.mock import Mock
+
+import numpy as np
+
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "src"))
+)
+
 
 def test_hard_vote_majority():
     # Mock the hard_vote function
@@ -15,6 +20,7 @@ def test_hard_vote_majority():
     c = np.array([1, 1, 1, 0])
     voted = hard_vote([a, b, c])
     assert np.array_equal(voted, np.array([1, 1, 1, 0]))
+
 
 def test_threshold_tuning_returns_threshold():
     # Mock the threshold_tuning function

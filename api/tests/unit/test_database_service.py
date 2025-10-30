@@ -2,17 +2,15 @@
 Unit tests for Database Service
 Tests database connections, queries, transactions, and error handling
 """
-import pytest
-import pandas as pd
-from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock, Mock, patch
 
-from src.services.database_service import (
-    DatabaseService,
-    DatabaseConnectionError,
-    QueryExecutionError,
-    TransactionError
-)
+import pandas as pd
+import pytest
+from src.services.database_service import (DatabaseConnectionError,
+                                           DatabaseService,
+                                           QueryExecutionError,
+                                           TransactionError)
 
 
 @pytest.mark.unit
@@ -22,31 +20,31 @@ class TestDatabaseService:
     def test_initialization(self, test_db_settings):
         """Test database service initialization."""
         service = DatabaseService(test_db_settings)
-        
+
         assert service.settings == test_db_settings
         assert service.connection_pool is None
         assert service.connection_string is not None
 
-    @patch('src.services.database_service.psycopg2.connect')
+    @patch("src.services.database_service.psycopg2.connect")
     def test_connect_success(self, mock_connect, test_db_settings):
         """Test successful database connection."""
         mock_connection = MagicMock()
         mock_connect.return_value = mock_connection
-        
+
         service = DatabaseService(test_db_settings)
-        
+
         connection = service.connect()
-        
+
         assert connection == mock_connection
         mock_connect.assert_called_once()
 
-    @patch('src.services.database_service.psycopg2.connect')
+    @patch("src.services.database_service.psycopg2.connect")
     def test_connect_failure(self, mock_connect, test_db_settings):
         """Test database connection failure."""
         mock_connect.side_effect = Exception("Connection failed")
-        
+
         service = DatabaseService(test_db_settings)
-        
+
         with pytest.raises(DatabaseConnectionError):
             service.connect()
 
@@ -55,41 +53,41 @@ class TestDatabaseService:
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager that returns mock_cursor
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         mock_cursor.fetchall.return_value = sample_query_result
-        mock_cursor.description = [('id',), ('amount',), ('is_fraud',)]
-        
+        mock_cursor.description = [("id",), ("amount",), ("is_fraud",)]
+
         service.connection_pool = mock_connection
-        
+
         result = service.execute_query("SELECT * FROM transactions")
-        
+
         assert isinstance(result, pd.DataFrame)
         assert len(result) == 2
-        assert 'id' in result.columns
-        assert 'amount' in result.columns
-        assert 'is_fraud' in result.columns
+        assert "id" in result.columns
+        assert "amount" in result.columns
+        assert "is_fraud" in result.columns
 
     def test_execute_query_no_results(self, test_db_settings):
         """Test query execution with no results."""
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         mock_cursor.fetchall.return_value = []
-        mock_cursor.description = [('id',), ('amount',)]
-        
+        mock_cursor.description = [("id",), ("amount",)]
+
         service.connection_pool = mock_connection
-        
+
         result = service.execute_query("SELECT * FROM transactions WHERE 1=0")
-        
+
         assert isinstance(result, pd.DataFrame)
         assert len(result) == 0
 
@@ -98,25 +96,23 @@ class TestDatabaseService:
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         mock_cursor.fetchall.return_value = sample_query_result
-        mock_cursor.description = [('id',), ('amount',), ('is_fraud',)]
-        
+        mock_cursor.description = [("id",), ("amount",), ("is_fraud",)]
+
         service.connection_pool = mock_connection
-        
+
         result = service.execute_query(
-            "SELECT * FROM transactions WHERE amount > %s",
-            params=(100.0,)
+            "SELECT * FROM transactions WHERE amount > %s", params=(100.0,)
         )
-        
+
         assert isinstance(result, pd.DataFrame)
         mock_cursor.execute.assert_called_with(
-            "SELECT * FROM transactions WHERE amount > %s",
-            (100.0,)
+            "SELECT * FROM transactions WHERE amount > %s", (100.0,)
         )
 
     def test_execute_query_error(self, test_db_settings):
@@ -124,15 +120,15 @@ class TestDatabaseService:
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         mock_cursor.execute.side_effect = Exception("Query failed")
-        
+
         service.connection_pool = mock_connection
-        
+
         with pytest.raises(QueryExecutionError):
             service.execute_query("SELECT * FROM invalid_table")
 
@@ -141,35 +137,37 @@ class TestDatabaseService:
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         mock_cursor.rowcount = 5  # Rows affected
-        
+
         service.connection_pool = mock_connection
-        
+
         result = service.execute_query("UPDATE transactions SET status = 'processed'")
-        
+
         assert result == 5  # Rows affected
 
-    def test_insert_transaction_success(self, test_db_settings, sample_transaction_data):
+    def test_insert_transaction_success(
+        self, test_db_settings, sample_transaction_data
+    ):
         """Test successful transaction insertion."""
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         mock_cursor.fetchone.return_value = (123,)  # Returned transaction ID
-        
+
         service.connection_pool = mock_connection
-        
+
         transaction_id = service.insert_transaction(sample_transaction_data)
-        
+
         assert transaction_id == 123
         assert mock_cursor.execute.called
 
@@ -178,44 +176,46 @@ class TestDatabaseService:
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         mock_cursor.execute.side_effect = Exception("Insert failed")
-        
+
         service.connection_pool = mock_connection
-        
+
         with pytest.raises(TransactionError):
             service.insert_transaction(sample_transaction_data)
 
-    def test_bulk_insert_transactions(self, test_db_settings, sample_transactions_batch):
+    def test_bulk_insert_transactions(
+        self, test_db_settings, sample_transactions_batch
+    ):
         """Test bulk transaction insertion."""
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         mock_cursor.rowcount = 3  # Rows inserted
-        
+
         service.connection_pool = mock_connection
-        
+
         result = service.bulk_insert_transactions(sample_transactions_batch)
-        
+
         assert result == 3
         assert mock_cursor.executemany.called
 
     def test_bulk_insert_empty_batch(self, test_db_settings):
         """Test bulk insert with empty batch."""
         service = DatabaseService(test_db_settings)
-        
+
         # For empty batch, should return 0 without connecting
         result = service.bulk_insert_transactions([])
-        
+
         assert result == 0
 
     def test_get_transaction_by_id(self, test_db_settings, sample_query_result):
@@ -223,38 +223,38 @@ class TestDatabaseService:
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         mock_cursor.fetchall.return_value = [sample_query_result[0]]
-        mock_cursor.description = [('id',), ('amount',), ('is_fraud',)]
-        
+        mock_cursor.description = [("id",), ("amount",), ("is_fraud",)]
+
         service.connection_pool = mock_connection
-        
+
         result = service.get_transaction_by_id(123)
-        
+
         assert isinstance(result, pd.Series)
-        assert result['id'] == sample_query_result[0][0]
+        assert result["id"] == sample_query_result[0][0]
 
     def test_get_transaction_not_found(self, test_db_settings):
         """Test retrieving non-existent transaction."""
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         mock_cursor.fetchall.return_value = []
-        mock_cursor.description = [('id',), ('amount',), ('is_fraud',)]
-        
+        mock_cursor.description = [("id",), ("amount",), ("is_fraud",)]
+
         service.connection_pool = mock_connection
-        
+
         result = service.get_transaction_by_id(999)
-        
+
         assert result is None
 
     def test_update_transaction_status(self, test_db_settings):
@@ -262,17 +262,17 @@ class TestDatabaseService:
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         mock_cursor.rowcount = 1
-        
+
         service.connection_pool = mock_connection
-        
+
         result = service.update_transaction_status(123, "processed")
-        
+
         assert result is True
         assert mock_cursor.execute.called
 
@@ -281,17 +281,17 @@ class TestDatabaseService:
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         mock_cursor.rowcount = 0
-        
+
         service.connection_pool = mock_connection
-        
+
         result = service.update_transaction_status(999, "processed")
-        
+
         assert result is False
 
     def test_get_recent_transactions(self, test_db_settings, sample_query_result):
@@ -299,18 +299,18 @@ class TestDatabaseService:
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         mock_cursor.fetchall.return_value = sample_query_result
-        mock_cursor.description = [('id',), ('amount',), ('is_fraud',)]
-        
+        mock_cursor.description = [("id",), ("amount",), ("is_fraud",)]
+
         service.connection_pool = mock_connection
-        
+
         result = service.get_recent_transactions(limit=10)
-        
+
         assert isinstance(result, pd.DataFrame)
         assert len(result) == 2
 
@@ -319,39 +319,48 @@ class TestDatabaseService:
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         mock_cursor.fetchall.return_value = [
-            (1000, 50, 0.05, 250.0, 1500.0)  # total, fraud_count, rate, avg_amount, max_amount
+            (
+                1000,
+                50,
+                0.05,
+                250.0,
+                1500.0,
+            )  # total, fraud_count, rate, avg_amount, max_amount
         ]
         mock_cursor.description = [
-            ('total_transactions',), ('fraud_count',), ('fraud_rate',),
-            ('avg_fraud_amount',), ('max_fraud_amount',)
+            ("total_transactions",),
+            ("fraud_count",),
+            ("fraud_rate",),
+            ("avg_fraud_amount",),
+            ("max_fraud_amount",),
         ]
-        
+
         service.connection_pool = mock_connection
-        
+
         result = service.get_fraud_statistics(hours=24)
-        
+
         assert isinstance(result, dict)
-        assert 'total_transactions' in result
-        assert 'fraud_count' in result
-        assert 'fraud_rate' in result
-        assert result['fraud_rate'] == 0.05
+        assert "total_transactions" in result
+        assert "fraud_count" in result
+        assert "fraud_rate" in result
+        assert result["fraud_rate"] == 0.05
 
     def test_transaction_context_manager(self, test_db_settings):
         """Test transaction context manager."""
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
-        
+
         service.connection_pool = mock_connection
-        
+
         with service.transaction() as conn:
             assert conn == mock_connection
-        
+
         # Should commit on success
         mock_connection.commit.assert_called_once()
 
@@ -359,13 +368,13 @@ class TestDatabaseService:
         """Test transaction rollback on exception."""
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
-        
+
         service.connection_pool = mock_connection
-        
+
         with pytest.raises(Exception):
             with service.transaction() as conn:
                 raise Exception("Test error")
-        
+
         # Should rollback on error
         mock_connection.rollback.assert_called_once()
         mock_connection.commit.assert_not_called()
@@ -373,18 +382,18 @@ class TestDatabaseService:
     def test_connection_pool_management(self, test_db_settings):
         """Test connection pool management."""
         service = DatabaseService(test_db_settings)
-        
+
         # Initially no pool
         assert service.connection_pool is None
-        
+
         # Get connection creates pool
-        with patch('src.services.database_service.psycopg2.connect') as mock_connect:
+        with patch("src.services.database_service.psycopg2.connect") as mock_connect:
             mock_connection = Mock()
             mock_connect.return_value = mock_connection
-            
+
             conn1 = service.connect()
             conn2 = service.connect()
-            
+
             # Should reuse connection
             assert conn1 == mock_connection
             assert conn2 == mock_connection
@@ -392,45 +401,45 @@ class TestDatabaseService:
     def test_health_check_healthy(self, test_db_settings):
         """Test database health check when healthy."""
         service = DatabaseService(test_db_settings)
-        
-        with patch.object(service, 'connect') as mock_connect:
+
+        with patch.object(service, "connect") as mock_connect:
             mock_connection = Mock()
             mock_connect.return_value.__enter__.return_value = mock_connection
-            
+
             health = service.health_check()
-            
-            assert health['status'] == 'healthy'
-            assert health['connection'] == 'ok'
+
+            assert health["status"] == "healthy"
+            assert health["connection"] == "ok"
 
     def test_health_check_unhealthy(self, test_db_settings):
         """Test database health check when unhealthy."""
         service = DatabaseService(test_db_settings)
-        
-        with patch.object(service, 'connect') as mock_connect:
+
+        with patch.object(service, "connect") as mock_connect:
             mock_connect.side_effect = DatabaseConnectionError("Connection failed")
-            
+
             health = service.health_check()
-            
-            assert health['status'] == 'unhealthy'
-            assert 'connection_error' in health
+
+            assert health["status"] == "unhealthy"
+            assert "connection_error" in health
 
     def test_query_with_timeout(self, test_db_settings, sample_query_result):
         """Test query execution with timeout."""
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         mock_cursor.fetchall.return_value = sample_query_result
-        mock_cursor.description = [('id',), ('amount',), ('is_fraud',)]
-        
+        mock_cursor.description = [("id",), ("amount",), ("is_fraud",)]
+
         service.connection_pool = mock_connection
-        
+
         result = service.execute_query("SELECT * FROM transactions", timeout=30)
-        
+
         assert isinstance(result, pd.DataFrame)
         # In real implementation, timeout would be set on cursor/connection
 
@@ -439,72 +448,74 @@ class TestDatabaseService:
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         # Simulate large result set
         large_results = [[f"value_{i}", i, i % 2] for i in range(10000)]
         mock_cursor.fetchall.return_value = large_results
-        mock_cursor.description = [('id',), ('amount',), ('is_fraud',)]
-        
+        mock_cursor.description = [("id",), ("amount",), ("is_fraud",)]
+
         service.connection_pool = mock_connection
-        
+
         result = service.execute_query("SELECT * FROM large_table")
-        
+
         assert isinstance(result, pd.DataFrame)
         assert len(result) == 10000
 
-    @patch('src.services.database_service.logger')
-    def test_logging_on_query_execution(self, mock_logger, test_db_settings, sample_query_result):
+    @patch("src.services.database_service.logger")
+    def test_logging_on_query_execution(
+        self, mock_logger, test_db_settings, sample_query_result
+    ):
         """Test logging on query execution."""
         service = DatabaseService(test_db_settings)
         mock_connection = Mock()
         mock_cursor = Mock()
-        
+
         # Set up cursor as a context manager
         mock_connection.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
         mock_connection.cursor.return_value.__exit__ = Mock(return_value=None)
-        
+
         mock_cursor.fetchall.return_value = sample_query_result
-        mock_cursor.description = [('id',), ('amount',), ('is_fraud',)]
-        
+        mock_cursor.description = [("id",), ("amount",), ("is_fraud",)]
+
         service.connection_pool = mock_connection
-        
+
         service.execute_query("SELECT * FROM transactions")
-        
+
         assert mock_logger.debug.called
 
     def test_connection_string_construction(self, test_db_settings):
         """Test database connection string construction."""
         service = DatabaseService(test_db_settings)
-        
+
         expected_parts = [
             f"host={test_db_settings.db_host}",
             f"port={test_db_settings.db_port}",
             f"dbname={test_db_settings.db_name}",
             f"user={test_db_settings.db_user}",
-            f"password={test_db_settings.db_password}"
+            f"password={test_db_settings.db_password}",
         ]
-        
+
         for part in expected_parts:
             assert part in service.connection_string
 
-    @patch('src.services.database_service.logger')
+    @patch("src.services.database_service.logger")
     def test_logging_on_connection_error(self, mock_logger, test_db_settings):
         """Test logging on connection errors."""
         service = DatabaseService(test_db_settings)
-        
+
         # Mock psycopg2.connect to raise an exception
-        with patch('src.services.database_service.psycopg2.connect') as mock_connect:
+        with patch("src.services.database_service.psycopg2.connect") as mock_connect:
             mock_connect.side_effect = Exception("Connection failed")
-            
+
             try:
                 service.connect()
             except DatabaseConnectionError:
                 pass
-            
+
             assert mock_logger.error.called
 
 
@@ -512,9 +523,11 @@ class TestDatabaseService:
 # Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def test_db_settings():
     """Test database settings fixture."""
+
     # Create a mock settings object for tests
     class MockSettings:
         def __init__(self):
@@ -525,54 +538,51 @@ def test_db_settings():
             self.db_password = "fraud_pass"
             self.connection_pool_min = 1
             self.connection_pool_max = 10
-    
+
     return MockSettings()
 
 
 @pytest.fixture
 def sample_query_result():
     """Sample query result fixture."""
-    return [
-        (1, 100.50, 0),
-        (2, 250.75, 1)
-    ]
+    return [(1, 100.50, 0), (2, 250.75, 1)]
 
 
 @pytest.fixture
 def sample_transaction_data():
     """Sample transaction data fixture."""
     return {
-        'Time': 123456.789,
-        'V1': -1.3598071336738,
-        'V2': -0.0727811733098497,
-        'V3': 2.53634673796914,
-        'V4': 1.37815522427443,
-        'V5': -0.338320769942518,
-        'V6': 0.462387777762292,
-        'V7': 0.239598554061257,
-        'V8': 0.0986979012610507,
-        'V9': 0.363786969611213,
-        'V10': 0.0907941719789316,
-        'V11': -0.551599533260813,
-        'V12': -0.617800855762348,
-        'V13': -0.991389847235408,
-        'V14': -0.311169353699879,
-        'V15': 1.46817697209427,
-        'V16': -0.470400525259478,
-        'V17': 0.207971241929242,
-        'V18': 0.0257905801985591,
-        'V19': 0.403992960255733,
-        'V20': 0.251412098239705,
-        'V21': -0.018306777944153,
-        'V22': 0.277837575558899,
-        'V23': -0.110473910188767,
-        'V24': 0.0669280749146731,
-        'V25': 0.128539358273528,
-        'V26': -0.189114843888824,
-        'V27': 0.133558376740387,
-        'V28': -0.0210530534538215,
-        'amount': 149.62,
-        'Class': 0
+        "Time": 123456.789,
+        "V1": -1.3598071336738,
+        "V2": -0.0727811733098497,
+        "V3": 2.53634673796914,
+        "V4": 1.37815522427443,
+        "V5": -0.338320769942518,
+        "V6": 0.462387777762292,
+        "V7": 0.239598554061257,
+        "V8": 0.0986979012610507,
+        "V9": 0.363786969611213,
+        "V10": 0.0907941719789316,
+        "V11": -0.551599533260813,
+        "V12": -0.617800855762348,
+        "V13": -0.991389847235408,
+        "V14": -0.311169353699879,
+        "V15": 1.46817697209427,
+        "V16": -0.470400525259478,
+        "V17": 0.207971241929242,
+        "V18": 0.0257905801985591,
+        "V19": 0.403992960255733,
+        "V20": 0.251412098239705,
+        "V21": -0.018306777944153,
+        "V22": 0.277837575558899,
+        "V23": -0.110473910188767,
+        "V24": 0.0669280749146731,
+        "V25": 0.128539358273528,
+        "V26": -0.189114843888824,
+        "V27": 0.133558376740387,
+        "V28": -0.0210530534538215,
+        "amount": 149.62,
+        "Class": 0,
     }
 
 
@@ -581,102 +591,102 @@ def sample_transactions_batch():
     """Batch of sample transactions fixture."""
     return [
         {
-            'Time': 123456.789,
-            'V1': -1.3598071336738,
-            'V2': -0.0727811733098497,
-            'V3': 2.53634673796914,
-            'V4': 1.37815522427443,
-            'V5': -0.338320769942518,
-            'V6': 0.462387777762292,
-            'V7': 0.239598554061257,
-            'V8': 0.0986979012610507,
-            'V9': 0.363786969611213,
-            'V10': 0.0907941719789316,
-            'V11': -0.551599533260813,
-            'V12': -0.617800855762348,
-            'V13': -0.991389847235408,
-            'V14': -0.311169353699879,
-            'V15': 1.46817697209427,
-            'V16': -0.470400525259478,
-            'V17': 0.207971241929242,
-            'V18': 0.0257905801985591,
-            'V19': 0.403992960255733,
-            'V20': 0.251412098239705,
-            'V21': -0.018306777944153,
-            'V22': 0.277837575558899,
-            'V23': -0.110473910188767,
-            'V24': 0.0669280749146731,
-            'V25': 0.128539358273528,
-            'V26': -0.189114843888824,
-            'V27': 0.133558376740387,
-            'V28': -0.0210530534538215,
-            'amount': 149.62,
-            'Class': 0
+            "Time": 123456.789,
+            "V1": -1.3598071336738,
+            "V2": -0.0727811733098497,
+            "V3": 2.53634673796914,
+            "V4": 1.37815522427443,
+            "V5": -0.338320769942518,
+            "V6": 0.462387777762292,
+            "V7": 0.239598554061257,
+            "V8": 0.0986979012610507,
+            "V9": 0.363786969611213,
+            "V10": 0.0907941719789316,
+            "V11": -0.551599533260813,
+            "V12": -0.617800855762348,
+            "V13": -0.991389847235408,
+            "V14": -0.311169353699879,
+            "V15": 1.46817697209427,
+            "V16": -0.470400525259478,
+            "V17": 0.207971241929242,
+            "V18": 0.0257905801985591,
+            "V19": 0.403992960255733,
+            "V20": 0.251412098239705,
+            "V21": -0.018306777944153,
+            "V22": 0.277837575558899,
+            "V23": -0.110473910188767,
+            "V24": 0.0669280749146731,
+            "V25": 0.128539358273528,
+            "V26": -0.189114843888824,
+            "V27": 0.133558376740387,
+            "V28": -0.0210530534538215,
+            "amount": 149.62,
+            "Class": 0,
         },
         {
-            'Time': 123457.123,
-            'V1': 1.19185711131486,
-            'V2': 0.26615071205963,
-            'V3': 0.16648011335321,
-            'V4': 0.448154078460911,
-            'V5': 0.0600176492822243,
-            'V6': -0.0823608088155687,
-            'V7': -0.0788029833323113,
-            'V8': 0.0851016549148104,
-            'V9': -0.255425128109186,
-            'V10': -0.166974414004614,
-            'V11': 1.61272666105479,
-            'V12': 1.06523531137287,
-            'V13': 0.48909501589608,
-            'V14': -0.143772296441519,
-            'V15': 0.635558093258208,
-            'V16': 0.463917041022171,
-            'V17': -0.114804663102346,
-            'V18': -0.183361270123994,
-            'V19': -0.145783041325259,
-            'V20': -0.0690831352230203,
-            'V21': -0.225775248033138,
-            'V22': -0.638671952771851,
-            'V23': 0.101288021253234,
-            'V24': -0.339846475529127,
-            'V25': 0.167170404418143,
-            'V26': 0.125894532368176,
-            'V27': -0.00898309914322813,
-            'V28': 0.0147241697264928,
-            'amount': 2.69,
-            'Class': 1
+            "Time": 123457.123,
+            "V1": 1.19185711131486,
+            "V2": 0.26615071205963,
+            "V3": 0.16648011335321,
+            "V4": 0.448154078460911,
+            "V5": 0.0600176492822243,
+            "V6": -0.0823608088155687,
+            "V7": -0.0788029833323113,
+            "V8": 0.0851016549148104,
+            "V9": -0.255425128109186,
+            "V10": -0.166974414004614,
+            "V11": 1.61272666105479,
+            "V12": 1.06523531137287,
+            "V13": 0.48909501589608,
+            "V14": -0.143772296441519,
+            "V15": 0.635558093258208,
+            "V16": 0.463917041022171,
+            "V17": -0.114804663102346,
+            "V18": -0.183361270123994,
+            "V19": -0.145783041325259,
+            "V20": -0.0690831352230203,
+            "V21": -0.225775248033138,
+            "V22": -0.638671952771851,
+            "V23": 0.101288021253234,
+            "V24": -0.339846475529127,
+            "V25": 0.167170404418143,
+            "V26": 0.125894532368176,
+            "V27": -0.00898309914322813,
+            "V28": 0.0147241697264928,
+            "amount": 2.69,
+            "Class": 1,
         },
         {
-            'Time': 123458.456,
-            'V1': -1.35835406159823,
-            'V2': -1.34016307473609,
-            'V3': 1.77320934263119,
-            'V4': 0.379779593034328,
-            'V5': -0.503198133318973,
-            'V6': 1.80049938079263,
-            'V7': 0.791460956450422,
-            'V8': 0.247675786588991,
-            'V9': -1.51465432260583,
-            'V10': 0.207642865216696,
-            'V11': 0.624501459424895,
-            'V12': 0.066083685268831,
-            'V13': 0.717292731410831,
-            'V14': -0.165945922763554,
-            'V15': 2.34586494901581,
-            'V16': -2.89008319444231,
-            'V17': 1.10996937869599,
-            'V18': -0.121359313195888,
-            'V19': -2.26185709530414,
-            'V20': 0.524979725224404,
-            'V21': 0.247998153469754,
-            'V22': 0.771679401917229,
-            'V23': 0.909412262347719,
-            'V24': -0.689280956490685,
-            'V25': -0.327641833735251,
-            'V26': -0.139096571514147,
-            'V27': -0.0553527940384261,
-            'V28': -0.0597518405929204,
-            'amount': 378.66,
-            'Class': 0
-        }
+            "Time": 123458.456,
+            "V1": -1.35835406159823,
+            "V2": -1.34016307473609,
+            "V3": 1.77320934263119,
+            "V4": 0.379779593034328,
+            "V5": -0.503198133318973,
+            "V6": 1.80049938079263,
+            "V7": 0.791460956450422,
+            "V8": 0.247675786588991,
+            "V9": -1.51465432260583,
+            "V10": 0.207642865216696,
+            "V11": 0.624501459424895,
+            "V12": 0.066083685268831,
+            "V13": 0.717292731410831,
+            "V14": -0.165945922763554,
+            "V15": 2.34586494901581,
+            "V16": -2.89008319444231,
+            "V17": 1.10996937869599,
+            "V18": -0.121359313195888,
+            "V19": -2.26185709530414,
+            "V20": 0.524979725224404,
+            "V21": 0.247998153469754,
+            "V22": 0.771679401917229,
+            "V23": 0.909412262347719,
+            "V24": -0.689280956490685,
+            "V25": -0.327641833735251,
+            "V26": -0.139096571514147,
+            "V27": -0.0553527940384261,
+            "V28": -0.0597518405929204,
+            "amount": 378.66,
+            "Class": 0,
+        },
     ]

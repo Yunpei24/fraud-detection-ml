@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from typing import Dict, Iterable, List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
-from sklearn.feature_selection import mutual_info_classif, VarianceThreshold
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.feature_selection import VarianceThreshold, mutual_info_classif
 from sklearn.linear_model import LogisticRegression
 
 
@@ -58,24 +59,26 @@ def select_k_best_mutual_info(
 ) -> Tuple[pd.DataFrame, List[str]]:
     """
     Select top k features based on mutual information with target.
-    
+
     Args:
         X: Input features DataFrame
         target: Target variable (binary labels)
         k: Number of top features to select
         n_neighbors: Number of neighbors for MI calculation
         random_state: Random seed
-    
+
     Returns:
         Tuple of (filtered DataFrame, list of selected feature names)
     """
     y = pd.Series(target, name="target")
-    scores = mutual_information_score(X, y, n_neighbors=n_neighbors, random_state=random_state)
-    
+    scores = mutual_information_score(
+        X, y, n_neighbors=n_neighbors, random_state=random_state
+    )
+
     # Select top k features
     top_k = min(k, len(scores))
     selected_features = scores.head(top_k).index.tolist()
-    
+
     X_selected = X[selected_features]
     return X_selected, selected_features
 
@@ -180,7 +183,9 @@ def get_important_features(
         )
         lr.fit(X.values, y.values.astype(int))
         coef = np.abs(lr.coef_).ravel()
-        imp = pd.Series(coef, index=X.columns, name="importance").sort_values(ascending=False)
+        imp = pd.Series(coef, index=X.columns, name="importance").sort_values(
+            ascending=False
+        )
     else:
         raise ValueError(f"Unsupported backend: {backend}")
 

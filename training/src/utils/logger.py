@@ -49,5 +49,7 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
 
     logger.setLevel(level)
     logger.propagate = False
-    logger.addHandler(_make_stream_handler(getattr(logging, level, logging.INFO), json_logs))
+    logger.addHandler(
+        _make_stream_handler(getattr(logging, level, logging.INFO), json_logs)
+    )
     return logger

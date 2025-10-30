@@ -6,35 +6,36 @@ Uses PostgreSQL hooks for database queries
 Schedule: Daily at 1 AM
 Refactored to remove dependencies on obsolete helpers/module_loader
 """
+import os
 from datetime import datetime, timedelta
-from airflow import DAG
+
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
-import os
 
+from airflow import DAG
 # Import centralized configuration
-from config.constants import TABLE_NAMES, SCHEDULES, ALERT_CONFIG
+from config.constants import ALERT_CONFIG, SCHEDULES, TABLE_NAMES
 
 # Configuration from environment
-ALERT_EMAIL = os.getenv('ALERT_EMAIL', ALERT_CONFIG['DEFAULT_EMAIL'])
-MAX_FALSE_NEGATIVE_RATE = float(os.getenv('MAX_FALSE_NEGATIVE_RATE', '0.05'))
+ALERT_EMAIL = os.getenv("ALERT_EMAIL", ALERT_CONFIG["DEFAULT_EMAIL"])
+MAX_FALSE_NEGATIVE_RATE = float(os.getenv("MAX_FALSE_NEGATIVE_RATE", "0.05"))
 
 default_args = {
-    'owner': 'ml-team',
-    'depends_on_past': False,
-    'email': [ALERT_EMAIL],
-    'email_on_failure': True,
-    'retries': 1,
-    'retry_delay': timedelta(minutes=5)
+    "owner": "ml-team",
+    "depends_on_past": False,
+    "email": [ALERT_EMAIL],
+    "email_on_failure": True,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5),
 }
 
 
 def collect_analyst_labels(**context):
     """Collect labels confirmed by analysts via DatabaseService"""
     from plugins.hooks.postgres_hook import FraudPostgresHook
-    
+
     hook = FraudPostgresHook()
-    
+
     # Retrieve predictions with analyst labels (last 24 hours)
     query = f"""
         INSERT INTO {TABLE_NAMES['FEEDBACK_LABELS']} (transaction_id, predicted_label, analyst_label, confidence, feedback_quality)
@@ -57,25 +58,25 @@ def collect_analyst_labels(**context):
             WHERE f.transaction_id = p.transaction_id
         )
     """
-    
+
     rows_inserted = hook.execute_query(query)
-    
+
     return {
-        'status': 'success',
-        'labels_collected': rows_inserted,
-        'timestamp': datetime.now().isoformat()
+        "status": "success",
+        "labels_collected": rows_inserted,
+        "timestamp": datetime.now().isoformat(),
     }
 
 
 def analyze_feedback_quality(**context):
     """Analyze feedback quality via PostgresHook"""
     from plugins.hooks.postgres_hook import FraudPostgresHook
-    
-    ti = context['task_instance']
-    collection_result = ti.xcom_pull(task_ids='collect_analyst_labels')
-    
+
+    ti = context["task_instance"]
+    collection_result = ti.xcom_pull(task_ids="collect_analyst_labels")
+
     hook = FraudPostgresHook()
-    
+
     # Calculate feedback metrics
     query = f"""
         SELECT 
@@ -87,68 +88,64 @@ def analyze_feedback_quality(**context):
         FROM {TABLE_NAMES['FEEDBACK_LABELS']}
         WHERE created_at >= NOW() - INTERVAL '7 days'
     """
-    
+
     result = hook.fetch_one(query)
-    
+
     total = result[0] or 1
     metrics = {
-        'total_feedback': result[0] or 0,
-        'correct': result[1] or 0,
-        'false_positives': result[2] or 0,
-        'false_negatives': result[3] or 0,
-        'avg_confidence': float(result[4] or 0),
-        'accuracy': (result[1] or 0) / total,
-        'fp_rate': (result[2] or 0) / total,
-        'fn_rate': (result[3] or 0) / total
+        "total_feedback": result[0] or 0,
+        "correct": result[1] or 0,
+        "false_positives": result[2] or 0,
+        "false_negatives": result[3] or 0,
+        "avg_confidence": float(result[4] or 0),
+        "accuracy": (result[1] or 0) / total,
+        "fp_rate": (result[2] or 0) / total,
+        "fn_rate": (result[3] or 0) / total,
     }
-    
+
     return metrics
 
 
 def check_retraining_needed(**context):
     """Check if retraining is needed based on feedback"""
-    ti = context['task_instance']
-    metrics = ti.xcom_pull(task_ids='analyze_feedback_quality')
-    
+    ti = context["task_instance"]
+    metrics = ti.xcom_pull(task_ids="analyze_feedback_quality")
+
     # Use thresholds from environment
     min_accuracy = 0.90
     max_fn_rate = MAX_FALSE_NEGATIVE_RATE
-    
+
     needs_retraining = (
-        metrics['accuracy'] < min_accuracy or
-        metrics['fn_rate'] > max_fn_rate
+        metrics["accuracy"] < min_accuracy or metrics["fn_rate"] > max_fn_rate
     )
-    
+
     if needs_retraining:
         reason = f"Accuracy {metrics['accuracy']:.2%} < {min_accuracy:.2%} or FN rate {metrics['fn_rate']:.2%} > {max_fn_rate:.2%}"
-        
-        return {
-            'needs_retraining': True,
-            'reason': reason,
-            'metrics': metrics
-        }
-    
+
+        return {"needs_retraining": True, "reason": reason, "metrics": metrics}
+
     return {
-        'needs_retraining': False,
-        'reason': 'Performance acceptable',
-        'metrics': metrics
+        "needs_retraining": False,
+        "reason": "Performance acceptable",
+        "metrics": metrics,
     }
 
 
 def prepare_feedback_dataset(**context):
     """Prepare dataset for retraining using FraudPostgresHook"""
     import pandas as pd
-    
-    ti = context['task_instance']
-    check_result = ti.xcom_pull(task_ids='check_retraining_needed')
-    
-    if not check_result['needs_retraining']:
-        return {'status': 'skipped', 'reason': 'No retraining needed'}
-    
+
+    ti = context["task_instance"]
+    check_result = ti.xcom_pull(task_ids="check_retraining_needed")
+
+    if not check_result["needs_retraining"]:
+        return {"status": "skipped", "reason": "No retraining needed"}
+
     # Use hook instead of direct SQLAlchemy
     from plugins.hooks.postgres_hook import FraudPostgresHook
+
     hook = FraudPostgresHook()
-    
+
     # Load transactions with feedback
     query = f"""
         SELECT 
@@ -164,35 +161,45 @@ def prepare_feedback_dataset(**context):
         LEFT JOIN {TABLE_NAMES['MERCHANT_FEATURES']} mf ON t.merchant_id = mf.merchant_id
         WHERE f.created_at >= NOW() - INTERVAL '30 days'
     """
-    
+
     results = hook.fetch_all(query)
-    
+
     # Convert to DataFrame for parquet export
-    columns = ['transaction_id', 'customer_id', 'merchant_id', 'amount', 'timestamp', 
-               'is_fraud', 'analyst_label', 'feedback_quality', 'num_purchases_24h', 
-               'avg_transaction_amount', 'merchant_risk_score']
+    columns = [
+        "transaction_id",
+        "customer_id",
+        "merchant_id",
+        "amount",
+        "timestamp",
+        "is_fraud",
+        "analyst_label",
+        "feedback_quality",
+        "num_purchases_24h",
+        "avg_transaction_amount",
+        "merchant_risk_score",
+    ]
     df = pd.DataFrame(results, columns=columns)
-    
+
     # Save for training
     output_path = f"/tmp/feedback_dataset_{context['ds_nodash']}.parquet"
     df.to_parquet(output_path, index=False)
-    
+
     return {
-        'status': 'prepared',
-        'dataset_path': output_path,
-        'num_samples': len(df),
-        'fraud_rate': float(df['analyst_label'].mean())
+        "status": "prepared",
+        "dataset_path": output_path,
+        "num_samples": len(df),
+        "fraud_rate": float(df["analyst_label"].mean()),
     }
 
 
 def generate_feedback_report(**context):
     """Generate feedback report"""
-    ti = context['task_instance']
-    
-    collection_result = ti.xcom_pull(task_ids='collect_analyst_labels')
-    quality_metrics = ti.xcom_pull(task_ids='analyze_feedback_quality')
-    retraining_check = ti.xcom_pull(task_ids='check_retraining_needed')
-    
+    ti = context["task_instance"]
+
+    collection_result = ti.xcom_pull(task_ids="collect_analyst_labels")
+    quality_metrics = ti.xcom_pull(task_ids="analyze_feedback_quality")
+    retraining_check = ti.xcom_pull(task_ids="check_retraining_needed")
+
     report = f"""
     === Feedback Collection Report ===
     Date: {context['ds']}
@@ -211,70 +218,68 @@ def generate_feedback_report(**context):
     - Needed: {retraining_check['needs_retraining']}
     - Reason: {retraining_check['reason']}
     """
-    
+
     print(report)
-    
+
     # Save to database using FraudPostgresHook
     from plugins.hooks.postgres_hook import FraudPostgresHook
+
     hook = FraudPostgresHook()
-    
+
     query = f"""
         INSERT INTO {TABLE_NAMES['PIPELINE_EXECUTION_LOG']} 
         (pipeline_name, status, execution_time_seconds, records_processed, error_message)
         VALUES (%s, %s, %s, %s, %s)
     """
-    
-    hook.execute_query(query, (
-        '03_feedback_collection',
-        'SUCCESS',
-        0,  # To be calculated
-        collection_result['labels_collected'],
-        None
-    ))
-    
-    return {'report': report}
+
+    hook.execute_query(
+        query,
+        (
+            "03_feedback_collection",
+            "SUCCESS",
+            0,  # To be calculated
+            collection_result["labels_collected"],
+            None,
+        ),
+    )
+
+    return {"report": report}
 
 
 # Define DAG
 with DAG(
-    '03_feedback_collection',
+    "03_feedback_collection",
     default_args=default_args,
-    description='Collect and analyze analyst feedback',
-    schedule_interval=SCHEDULES['FEEDBACK_COLLECTION'],  # Daily at 4 AM
+    description="Collect and analyze analyst feedback",
+    schedule_interval=SCHEDULES["FEEDBACK_COLLECTION"],  # Daily at 4 AM
     start_date=days_ago(1),
     catchup=False,
-    tags=['feedback', 'quality', 'monitoring']
+    tags=["feedback", "quality", "monitoring"],
 ) as dag:
-    
     # Task 1: Collect labels
     collect = PythonOperator(
-        task_id='collect_analyst_labels',
-        python_callable=collect_analyst_labels
+        task_id="collect_analyst_labels", python_callable=collect_analyst_labels
     )
-    
+
     # Task 2: Analyze quality
     analyze = PythonOperator(
-        task_id='analyze_feedback_quality',
-        python_callable=analyze_feedback_quality
+        task_id="analyze_feedback_quality", python_callable=analyze_feedback_quality
     )
-    
+
     # Task 3: Check if retraining needed
     check_retrain = PythonOperator(
-        task_id='check_retraining_needed',
-        python_callable=check_retraining_needed
+        task_id="check_retraining_needed", python_callable=check_retraining_needed
     )
-    
+
     # Task 4: Prepare dataset
     prepare = PythonOperator(
-        task_id='prepare_feedback_dataset',
-        python_callable=prepare_feedback_dataset
+        task_id="prepare_feedback_dataset", python_callable=prepare_feedback_dataset
     )
-    
+
     # Task 5: Generate report
     report = PythonOperator(
-        task_id='generate_feedback_report',
-        python_callable=generate_feedback_report
+        task_id="generate_feedback_report", python_callable=generate_feedback_report
     )
-    
+
     # Dependencies
     collect >> analyze >> check_retrain >> prepare >> report
