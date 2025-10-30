@@ -23,9 +23,9 @@ class AzureSettings:
 
     connection_string: str = settings.azure.storage_connection_string
     event_hub_name: str = settings.azure.event_hub_name
-    event_hub_connection_string: Optional[
-        str
-    ] = settings.azure.event_hub_connection_string
+    event_hub_connection_string: Optional[str] = (
+        settings.azure.event_hub_connection_string
+    )
     storage_account: str = settings.azure.storage_account_name
     storage_key: str = settings.azure.storage_account_key
     data_lake_path: str = settings.azure.data_lake_path
