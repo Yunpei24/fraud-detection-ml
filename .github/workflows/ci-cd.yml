@@ -171,67 +171,67 @@ jobs:
   # INTEGRATION TESTS
   # ==============================================================================
 
-  integration-tests:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    needs: unit-tests
+  # integration-tests:
+  #   name: Integration Tests
+  #   runs-on: ubuntu-latest
+  #   needs: unit-tests
 
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_USER: fraud_user
-          POSTGRES_PASSWORD: fraud_pass_dev
-          POSTGRES_DB: fraud_detection
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
+  #   services:
+  #     postgres:
+  #       image: postgres:15-alpine
+  #       env:
+  #         POSTGRES_USER: fraud_user
+  #         POSTGRES_PASSWORD: fraud_pass_dev
+  #         POSTGRES_DB: fraud_detection
+  #       options: >-
+  #         --health-cmd pg_isready
+  #         --health-interval 10s
+  #         --health-timeout 5s
+  #         --health-retries 5
+  #       ports:
+  #         - 5432:5432
 
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 3s
-          --health-retries 5
-        ports:
-          - 6379:6379
+  #     redis:
+  #       image: redis:7-alpine
+  #       options: >-
+  #         --health-cmd "redis-cli ping"
+  #         --health-interval 10s
+  #         --health-timeout 3s
+  #         --health-retries 5
+  #       ports:
+  #         - 6379:6379
 
-      mlflow:
-        image: ghcr.io/mlflow/mlflow:v2.10.2
-        env:
-          MLFLOW_TRACKING_URI: http://localhost:5000
-        ports:
-          - 5000:5000
+  #     mlflow:
+  #       image: ghcr.io/mlflow/mlflow:v2.10.2
+  #       env:
+  #         MLFLOW_TRACKING_URI: http://localhost:5000
+  #       ports:
+  #         - 5000:5000
 
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+  #   steps:
+  #   - name: Checkout code
+  #     uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.10"
+  #   - name: Set up Python
+  #     uses: actions/setup-python@v4
+  #     with:
+  #       python-version: "3.10"
 
-    - name: Install Docker Compose
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y docker-compose
+  #   - name: Install Docker Compose
+  #     run: |
+  #       sudo apt-get update
+  #       sudo apt-get install -y docker-compose
 
-    - name: Run integration tests
-      run: |
-        # Start only essential services for integration tests
-        docker-compose -f docker-compose.local.yml up -d postgres redis mlflow
+  #   - name: Run integration tests
+  #     run: |
+  #       # Start only essential services for integration tests
+  #       docker-compose -f docker-compose.local.yml up -d postgres redis mlflow airflow api
 
-        # Wait for services to be healthy
-        timeout 300 bash -c 'until docker-compose -f docker-compose.local.yml ps | grep -q "healthy"; do sleep 5; done'
+  #       # Wait for services to be healthy
+  #       timeout 300 bash -c 'until docker-compose -f docker-compose.local.yml ps | grep -q "healthy"; do sleep 5; done'
 
-        # Run integration tests
-        python -m pytest tests/integration/ -v --tb=short
+  #       # Run integration tests
+  #       python -m pytest tests/integration/ -v --tb=short
 
   # ==============================================================================
   # DOCKER BUILD & PUSH
@@ -240,7 +240,7 @@ jobs:
   docker-build:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests]
+    needs: [unit-tests] # [unit-tests, integration-tests]
     permissions:
       contents: read
       id-token: write

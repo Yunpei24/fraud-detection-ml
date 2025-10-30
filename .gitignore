@@ -215,3 +215,4 @@ README_DOCKER_COMPOSE.md
 tests/integration
 tests/e2e
 tests/airflow
+creditcard.csv
