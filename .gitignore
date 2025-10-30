@@ -217,3 +217,4 @@ tests/integration
 tests/e2e
 tests/airflow
 creditcard.csv
+docker-compose.local.yml

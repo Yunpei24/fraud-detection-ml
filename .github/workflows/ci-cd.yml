@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: ${{ secrets.REGISTRY }}
+  REGISTRY: ${{ secrets.DOCKERHUB_USERNAME }}
 
 jobs:
   # ==============================================================================
@@ -275,13 +275,12 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Log in to Azure Container Registry
+    - name: Log in to Docker Hub
       if: github.event_name != 'pull_request'
-      uses: azure/docker-login@v1
+      uses: docker/login-action@v3
       with:
-        login-server: ${{ env.REGISTRY }}
-        username: ${{ secrets.AZURE_CLIENT_ID }}
-        password: ${{ secrets.AZURE_CLIENT_SECRET }}
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     - name: Extract metadata
       id: meta
@@ -318,211 +317,211 @@ jobs:
   # DEPLOYMENT TO STAGING (Azure Container Instances)
   # ==============================================================================
 
-  deploy-staging:
-    name: Deploy to Staging
-    runs-on: ubuntu-latest
-    needs: docker-build
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
-    environment: staging
+  # deploy-staging:
+  #   name: Deploy to Staging
+  #   runs-on: ubuntu-latest
+  #   needs: docker-build
+  #   if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+  #   environment: staging
 
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+  #   steps:
+  #   - name: Checkout code
+  #     uses: actions/checkout@v4
 
-    - name: Azure Login
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+  #   - name: Azure Login
+  #     uses: azure/login@v1
+  #     with:
+  #       creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: Deploy to Azure Container Instances (Staging)
-      uses: azure/aci-deploy@v1
-      with:
-        resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
-        dns-name-label: fraud-detection-staging
-        image: ${{ env.REGISTRY }}/api:develop
-        name: fraud-detection-api-staging
-        location: ${{ secrets.AZURE_LOCATION }}
-        ports: 8000
-        environment-variables: |
-          ENVIRONMENT=staging
-          POSTGRES_HOST=${{ secrets.DB_HOST_STAGING }}
-          POSTGRES_PORT=5432
-          POSTGRES_DB=fraud_detection
-          POSTGRES_USER=${{ secrets.DB_USER_STAGING }}
-          POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD_STAGING }}
-          REDIS_HOST=${{ secrets.REDIS_HOST_STAGING }}
-          REDIS_PORT=6379
-          MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI_STAGING }}
-          AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+  #   - name: Deploy to Azure Container Instances (Staging)
+  #     uses: azure/aci-deploy@v1
+  #     with:
+  #       resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  #       dns-name-label: fraud-detection-staging
+  #       image: ${{ env.REGISTRY }}/api:develop
+  #       name: fraud-detection-api-staging
+  #       location: ${{ secrets.AZURE_LOCATION }}
+  #       ports: 8000
+  #       environment-variables: |
+  #         ENVIRONMENT=staging
+  #         POSTGRES_HOST=${{ secrets.DB_HOST_STAGING }}
+  #         POSTGRES_PORT=5432
+  #         POSTGRES_DB=fraud_detection
+  #         POSTGRES_USER=${{ secrets.DB_USER_STAGING }}
+  #         POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD_STAGING }}
+  #         REDIS_HOST=${{ secrets.REDIS_HOST_STAGING }}
+  #         REDIS_PORT=6379
+  #         MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI_STAGING }}
+  #         AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
 
-    - name: Run health checks
-      run: |
-        # Wait for service to be healthy
-        timeout 600 bash -c '
-        while true; do
-          if curl -f -s http://fraud-detection-staging.${{ secrets.AZURE_LOCATION }}.azurecontainer.io:8000/health > /dev/null; then
-            echo "Service is healthy"
-            break
-          fi
-          echo "Waiting for service to be healthy..."
-          sleep 30
-        done
-        '
+  #   - name: Run health checks
+  #     run: |
+  #       # Wait for service to be healthy
+  #       timeout 600 bash -c '
+  #       while true; do
+  #         if curl -f -s http://fraud-detection-staging.${{ secrets.AZURE_LOCATION }}.azurecontainer.io:8000/health > /dev/null; then
+  #           echo "Service is healthy"
+  #           break
+  #         fi
+  #         echo "Waiting for service to be healthy..."
+  #         sleep 30
+  #       done
+  #       '
 
-    - name: Run smoke tests
-      run: |
-        # Run basic smoke tests against staging
-        python -m pytest tests/smoke/ -v --tb=short \
-          --api-url=http://fraud-detection-staging.${{ secrets.AZURE_LOCATION }}.azurecontainer.io:8000
+  #   - name: Run smoke tests
+  #     run: |
+  #       # Run basic smoke tests against staging
+  #       python -m pytest tests/smoke/ -v --tb=short \
+  #         --api-url=http://fraud-detection-staging.${{ secrets.AZURE_LOCATION }}.azurecontainer.io:8000
 
   # ==============================================================================
   # DEPLOYMENT TO PRODUCTION (Azure Container Instances)
   # ==============================================================================
 
-  deploy-production:
-    name: Deploy to Production
-    runs-on: ubuntu-latest
-    needs: deploy-staging
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    environment: production
+  # deploy-production:
+  #   name: Deploy to Production
+  #   runs-on: ubuntu-latest
+  #   needs: deploy-staging
+  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  #   environment: production
 
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+  #   steps:
+  #   - name: Checkout code
+  #     uses: actions/checkout@v4
 
-    - name: Azure Login
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+  #   - name: Azure Login
+  #     uses: azure/login@v1
+  #     with:
+  #       creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: Deploy API to Azure Container Instances (Production)
-      uses: azure/aci-deploy@v1
-      with:
-        resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
-        dns-name-label: fraud-detection-prod
-        image: ${{ env.REGISTRY }}/api:latest
-        name: fraud-detection-api-prod
-        location: ${{ secrets.AZURE_LOCATION }}
-        ports: 8000
-        environment-variables: |
-          ENVIRONMENT=production
-          POSTGRES_HOST=${{ secrets.DB_HOST_PRODUCTION }}
-          POSTGRES_PORT=5432
-          POSTGRES_DB=fraud_detection
-          POSTGRES_USER=${{ secrets.DB_USER_PRODUCTION }}
-          POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD_PRODUCTION }}
-          REDIS_HOST=${{ secrets.REDIS_HOST_PRODUCTION }}
-          REDIS_PORT=6379
-          MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI_PRODUCTION }}
-          AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+  #   - name: Deploy API to Azure Container Instances (Production)
+  #     uses: azure/aci-deploy@v1
+  #     with:
+  #       resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  #       dns-name-label: fraud-detection-prod
+  #       image: ${{ env.REGISTRY }}/api:latest
+  #       name: fraud-detection-api-prod
+  #       location: ${{ secrets.AZURE_LOCATION }}
+  #       ports: 8000
+  #       environment-variables: |
+  #         ENVIRONMENT=production
+  #         POSTGRES_HOST=${{ secrets.DB_HOST_PRODUCTION }}
+  #         POSTGRES_PORT=5432
+  #         POSTGRES_DB=fraud_detection
+  #         POSTGRES_USER=${{ secrets.DB_USER_PRODUCTION }}
+  #         POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD_PRODUCTION }}
+  #         REDIS_HOST=${{ secrets.REDIS_HOST_PRODUCTION }}
+  #         REDIS_PORT=6379
+  #         MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI_PRODUCTION }}
+  #         AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
 
-    - name: Deploy Data Service to Azure Container Instances (Production)
-      uses: azure/aci-deploy@v1
-      with:
-        resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
-        dns-name-label: fraud-detection-data-prod
-        image: ${{ env.REGISTRY }}/data:latest
-        name: fraud-detection-data-prod
-        location: ${{ secrets.AZURE_LOCATION }}
-        ports: 8001
-        environment-variables: |
-          ENVIRONMENT=production
-          POSTGRES_HOST=${{ secrets.DB_HOST_PRODUCTION }}
-          POSTGRES_PORT=5432
-          POSTGRES_DB=fraud_detection
-          POSTGRES_USER=${{ secrets.DB_USER_PRODUCTION }}
-          POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD_PRODUCTION }}
-          AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+  #   - name: Deploy Data Service to Azure Container Instances (Production)
+  #     uses: azure/aci-deploy@v1
+  #     with:
+  #       resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  #       dns-name-label: fraud-detection-data-prod
+  #       image: ${{ env.REGISTRY }}/data:latest
+  #       name: fraud-detection-data-prod
+  #       location: ${{ secrets.AZURE_LOCATION }}
+  #       ports: 8001
+  #       environment-variables: |
+  #         ENVIRONMENT=production
+  #         POSTGRES_HOST=${{ secrets.DB_HOST_PRODUCTION }}
+  #         POSTGRES_PORT=5432
+  #         POSTGRES_DB=fraud_detection
+  #         POSTGRES_USER=${{ secrets.DB_USER_PRODUCTION }}
+  #         POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD_PRODUCTION }}
+  #         AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
 
-    - name: Deploy Drift Monitoring to Azure Container Instances (Production)
-      uses: azure/aci-deploy@v1
-      with:
-        resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
-        dns-name-label: fraud-detection-drift-prod
-        image: ${{ env.REGISTRY }}/drift:latest
-        name: fraud-detection-drift-prod
-        location: ${{ secrets.AZURE_LOCATION }}
-        ports: 8002
-        environment-variables: |
-          ENVIRONMENT=production
-          POSTGRES_HOST=${{ secrets.DB_HOST_PRODUCTION }}
-          POSTGRES_PORT=5432
-          POSTGRES_DB=fraud_detection
-          POSTGRES_USER=${{ secrets.DB_USER_PRODUCTION }}
-          POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD_PRODUCTION }}
-          AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+  #   - name: Deploy Drift Monitoring to Azure Container Instances (Production)
+  #     uses: azure/aci-deploy@v1
+  #     with:
+  #       resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  #       dns-name-label: fraud-detection-drift-prod
+  #       image: ${{ env.REGISTRY }}/drift:latest
+  #       name: fraud-detection-drift-prod
+  #       location: ${{ secrets.AZURE_LOCATION }}
+  #       ports: 8002
+  #       environment-variables: |
+  #         ENVIRONMENT=production
+  #         POSTGRES_HOST=${{ secrets.DB_HOST_PRODUCTION }}
+  #         POSTGRES_PORT=5432
+  #         POSTGRES_DB=fraud_detection
+  #         POSTGRES_USER=${{ secrets.DB_USER_PRODUCTION }}
+  #         POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD_PRODUCTION }}
+  #         AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
 
-    - name: Deploy MLflow to Azure Container Instances (Production)
-      uses: azure/aci-deploy@v1
-      with:
-        resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
-        dns-name-label: fraud-detection-mlflow-prod
-        image: ${{ env.REGISTRY }}/mlflow:latest
-        name: fraud-detection-mlflow-prod
-        location: ${{ secrets.AZURE_LOCATION }}
-        ports: 5000
-        environment-variables: |
-          ENVIRONMENT=production
-          POSTGRES_HOST=${{ secrets.DB_HOST_PRODUCTION }}
-          POSTGRES_PORT=5432
-          POSTGRES_DB=mlflow_db
-          POSTGRES_USER=${{ secrets.DB_USER_PRODUCTION }}
-          POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD_PRODUCTION }}
-          MLFLOW_DEFAULT_ARTIFACT_ROOT=${{ secrets.MLFLOW_DEFAULT_ARTIFACT_ROOT_PRODUCTION }}
+  #   - name: Deploy MLflow to Azure Container Instances (Production)
+  #     uses: azure/aci-deploy@v1
+  #     with:
+  #       resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  #       dns-name-label: fraud-detection-mlflow-prod
+  #       image: ${{ env.REGISTRY }}/mlflow:latest
+  #       name: fraud-detection-mlflow-prod
+  #       location: ${{ secrets.AZURE_LOCATION }}
+  #       ports: 5000
+  #       environment-variables: |
+  #         ENVIRONMENT=production
+  #         POSTGRES_HOST=${{ secrets.DB_HOST_PRODUCTION }}
+  #         POSTGRES_PORT=5432
+  #         POSTGRES_DB=mlflow_db
+  #         POSTGRES_USER=${{ secrets.DB_USER_PRODUCTION }}
+  #         POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD_PRODUCTION }}
+  #         MLFLOW_DEFAULT_ARTIFACT_ROOT=${{ secrets.MLFLOW_DEFAULT_ARTIFACT_ROOT_PRODUCTION }}
 
-    - name: Deploy Airflow Webserver to Azure Container Instances (Production)
-      uses: azure/aci-deploy@v1
-      with:
-        resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
-        dns-name-label: fraud-detection-airflow-prod
-        image: ${{ env.REGISTRY }}/airflow:latest
-        name: fraud-detection-airflow-prod
-        location: ${{ secrets.AZURE_LOCATION }}
-        ports: 8080
-        environment-variables: |
-          ENVIRONMENT=production
-          AIRFLOW__CORE__EXECUTOR=LocalExecutor
-          AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${{ secrets.DB_USER_PRODUCTION }}:${{ secrets.DB_PASSWORD_PRODUCTION }}@${{ secrets.DB_HOST_PRODUCTION }}:5432/fraud_detection
-          AIRFLOW__CORE__FERNET_KEY=${{ secrets.AIRFLOW_FERNET_KEY }}
-          AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
-          AIRFLOW__CORE__LOAD_EXAMPLES=false
-          AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth
-          AIRFLOW__WEBSERVER__SECRET_KEY=${{ secrets.AIRFLOW_SECRET_KEY }}
-          AZURE_CONTAINER_REGISTRY=${{ env.REGISTRY }}
-          DOCKER_NETWORK=fraud-detection-network
-          MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI_PRODUCTION }}
-          ALERT_EMAIL=${{ secrets.ALERT_EMAIL }}
-          AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
-          PYTHONPATH=/opt/airflow:/opt/airflow/config:/opt/airflow/plugins
+  #   - name: Deploy Airflow Webserver to Azure Container Instances (Production)
+  #     uses: azure/aci-deploy@v1
+  #     with:
+  #       resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  #       dns-name-label: fraud-detection-airflow-prod
+  #       image: ${{ env.REGISTRY }}/airflow:latest
+  #       name: fraud-detection-airflow-prod
+  #       location: ${{ secrets.AZURE_LOCATION }}
+  #       ports: 8080
+  #       environment-variables: |
+  #         ENVIRONMENT=production
+  #         AIRFLOW__CORE__EXECUTOR=LocalExecutor
+  #         AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${{ secrets.DB_USER_PRODUCTION }}:${{ secrets.DB_PASSWORD_PRODUCTION }}@${{ secrets.DB_HOST_PRODUCTION }}:5432/fraud_detection
+  #         AIRFLOW__CORE__FERNET_KEY=${{ secrets.AIRFLOW_FERNET_KEY }}
+  #         AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+  #         AIRFLOW__CORE__LOAD_EXAMPLES=false
+  #         AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth
+  #         AIRFLOW__WEBSERVER__SECRET_KEY=${{ secrets.AIRFLOW_SECRET_KEY }}
+  #         DOCKER_REGISTRY=${{ env.REGISTRY }}
+  #         DOCKER_NETWORK=fraud-detection-network
+  #         MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI_PRODUCTION }}
+  #         ALERT_EMAIL=${{ secrets.ALERT_EMAIL }}
+  #         AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+  #         PYTHONPATH=/opt/airflow:/opt/airflow/config:/opt/airflow/plugins
 
-    - name: Run health checks
-      run: |
-        # Wait for services to be healthy
-        timeout 600 bash -c '
-        while true; do
-          if curl -f -s http://fraud-detection-prod.${{ secrets.AZURE_LOCATION }}.azurecontainer.io:8000/health > /dev/null; then
-            echo "API service is healthy"
-            break
-          fi
-          echo "Waiting for API service to be healthy..."
-          sleep 30
-        done
-        '
+  #   - name: Run health checks
+  #     run: |
+  #       # Wait for services to be healthy
+  #       timeout 600 bash -c '
+  #       while true; do
+  #         if curl -f -s http://fraud-detection-prod.${{ secrets.AZURE_LOCATION }}.azurecontainer.io:8000/health > /dev/null; then
+  #           echo "API service is healthy"
+  #           break
+  #         fi
+  #         echo "Waiting for API service to be healthy..."
+  #         sleep 30
+  #       done
+  #       '
 
-    - name: Run smoke tests
-      run: |
-        # Run basic smoke tests against production
-        python -m pytest tests/smoke/ -v --tb=short \
-          --api-url=http://fraud-detection-prod.${{ secrets.AZURE_LOCATION }}.azurecontainer.io:8000
+  #   - name: Run smoke tests
+  #     run: |
+  #       # Run basic smoke tests against production
+  #       python -m pytest tests/smoke/ -v --tb=short \
+  #         --api-url=http://fraud-detection-prod.${{ secrets.AZURE_LOCATION }}.azurecontainer.io:8000
 
-    - name: Notify deployment success
-      if: success()
-      run: |
-        # Send notification (Azure DevOps,s Teams, etc.)
-        echo "Deployment to production successful"
+  #   - name: Notify deployment success
+  #     if: success()
+  #     run: |
+  #       # Send notification (Azure DevOps,s Teams, etc.)
+  #       echo "Deployment to production successful"
 
-    - name: Notify deployment failure
-      if: failure()
-      run: |
-        # Send notification about deployment failure
-        echo "Deployment to production failed"
+  #   - name: Notify deployment failure
+  #   if: failure()
+  #     run: |
+  #       # Send notification about deployment failure
+  #       echo "Deployment to production failed"

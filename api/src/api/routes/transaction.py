@@ -7,9 +7,11 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from ...models.schemas import (TransactionLabelHistoryResponse,
-                               TransactionUpdateRequest,
-                               TransactionUpdateResponse)
+from ...models.schemas import (
+    TransactionLabelHistoryResponse,
+    TransactionUpdateRequest,
+    TransactionUpdateResponse,
+)
 from ...services.auth_service import AuthService, auth_service
 from ...services.database_service import DatabaseService
 from ..dependencies import get_database_service

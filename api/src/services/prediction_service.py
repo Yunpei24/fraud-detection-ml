@@ -17,8 +17,7 @@ from fraud_detection_common.preprocessor import DataPreprocessor
 
 from ..config import get_logger, settings
 from ..models import EnsembleModel
-from ..utils import (InvalidInputException, PredictionFailedException,
-                     validate_features)
+from ..utils import InvalidInputException, PredictionFailedException, validate_features
 
 logger = get_logger(__name__)
 

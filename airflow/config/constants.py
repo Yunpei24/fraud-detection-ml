@@ -38,20 +38,18 @@ TABLE_NAMES = {
 # ============================================================================
 
 # Environment detection for Docker images
-# Set ENVIRONMENT=production to use Azure Container Registry
+# Set ENVIRONMENT=production to use Docker Hub
 # Set ENVIRONMENT=local (default) to use local Docker images
 ENVIRONMENT = os.getenv("ENVIRONMENT", "local")  # 'local' or 'production'
-AZURE_CONTAINER_REGISTRY = os.getenv(
-    "AZURE_CONTAINER_REGISTRY", "frauddetectionacr-bzbrfqcgdyapcag6.azurecr.io"
-)
+DOCKERHUB_USERNAME = os.getenv("DOCKERHUB_USERNAME", "yoshua24")
 
 # Docker images based on environment
 if ENVIRONMENT == "production":
     DOCKER_IMAGES = {
-        "TRAINING": f"{AZURE_CONTAINER_REGISTRY}/training:latest",
-        "API": f"{AZURE_CONTAINER_REGISTRY}/api:latest",
-        "DRIFT": f"{AZURE_CONTAINER_REGISTRY}/drift:latest",
-        "DATA_QUALITY": f"{AZURE_CONTAINER_REGISTRY}/data-quality:latest",
+        "TRAINING": f"{DOCKERHUB_USERNAME}/training:latest",
+        "API": f"{DOCKERHUB_USERNAME}/api:latest",
+        "DRIFT": f"{DOCKERHUB_USERNAME}/drift:latest",
+        "DATA_QUALITY": f"{DOCKERHUB_USERNAME}/data-quality:latest",
     }
 else:  # local development
     DOCKER_IMAGES = {
@@ -224,4 +222,4 @@ DOCKER_IMAGE_DATA_QUALITY = ENV_VARS["DOCKER_IMAGE_DATA_QUALITY"]
 
 # Environment info
 CURRENT_ENVIRONMENT = ENVIRONMENT
-AZURE_REGISTRY = AZURE_CONTAINER_REGISTRY
+DOCKERHUB_REGISTRY = DOCKERHUB_USERNAME

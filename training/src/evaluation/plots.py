@@ -6,9 +6,14 @@ from typing import Iterable, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import (ConfusionMatrixDisplay, PrecisionRecallDisplay,
-                             RocCurveDisplay, confusion_matrix,
-                             precision_recall_curve, roc_curve)
+from sklearn.metrics import (
+    ConfusionMatrixDisplay,
+    PrecisionRecallDisplay,
+    RocCurveDisplay,
+    confusion_matrix,
+    precision_recall_curve,
+    roc_curve,
+)
 
 
 def plot_roc_auc(

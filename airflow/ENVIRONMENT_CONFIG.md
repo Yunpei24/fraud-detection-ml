@@ -40,7 +40,7 @@ export ENVIRONMENT=local
 ### For Production
 ```bash
 export ENVIRONMENT=production
-export AZURE_CONTAINER_REGISTRY=frauddetectionacr-bzbrfqcgdyapcag6.azurecr.io
+export DOCKERHUB_USERNAME=yoshua24
 ```
 
 ### In Docker Compose (Local)
@@ -53,7 +53,7 @@ environment:
 ```yaml
 environment:
   - ENVIRONMENT=production
-  - AZURE_CONTAINER_REGISTRY=frauddetectionacr-bzbrfqcgdyapcag6.azurecr.io
+  - DOCKERHUB_USERNAME=yoshua24
 ```
 
 ## Centralized Constants

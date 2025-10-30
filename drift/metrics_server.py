@@ -19,8 +19,7 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import structlog
-from prometheus_client import (CONTENT_TYPE_LATEST, CollectorRegistry,
-                               generate_latest)
+from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 from src.monitoring.metrics import setup_prometheus_metrics
 
 logger = structlog.get_logger(__name__)

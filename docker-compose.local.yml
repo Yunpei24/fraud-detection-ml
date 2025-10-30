@@ -120,10 +120,10 @@ services:
     restart: unless-stopped
 
   mlflow:
-    build:
-      context: ./mlflow
-      dockerfile: Dockerfile
-    image: fraud-detection/mlflow:local
+    # build:
+    #   context: ./mlflow
+    #   dockerfile: Dockerfile
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/mlflow:develop  # ← Use Docker Hub image
     # image: hcr.io/mlflow/mlflow:v2.10.2
     container_name: fraud-mlflow
     command: >
@@ -154,10 +154,11 @@ services:
   # ==============================================================================
 
   api:
-    build:
-      context: .  # ← Contexte racine pour accéder à common/
-      dockerfile: ./api/Dockerfile
-    image: fraud-detection/api:local  # ← Image locale, pas ACR
+    # build:
+    #   context: .  # ← Contexte racine pour accéder à common/
+    #   dockerfile: ./api/Dockerfile
+    # image: fraud-detection/api:local 
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/api:develop  # ← Use Docker Hub image
     container_name: fraud-api
     environment:
       - POSTGRES_HOST=postgres
@@ -198,10 +199,10 @@ services:
     restart: unless-stopped
 
   data:
-    build:
-      context: .  # ← Contexte racine pour accéder à common/
-      dockerfile: ./data/Dockerfile
-    image: fraud-detection/data:local  # ← Image locale, pas ACR
+    # build:
+    #   context: .  # ← Context root to access common/
+    #   dockerfile: ./data/Dockerfile
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/data:develop  # ← Use Docker Hub image
     container_name: fraud-data
     environment:
       - POSTGRES_HOST=postgres
@@ -238,10 +239,10 @@ services:
     restart: unless-stopped
 
   drift:
-    build:
-      context: .  # ← Contexte racine pour accéder à common/
-      dockerfile: ./drift/Dockerfile
-    image: fraud-detection/drift:local  # ← Image locale, pas ACR
+    # build:
+    #   context: .  # ← Contexte racine pour accéder à common/
+    #   dockerfile: ./drift/Dockerfile
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/drift:develop  # ← Use Docker Hub image
     container_name: fraud-drift
     environment:
       - POSTGRES_HOST=postgres
@@ -277,10 +278,10 @@ services:
     restart: unless-stopped
 
   training:
-    build:
-      context: .  # ← Contexte racine pour accéder à common/
-      dockerfile: ./training/Dockerfile
-    image: fraud-detection/training:local  # ← Image locale, pas ACR
+    # build:
+    #   context: .  # ← Contexte racine pour accéder à common/
+    #   dockerfile: ./training/Dockerfile
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/training:develop  # ← Use Docker Hub image
     container_name: fraud-training
     environment:
       - POSTGRES_HOST=postgres
@@ -321,17 +322,17 @@ services:
 
   # Airflow base image (build once, use twice)
   airflow-base:
-    build:
-      context: .  # ← Contexte racine pour accéder à common/
-      dockerfile: ./airflow/Dockerfile
-    image: fraud-detection/airflow:local  # ← Image locale, pas ACR
+    # build:
+    #   context: .  # ← Contexte racine pour accéder à common/
+    #   dockerfile: ./airflow/Dockerfile
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop  # ← Use Docker Hub image
     # This service is not run, just used to build the image
     profiles:
       - build-only
 
   # Airflow DB initialization (runs once then exits)
   airflow-init:
-    image: fraud-detection/airflow:local
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop  # ← Use Docker Hub image
     container_name: fraud-airflow-init
     command: >
       bash -c "
@@ -359,7 +360,7 @@ services:
     restart: "no"  # Run only once
 
   airflow-webserver:
-    image: fraud-detection/airflow:local  # ← Réutilise l'image construite
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop  # ← Use Docker Hub image
     container_name: fraud-airflow-webserver
     command: webserver
     environment:
@@ -403,7 +404,7 @@ services:
     restart: unless-stopped
 
   airflow-scheduler:
-    image: fraud-detection/airflow:local 
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop  # ← Use Docker Hub image
     container_name: fraud-airflow-scheduler
     command: scheduler
     environment:
@@ -443,7 +444,7 @@ services:
     restart: unless-stopped
 
   airflow-worker:
-    image: fraud-detection/airflow:local  # ← Réutilise l'image construite
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop  # ← Use Docker Hub image
     container_name: fraud-airflow-worker
     command: celery worker
     environment:
