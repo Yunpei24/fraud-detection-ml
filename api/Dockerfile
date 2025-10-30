@@ -13,8 +13,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 FROM base as builder
 
 WORKDIR /build
-COPY requirements.txt .
-RUN pip install --user --no-warn-script-location -r requirements.txt
+
+# Install common package first
+COPY common/ /build/common/
+RUN pip install --user --no-warn-script-location --timeout=300 --retries=5 /build/common
+
+# Install API requirements
+COPY api/requirements.txt .
+RUN pip install --user --no-warn-script-location --timeout=300 --retries=5 -r requirements.txt
 
 FROM base as runtime
 
@@ -22,8 +28,7 @@ RUN useradd -m -u 1000 appuser
 WORKDIR /app
 
 COPY --from=builder /root/.local /home/appuser/.local
-COPY src/ ./src/
-COPY .env.example .env
+COPY api/src/ ./src/
 
 RUN chown -R appuser:appuser /app
 

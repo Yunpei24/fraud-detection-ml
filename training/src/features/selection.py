@@ -48,6 +48,38 @@ def mutual_information_score(
     return scores.sort_values(ascending=False)
 
 
+def select_k_best_mutual_info(
+    X: pd.DataFrame,
+    *,
+    target: np.ndarray,
+    k: int = 20,
+    n_neighbors: int = 3,
+    random_state: int = 42,
+) -> Tuple[pd.DataFrame, List[str]]:
+    """
+    Select top k features based on mutual information with target.
+    
+    Args:
+        X: Input features DataFrame
+        target: Target variable (binary labels)
+        k: Number of top features to select
+        n_neighbors: Number of neighbors for MI calculation
+        random_state: Random seed
+    
+    Returns:
+        Tuple of (filtered DataFrame, list of selected feature names)
+    """
+    y = pd.Series(target, name="target")
+    scores = mutual_information_score(X, y, n_neighbors=n_neighbors, random_state=random_state)
+    
+    # Select top k features
+    top_k = min(k, len(scores))
+    selected_features = scores.head(top_k).index.tolist()
+    
+    X_selected = X[selected_features]
+    return X_selected, selected_features
+
+
 def correlation_analysis(
     X: pd.DataFrame,
     *,

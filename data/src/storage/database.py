@@ -1,5 +1,19 @@
 """
 Database service - stores transactions and predictions in SQL database
+
+Configuration is loaded from:
+1. Explicit connection_string parameter (if provided)
+2. Environment variables via settings.py (fallback)
+3. Settings reads from: .env file or OS environment variables
+
+Environment variables used:
+- DB_SERVER (default: localhost)
+- DB_NAME (default: fraud_db)
+- DB_USER (default: postgres)
+- DB_PASSWORD (default: postgres)
+- DB_PORT (default: 5432)
+
+Connection URL format: postgresql://user:password@host:port/database
 """
 
 import logging
@@ -20,22 +34,57 @@ class DatabaseService:
         Initialize database service
         
         Args:
-            connection_string: Database connection URL
-                              Falls back to settings if not provided
+            connection_string: Database connection URL (optional)
+                              Format: postgresql://user:password@host:port/database
+                              If not provided, will be loaded from settings.py on connect()
+                              
+        Example:
+            # Option 1: Explicit connection string
+            db = DatabaseService("postgresql://user:pass@localhost:5432/frauddb")
+            
+            # Option 2: Load from environment (via settings.py)
+            db = DatabaseService()  # Reads DB_SERVER, DB_USER, DB_PASSWORD, etc.
+            
+            # Option 3: Inject via pipeline
+            from src.config.settings import settings
+            db = DatabaseService(settings.database_url)
         """
         self.connection_string = connection_string
         self.engine = None
         self.session = None
         self._initialized = False
+        
+        # Log configuration source
+        if connection_string:
+            logger.debug("DatabaseService initialized with explicit connection string")
+        else:
+            logger.debug("DatabaseService will load connection from settings on connect()")
 
     def connect(self) -> None:
-        """Establish database connection"""
+        """
+        Establish database connection
+        
+        Connection string resolution order:
+        1. Use explicit connection_string from __init__ (if provided)
+        2. Load from settings.database_url (reads environment variables)
+        
+        Environment variables (loaded by settings.py):
+        - DB_SERVER or POSTGRES_HOST (default: localhost)
+        - DB_NAME or POSTGRES_DB (default: fraud_db)
+        - DB_USER or POSTGRES_USER (default: postgres)  
+        - DB_PASSWORD or POSTGRES_PASSWORD (default: postgres)
+        - DB_PORT or POSTGRES_PORT (default: 5432)
+        """
         try:
             from sqlalchemy import create_engine
             
+            # Load connection string from settings if not provided
             if not self.connection_string:
                 from ..config.settings import settings
-                self.connection_string = settings.database_url
+                self.connection_string = settings.database.url
+                logger.info(f"Loading database config from settings: {settings.database.host}:{settings.database.port}/{settings.database.name}")
+            else:
+                logger.info("Using explicit database connection string")
 
             self.engine = create_engine(
                 self.connection_string,
@@ -50,9 +99,9 @@ class DatabaseService:
                 conn.execute("SELECT 1")
             
             self._initialized = True
-            logger.info("Database connection established")
+            logger.info("✅ Database connection established")
         except Exception as e:
-            logger.error(f"Failed to connect to database: {str(e)}")
+            logger.error(f"❌ Failed to connect to database: {str(e)}")
             raise
 
     def disconnect(self) -> None:
@@ -82,7 +131,7 @@ class DatabaseService:
             insert_query = text("""
                 INSERT INTO transactions (
                     transaction_id, customer_id, merchant_id,
-                    amount, currency, transaction_time,
+                    amount, currency, time,
                     customer_zip, merchant_zip,
                     customer_country, merchant_country,
                     device_id, session_id, ip_address,
@@ -91,7 +140,7 @@ class DatabaseService:
                     source_system, ingestion_timestamp
                 ) VALUES (
                     :transaction_id, :customer_id, :merchant_id,
-                    :amount, :currency, :transaction_time,
+                    :amount, :currency, :time,
                     :customer_zip, :merchant_zip,
                     :customer_country, :merchant_country,
                     :device_id, :session_id, :ip_address,
@@ -177,7 +226,7 @@ class DatabaseService:
         try:
             from sqlalchemy import text
             
-            query = text("SELECT * FROM transactions ORDER BY transaction_time DESC LIMIT :limit OFFSET :offset")
+            query = text("SELECT * FROM transactions ORDER BY time DESC LIMIT :limit OFFSET :offset")
             
             with self.engine.connect() as conn:
                 result = conn.execute(query, {"limit": limit, "offset": offset})

@@ -1,7 +1,7 @@
 """
 Alert Manager for drift detection system.
 
-This module handles sending alerts via multiple channels (email, Slack, SMS)
+This module handles sending alerts via multiple channels (email or SMS)
 when drift is detected or thresholds are exceeded.
 """
 
@@ -24,8 +24,6 @@ class AlertManager:
     
     Supports multiple alert channels:
     - Email (SMTP)
-    - Slack (webhook)
-    - SMS (optional - via Twilio or similar)
     
     Includes rate limiting to prevent alert fatigue.
     """

@@ -1,30 +1,28 @@
 """
 DAG 03: Feedback Collection Pipeline
-Collecte les labels des analystes pour améliorer le modèle
-Utilise data.src.storage.database pour queries
+Collects analyst labels to improve the model
+Uses PostgreSQL hooks for database queries
 
-Schedule: Quotidien 1h AM
+Schedule: Daily at 1 AM
+Refactored to remove dependencies on obsolete helpers/module_loader
 """
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
-import sys
-from pathlib import Path
+import os
 
-# Add config and plugins to path
-AIRFLOW_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(AIRFLOW_ROOT / "config"))
-sys.path.insert(0, str(AIRFLOW_ROOT / "plugins"))
+# Import centralized configuration
+from config.constants import TABLE_NAMES, SCHEDULES, ALERT_CONFIG
 
-from settings import settings
-from module_loader import loader
-from helpers import validate_training_metrics, should_trigger_retraining, format_metric_value
+# Configuration from environment
+ALERT_EMAIL = os.getenv('ALERT_EMAIL', ALERT_CONFIG['DEFAULT_EMAIL'])
+MAX_FALSE_NEGATIVE_RATE = float(os.getenv('MAX_FALSE_NEGATIVE_RATE', '0.05'))
 
 default_args = {
     'owner': 'ml-team',
     'depends_on_past': False,
-    'email': settings.alert_email_recipients,
+    'email': [ALERT_EMAIL],
     'email_on_failure': True,
     'retries': 1,
     'retry_delay': timedelta(minutes=5)
@@ -32,15 +30,14 @@ default_args = {
 
 
 def collect_analyst_labels(**context):
-    """Collecte les labels confirmés par les analystes via DatabaseService"""
-    import sqlalchemy as sa
+    """Collect labels confirmed by analysts via DatabaseService"""
     from plugins.hooks.postgres_hook import FraudPostgresHook
     
     hook = FraudPostgresHook()
     
-    # Récupérer predictions avec labels analystes (dernières 24h)
-    query = """
-        INSERT INTO feedback_labels (transaction_id, predicted_label, analyst_label, confidence, feedback_quality)
+    # Retrieve predictions with analyst labels (last 24 hours)
+    query = f"""
+        INSERT INTO {TABLE_NAMES['FEEDBACK_LABELS']} (transaction_id, predicted_label, analyst_label, confidence, feedback_quality)
         SELECT 
             p.transaction_id,
             p.prediction,
@@ -51,12 +48,12 @@ def collect_analyst_labels(**context):
                 WHEN p.prediction = 1 AND t.is_fraud = 0 THEN 'FALSE_POSITIVE'
                 WHEN p.prediction = 0 AND t.is_fraud = 1 THEN 'FALSE_NEGATIVE'
             END as feedback_quality
-        FROM predictions p
-        JOIN transactions t ON p.transaction_id = t.transaction_id
+        FROM {TABLE_NAMES['PREDICTIONS']} p
+        JOIN {TABLE_NAMES['TRANSACTIONS']} t ON p.transaction_id = t.transaction_id
         WHERE p.created_at >= NOW() - INTERVAL '24 hours'
         AND t.analyst_reviewed = true
         AND NOT EXISTS (
-            SELECT 1 FROM feedback_labels f 
+            SELECT 1 FROM {TABLE_NAMES['FEEDBACK_LABELS']} f 
             WHERE f.transaction_id = p.transaction_id
         )
     """
@@ -71,7 +68,7 @@ def collect_analyst_labels(**context):
 
 
 def analyze_feedback_quality(**context):
-    """Analyse la qualité du feedback via PostgresHook"""
+    """Analyze feedback quality via PostgresHook"""
     from plugins.hooks.postgres_hook import FraudPostgresHook
     
     ti = context['task_instance']
@@ -79,15 +76,15 @@ def analyze_feedback_quality(**context):
     
     hook = FraudPostgresHook()
     
-    # Calculer métriques feedback
-    query = """
+    # Calculate feedback metrics
+    query = f"""
         SELECT 
             COUNT(*) as total_feedback,
             SUM(CASE WHEN feedback_quality = 'CORRECT' THEN 1 ELSE 0 END) as correct,
             SUM(CASE WHEN feedback_quality = 'FALSE_POSITIVE' THEN 1 ELSE 0 END) as false_positives,
             SUM(CASE WHEN feedback_quality = 'FALSE_NEGATIVE' THEN 1 ELSE 0 END) as false_negatives,
             AVG(confidence) as avg_confidence
-        FROM feedback_labels
+        FROM {TABLE_NAMES['FEEDBACK_LABELS']}
         WHERE created_at >= NOW() - INTERVAL '7 days'
     """
     
@@ -109,13 +106,13 @@ def analyze_feedback_quality(**context):
 
 
 def check_retraining_needed(**context):
-    """Vérifie si retraining nécessaire basé sur feedback using helpers"""
+    """Check if retraining is needed based on feedback"""
     ti = context['task_instance']
     metrics = ti.xcom_pull(task_ids='analyze_feedback_quality')
     
-    # Use centralized thresholds from settings
+    # Use thresholds from environment
     min_accuracy = 0.90
-    max_fn_rate = settings.max_false_negative_rate if hasattr(settings, 'max_false_negative_rate') else 0.05
+    max_fn_rate = MAX_FALSE_NEGATIVE_RATE
     
     needs_retraining = (
         metrics['accuracy'] < min_accuracy or
@@ -123,8 +120,7 @@ def check_retraining_needed(**context):
     )
     
     if needs_retraining:
-        # Use helper to format values consistently
-        reason = f"Accuracy {format_metric_value(metrics['accuracy'])} < {min_accuracy} or FN rate {format_metric_value(metrics['fn_rate'])} > {max_fn_rate}"
+        reason = f"Accuracy {metrics['accuracy']:.2%} < {min_accuracy:.2%} or FN rate {metrics['fn_rate']:.2%} > {max_fn_rate:.2%}"
         
         return {
             'needs_retraining': True,
@@ -140,7 +136,7 @@ def check_retraining_needed(**context):
 
 
 def prepare_feedback_dataset(**context):
-    """Prépare dataset avec feedback pour retraining using FraudPostgresHook"""
+    """Prepare dataset for retraining using FraudPostgresHook"""
     import pandas as pd
     
     ti = context['task_instance']
@@ -153,8 +149,8 @@ def prepare_feedback_dataset(**context):
     from plugins.hooks.postgres_hook import FraudPostgresHook
     hook = FraudPostgresHook()
     
-    # Charger transactions avec feedback
-    query = """
+    # Load transactions with feedback
+    query = f"""
         SELECT 
             t.*,
             f.analyst_label,
@@ -162,10 +158,10 @@ def prepare_feedback_dataset(**context):
             cf.num_purchases_24h,
             cf.avg_transaction_amount,
             mf.merchant_risk_score
-        FROM transactions t
-        JOIN feedback_labels f ON t.transaction_id = f.transaction_id
-        LEFT JOIN customer_features cf ON t.customer_id = cf.customer_id
-        LEFT JOIN merchant_features mf ON t.merchant_id = mf.merchant_id
+        FROM {TABLE_NAMES['TRANSACTIONS']} t
+        JOIN {TABLE_NAMES['FEEDBACK_LABELS']} f ON t.transaction_id = f.transaction_id
+        LEFT JOIN {TABLE_NAMES['CUSTOMER_FEATURES']} cf ON t.customer_id = cf.customer_id
+        LEFT JOIN {TABLE_NAMES['MERCHANT_FEATURES']} mf ON t.merchant_id = mf.merchant_id
         WHERE f.created_at >= NOW() - INTERVAL '30 days'
     """
     
@@ -177,7 +173,7 @@ def prepare_feedback_dataset(**context):
                'avg_transaction_amount', 'merchant_risk_score']
     df = pd.DataFrame(results, columns=columns)
     
-    # Sauvegarder pour training
+    # Save for training
     output_path = f"/tmp/feedback_dataset_{context['ds_nodash']}.parquet"
     df.to_parquet(output_path, index=False)
     
@@ -190,7 +186,7 @@ def prepare_feedback_dataset(**context):
 
 
 def generate_feedback_report(**context):
-    """Génère rapport de feedback"""
+    """Generate feedback report"""
     ti = context['task_instance']
     
     collection_result = ti.xcom_pull(task_ids='collect_analyst_labels')
@@ -218,12 +214,12 @@ def generate_feedback_report(**context):
     
     print(report)
     
-    # Sauvegarder dans database using FraudPostgresHook
+    # Save to database using FraudPostgresHook
     from plugins.hooks.postgres_hook import FraudPostgresHook
     hook = FraudPostgresHook()
     
-    query = """
-        INSERT INTO pipeline_execution_log 
+    query = f"""
+        INSERT INTO {TABLE_NAMES['PIPELINE_EXECUTION_LOG']} 
         (pipeline_name, status, execution_time_seconds, records_processed, error_message)
         VALUES (%s, %s, %s, %s, %s)
     """
@@ -243,8 +239,8 @@ def generate_feedback_report(**context):
 with DAG(
     '03_feedback_collection',
     default_args=default_args,
-    description='Collecte et analyse du feedback des analystes',
-    schedule_interval='0 1 * * *',  # 1 AM daily
+    description='Collect and analyze analyst feedback',
+    schedule_interval=SCHEDULES['FEEDBACK_COLLECTION'],  # Daily at 4 AM
     start_date=days_ago(1),
     catchup=False,
     tags=['feedback', 'quality', 'monitoring']

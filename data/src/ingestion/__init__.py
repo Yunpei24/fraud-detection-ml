@@ -1,6 +1,5 @@
-"""Ingestion module - handles data intake from multiple sources"""
+"""Ingestion module - transaction simulation and data ingestion"""
 
 __all__ = [
-    "EventHubConsumer",
-    "KafkaConsumer",
+    "TransactionSimulator",
 ]

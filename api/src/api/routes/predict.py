@@ -13,9 +13,8 @@ from ...models import (
     ErrorResponse
 )
 from ...services import PredictionService, CacheService, DatabaseService
-from ...api.dependencies import get_prediction_service, get_cache_service, get_database_service
+from ...api.dependencies import get_prediction_service, get_cache_service, get_database_service, verify_api_key
 from ...utils import (
-    validate_transaction_request,
     validate_batch_request,
     InvalidInputException,
     PredictionFailedException
@@ -36,10 +35,11 @@ router = APIRouter(prefix="/api/v1", tags=["predictions"])
         500: {"model": ErrorResponse}
     },
     summary="Make fraud prediction",
-    description="Predict if a transaction is fraudulent"
+    description="Predict if a transaction is fraudulent (requires API key authentication)"
 )
 async def predict(
     request: TransactionRequest,
+    api_key: str = Depends(verify_api_key),
     prediction_service: PredictionService = Depends(get_prediction_service),
     cache_service: CacheService = Depends(get_cache_service),
     database_service: DatabaseService = Depends(get_database_service)
@@ -47,8 +47,11 @@ async def predict(
     """
     Make a fraud prediction for a single transaction.
     
+    Requires valid API key authentication.
+    
     Args:
         request: Transaction data
+        api_key: Validated API key
         prediction_service: Prediction service dependency
         cache_service: Cache service dependency
         database_service: Database service dependency
@@ -141,18 +144,22 @@ async def predict(
         500: {"model": ErrorResponse}
     },
     summary="Batch fraud prediction",
-    description="Predict fraud for multiple transactions"
+    description="Predict fraud for multiple transactions (requires API key authentication)"
 )
 async def batch_predict(
     request: BatchTransactionRequest,
+    api_key: str = Depends(verify_api_key),
     prediction_service: PredictionService = Depends(get_prediction_service),
     database_service: DatabaseService = Depends(get_database_service)
 ):
     """
     Make fraud predictions for multiple transactions.
     
+    Requires valid API key authentication.
+    
     Args:
         request: Batch transaction data
+        api_key: Validated API key
         prediction_service: Prediction service dependency
         database_service: Database service dependency
         

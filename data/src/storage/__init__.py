@@ -1,7 +1,5 @@
-"""Storage module - handles data persistence"""
+"""Storage module - database persistence"""
 
 __all__ = [
     "DatabaseService",
-    "DataLakeService",
-    "FeatureStoreService",
 ]

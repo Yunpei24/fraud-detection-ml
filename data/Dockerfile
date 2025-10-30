@@ -10,8 +10,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
+# Install common package first
+COPY common/ /build/common/
+RUN pip install --no-cache-dir --user /build/common
+
 # Copy requirements
-COPY requirements.txt .
+COPY data/requirements.txt .
 
 # Install Python dependencies to /root/.local
 RUN pip install --no-cache-dir --user -r requirements.txt
@@ -33,21 +37,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /root/.local /root/.local
 
 # Copy application code
-COPY . .
+COPY data/ .
+
+# Create non-root user for security
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app && \
+    cp -r /root/.local /home/appuser/.local && \
+    chown -R appuser:appuser /home/appuser/.local
 
 # Set environment variables
-ENV PATH=/root/.local/bin:$PATH \
+ENV PATH=/home/appuser/.local/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app
 
-# Create non-root user for security
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Health check - verify Python can start
+# Health check - verify metrics server is running
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import sys; import src; sys.exit(0)" || exit 1
+    CMD curl -f http://localhost:9091/metrics || exit 1
 
-# Default command: run real-time pipeline
-CMD ["python", "-m", "src.pipelines.realtime_pipeline"]
+# Default command: run metrics server (exposes Prometheus metrics configured via PROMETHEUS_PORT env var)
+CMD ["python", "metrics_server.py"]

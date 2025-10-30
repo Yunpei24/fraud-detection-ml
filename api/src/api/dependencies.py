@@ -6,7 +6,7 @@ from fastapi import Depends, HTTPException, status, Header
 import redis
 
 from ..models import EnsembleModel
-from ..services import PredictionService, CacheService, DatabaseService
+from ..services import PredictionService, CacheService, DatabaseService, EvidentlyDriftService, TrafficRouter
 from ..config import get_logger, settings
 
 logger = get_logger(__name__)
@@ -16,9 +16,27 @@ _model_instance: Optional[Any] = None
 _prediction_service_instance: Optional[PredictionService] = None
 _cache_service_instance: Optional[CacheService] = None
 _database_service_instance: Optional[DatabaseService] = None
+_drift_service_instance: Optional[EvidentlyDriftService] = None
+_traffic_router_instance: Optional[TrafficRouter] = None
 
 
-def get_model() -> Any:
+def get_traffic_router() -> Any:
+    """
+    Get or create the traffic router instance.
+    
+    Returns:
+        Traffic router instance
+    """
+    global _traffic_router_instance
+    
+    if _traffic_router_instance is None:
+        logger.info("Initializing traffic router")
+        _traffic_router_instance = TrafficRouter()
+    
+    return _traffic_router_instance
+
+
+def get_model(traffic_router: Any = Depends(get_traffic_router)) -> Any:
     """
     Get or create the ensemble model instance.
     
@@ -29,20 +47,24 @@ def get_model() -> Any:
     
     if _model_instance is None:
         logger.info("Initializing ensemble model")
-        _model_instance = EnsembleModel()
+        # Use champion model path if traffic routing is configured, otherwise use default
+        model_path = traffic_router.champion_model_path or settings.model_path
+        _model_instance = EnsembleModel(models_path=model_path)
         _model_instance.load_models()
     
     return _model_instance
 
 
 def get_prediction_service(
-    model: Any = Depends(get_model)
+    model: Any = Depends(get_model),
+    traffic_router: Any = Depends(get_traffic_router)
 ) -> PredictionService:
     """
     Get or create the prediction service instance.
     
     Args:
         model: Ensemble model dependency
+        traffic_router: Traffic router dependency
         
     Returns:
         Prediction service instance
@@ -51,7 +73,7 @@ def get_prediction_service(
     
     if _prediction_service_instance is None:
         logger.info("Initializing prediction service")
-        _prediction_service_instance = PredictionService(model)
+        _prediction_service_instance = PredictionService(model, traffic_router)
     
     return _prediction_service_instance
 
@@ -121,6 +143,27 @@ def get_database_service() -> DatabaseService:
             logger.error(f"Failed to create database tables: {e}")
     
     return _database_service_instance
+
+
+def get_drift_service(
+    database_service: DatabaseService = Depends(get_database_service)
+) -> EvidentlyDriftService:
+    """
+    Get or create the drift service instance.
+    
+    Args:
+        database_service: Database service dependency
+        
+    Returns:
+        Drift service instance
+    """
+    global _drift_service_instance
+    
+    if _drift_service_instance is None:
+        logger.info("Initializing drift service")
+        _drift_service_instance = EvidentlyDriftService(database_service)
+    
+    return _drift_service_instance
 
 
 def verify_api_key(x_api_key: Optional[str] = Header(None)) -> str:

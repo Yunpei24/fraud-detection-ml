@@ -34,251 +34,319 @@ class TestDailyAnalysis:
             'drift_detected': np.random.choice([True, False], 30, p=[0.3, 0.7])
         })
 
-    @patch('src.pipelines.daily_analysis.DriftDatabaseService')
-    def test_aggregate_daily_metrics(self, mock_db, test_settings):
+    @patch('src.pipelines.daily_analysis.FraudDetectionAPIClient')
+    def test_aggregate_daily_metrics(self, mock_api, test_settings):
         """Test daily metrics aggregation."""
-        mock_db_instance = MagicMock()
-        mock_db_instance.query_historical_drift.return_value = pd.DataFrame({
-            'timestamp': [datetime.utcnow() - timedelta(hours=i) for i in range(24)],
-            'psi_score': np.random.uniform(0.1, 0.4, 24),
-            'fraud_rate': np.random.uniform(0.001, 0.004, 24)
-        })
-        mock_db.return_value = mock_db_instance
+        mock_api_instance = MagicMock()
+        mock_api_instance.run_sliding_window_analysis.return_value = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'analysis_period': '7d',
+            'window_size': '24h',
+            'windows': [
+                {'drift_detected': True, 'drift_score': 0.35},
+                {'drift_detected': False, 'drift_score': 0.15}
+            ]
+        }
+        mock_api.return_value = mock_api_instance
         
         metrics = aggregate_daily_metrics(test_settings)
         
         assert isinstance(metrics, dict)
-        assert 'avg_psi' in metrics or 'period' in metrics
+        assert 'drift_summary' in metrics
 
-    def test_generate_daily_report(self, daily_metrics_history, test_settings):
+    def test_generate_daily_report(self, test_settings):
         """Test daily report generation."""
-        report = generate_daily_report(
-            daily_metrics=daily_metrics_history.iloc[0].to_dict(),
-            historical_data=daily_metrics_history,
-            settings=test_settings
-        )
+        aggregated_metrics = {
+            'drift_summary': {'total_windows': 7, 'drift_detected_windows': 2, 'avg_drift_score': 0.25}
+        }
         
-        assert isinstance(report, dict)
-        assert 'summary' in report or 'metrics' in report
+        with patch('src.pipelines.daily_analysis.FraudDetectionAPIClient') as mock_api:
+            mock_api_instance = MagicMock()
+            mock_api_instance.generate_drift_report.return_value = {'summary': 'Daily report'}
+            mock_api.return_value = mock_api_instance
+            
+            report = generate_daily_report(aggregated_metrics, test_settings)
+            
+            assert isinstance(report, dict)
+            assert 'summary' in report or len(report) > 0
 
-    def test_identify_trends(self, daily_metrics_history, test_settings):
+    @patch('src.pipelines.daily_analysis.aggregate_daily_metrics')
+    def test_identify_trends(self, mock_aggregate, test_settings):
         """Test trend identification."""
-        trends = identify_trends(daily_metrics_history, test_settings)
+        mock_aggregate.return_value = {
+            'windows': [
+                {'drift_detected': False, 'drift_score': 0.1},
+                {'drift_detected': True, 'drift_score': 0.3},
+                {'drift_detected': False, 'drift_score': 0.2}
+            ]
+        }
         
-        assert isinstance(trends, dict)
+        trends = identify_trends(test_settings)
+        
+        assert isinstance(trends, list)
         # Check for trend indicators
-        for key in trends:
-            assert isinstance(trends[key], (str, dict, list))
+        for trend in trends:
+            assert isinstance(trend, dict)
 
-    def test_identify_improving_trend(self, test_settings):
+    @patch('src.pipelines.daily_analysis.aggregate_daily_metrics')
+    def test_identify_improving_trend(self, mock_aggregate, test_settings):
         """Test identification of improving trends."""
-        # Create improving metrics
-        improving_data = pd.DataFrame({
-            'date': [datetime.utcnow() - timedelta(days=i) for i in range(10)],
-            'recall': [0.90 + i*0.01 for i in range(10)],  # Improving
-            'fpr': [0.03 - i*0.002 for i in range(10)]     # Improving
-        })
+        # Mock improving drift scores (decreasing over time = improving)
+        mock_aggregate.return_value = {
+            'windows': [
+                {'drift_detected': False, 'drift_score': 0.4},
+                {'drift_detected': False, 'drift_score': 0.3},
+                {'drift_detected': False, 'drift_score': 0.2}
+            ]
+        }
         
-        trends = identify_trends(improving_data, test_settings)
+        trends = identify_trends(test_settings)
         
-        # Should identify improvement
-        assert 'recall' in trends or 'improving' in str(trends).lower()
+        # Should identify improving trend (decreasing drift scores)
+        assert isinstance(trends, list)
+        if trends:
+            trend = trends[0]
+            assert trend['direction'] == 'decreasing'
 
-    def test_identify_degrading_trend(self, test_settings):
+    @patch('src.pipelines.daily_analysis.aggregate_daily_metrics')
+    def test_identify_degrading_trend(self, mock_aggregate, test_settings):
         """Test identification of degrading trends."""
-        # Create degrading metrics
-        degrading_data = pd.DataFrame({
-            'date': [datetime.utcnow() - timedelta(days=i) for i in range(10)],
-            'recall': [0.98 - i*0.01 for i in range(10)],  # Degrading
-            'fpr': [0.01 + i*0.002 for i in range(10)]     # Degrading
-        })
+        # Mock degrading drift scores (increasing over time = degrading)
+        mock_aggregate.return_value = {
+            'windows': [
+                {'drift_detected': False, 'drift_score': 0.1},
+                {'drift_detected': True, 'drift_score': 0.3},
+                {'drift_detected': True, 'drift_score': 0.5}
+            ]
+        }
         
-        trends = identify_trends(degrading_data, test_settings)
+        trends = identify_trends(test_settings)
         
-        # Should identify degradation
-        assert 'recall' in trends or 'degrading' in str(trends).lower()
+        # Should identify degrading trend (increasing drift scores)
+        assert isinstance(trends, list)
+        if trends:
+            trend = trends[0]
+            assert trend['direction'] == 'increasing'
 
     def test_recommend_actions(self, test_settings):
         """Test action recommendations."""
-        trends = {
-            'recall': 'degrading',
-            'fpr': 'increasing',
-            'drift_frequency': 'high'
+        aggregated_metrics = {
+            'drift_summary': {
+                'total_windows': 7,
+                'drift_detected_windows': 4,
+                'avg_drift_score': 0.35
+            }
         }
+        trends = [
+            {'direction': 'increasing', 'concern_level': 'HIGH', 'magnitude': 0.3, 'detection_rate': 0.5}
+        ]
         
-        recommendations = recommend_actions(trends, test_settings)
+        recommendations = recommend_actions(aggregated_metrics, trends)
         
         assert isinstance(recommendations, list)
         assert len(recommendations) > 0
         for rec in recommendations:
-            assert isinstance(rec, (str, dict))
+            assert isinstance(rec, str)
 
     def test_recommend_actions_no_issues(self, test_settings):
         """Test recommendations when no issues detected."""
-        trends = {
-            'recall': 'stable',
-            'fpr': 'stable',
-            'drift_frequency': 'low'
+        aggregated_metrics = {
+            'drift_summary': {
+                'total_windows': 7,
+                'drift_detected_windows': 1,
+                'avg_drift_score': 0.15
+            }
         }
+        trends = [
+            {'direction': 'stable', 'concern_level': 'LOW', 'magnitude': 0.05, 'detection_rate': 0.1}
+        ]
         
-        recommendations = recommend_actions(trends, test_settings)
+        recommendations = recommend_actions(aggregated_metrics, trends)
         
         # Should have minimal or no recommendations
         assert isinstance(recommendations, list)
 
-    @patch('src.pipelines.daily_analysis.DriftDatabaseService')
+    @patch('src.pipelines.daily_analysis.aggregate_daily_metrics')
     @patch('src.pipelines.daily_analysis.generate_daily_report')
-    @patch('src.pipelines.daily_analysis.upload_report_to_blob')
+    @patch('src.pipelines.daily_analysis.identify_trends')
+    @patch('src.pipelines.daily_analysis.recommend_actions')
     def test_run_daily_analysis_success(
-        self, mock_upload, mock_report, mock_db, 
+        self, mock_recommend, mock_trends, mock_report, mock_aggregate,
         daily_metrics_history, test_settings
     ):
         """Test complete daily analysis pipeline."""
-        mock_db_instance = MagicMock()
-        mock_db_instance.query_historical_drift.return_value = daily_metrics_history
-        mock_db.return_value = mock_db_instance
-        
+        mock_aggregate.return_value = {
+            'drift_summary': {'total_windows': 7, 'drift_detected_windows': 2, 'avg_drift_score': 0.25}
+        }
         mock_report.return_value = {'summary': 'Daily report'}
+        mock_trends.return_value = [{'direction': 'stable', 'concern_level': 'LOW'}]
+        mock_recommend.return_value = ['Continue monitoring']
         
         result = run_daily_analysis(test_settings)
         
-        assert result is True
-        assert mock_db_instance.query_historical_drift.called
+        assert isinstance(result, dict)
+        assert result.get('status') == 'success'
 
-    @patch('src.pipelines.daily_analysis.DriftDatabaseService')
-    def test_run_daily_analysis_no_data(self, mock_db, test_settings):
+    @patch('src.pipelines.daily_analysis.FraudDetectionAPIClient')
+    def test_run_daily_analysis_no_data(self, mock_api, test_settings):
         """Test pipeline with no historical data."""
-        mock_db_instance = MagicMock()
-        mock_db_instance.query_historical_drift.return_value = pd.DataFrame()
-        mock_db.return_value = mock_db_instance
+        mock_api_instance = MagicMock()
+        mock_api_instance.run_sliding_window_analysis.return_value = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'windows': []
+        }
+        mock_api.return_value = mock_api_instance
         
         result = run_daily_analysis(test_settings)
         
         # Should handle gracefully
-        assert result is False or result is None
+        assert isinstance(result, dict)
+        assert result.get('status') == 'success'
 
-    @patch('src.pipelines.daily_analysis.DriftDatabaseService')
-    def test_run_daily_analysis_error_handling(self, mock_db, test_settings):
+    @patch('src.pipelines.daily_analysis.aggregate_daily_metrics')
+    def test_run_daily_analysis_error_handling(self, mock_aggregate, test_settings):
         """Test pipeline error handling."""
-        mock_db.side_effect = Exception("Database error")
+        mock_aggregate.side_effect = Exception("API error")
         
         result = run_daily_analysis(test_settings)
         
         # Should not raise exception
-        assert result is False
+        assert isinstance(result, dict)
+        assert result.get('status') == 'failed'
 
-    def test_report_generation_integration(self, daily_metrics_history, test_settings):
+    def test_report_generation_integration(self, test_settings):
         """Test report generation with real data processing."""
-        current_metrics = daily_metrics_history.iloc[0].to_dict()
+        aggregated_metrics = {
+            'drift_summary': {'total_windows': 7, 'drift_detected_windows': 2, 'avg_drift_score': 0.25}
+        }
         
-        report = generate_daily_report(
-            daily_metrics=current_metrics,
-            historical_data=daily_metrics_history,
-            settings=test_settings
-        )
-        
-        # Report should contain key sections
-        assert isinstance(report, dict)
+        with patch('src.pipelines.daily_analysis.FraudDetectionAPIClient') as mock_api:
+            mock_api_instance = MagicMock()
+            mock_api_instance.generate_drift_report.return_value = {'summary': 'Test report'}
+            mock_api.return_value = mock_api_instance
+            
+            report = generate_daily_report(aggregated_metrics, test_settings)
+            
+            # Report should contain key sections
+            assert isinstance(report, dict)
 
-    def test_trend_analysis_integration(self, daily_metrics_history, test_settings):
+    @patch('src.pipelines.daily_analysis.aggregate_daily_metrics')
+    def test_trend_analysis_integration(self, mock_aggregate, test_settings):
         """Test trend analysis with historical data."""
-        trends = identify_trends(daily_metrics_history, test_settings)
+        mock_aggregate.return_value = {
+            'windows': [
+                {'drift_detected': False, 'drift_score': 0.1},
+                {'drift_detected': True, 'drift_score': 0.3},
+                {'drift_detected': False, 'drift_score': 0.2}
+            ]
+        }
+        
+        trends = identify_trends(test_settings)
         
         # Should analyze multiple metrics
-        assert isinstance(trends, dict)
+        assert isinstance(trends, list)
         assert len(trends) > 0
 
-    @patch('src.pipelines.daily_analysis.upload_report_to_blob')
-    def test_report_upload_integration(self, mock_upload, test_settings):
+    def test_report_upload_integration(self, test_settings):
         """Test report upload to blob storage."""
-        report = {'summary': 'Test report'}
-        
         with patch('src.pipelines.daily_analysis.generate_daily_report') as mock_gen:
-            mock_gen.return_value = report
+            mock_gen.return_value = {'summary': 'Test report'}
             
-            with patch('src.pipelines.daily_analysis.DriftDatabaseService'):
-                run_daily_analysis(test_settings)
+            with patch('src.pipelines.daily_analysis.aggregate_daily_metrics') as mock_agg:
+                mock_agg.return_value = {'drift_summary': {'total_windows': 7}}
                 
-                # Verify upload was attempted
-                if test_settings.azure_storage_enabled:
-                    assert mock_upload.called
+                result = run_daily_analysis(test_settings)
+                
+                # Verify report generation was attempted
+                assert result.get('report_generated') is True
 
-    def test_weekly_pattern_detection(self, test_settings):
+    @patch('src.pipelines.daily_analysis.aggregate_daily_metrics')
+    def test_weekly_pattern_detection(self, mock_aggregate, test_settings):
         """Test detection of weekly patterns."""
-        # Create data with weekly pattern
-        dates = [datetime.utcnow() - timedelta(days=i) for i in range(28)]
+        # Mock data with weekly pattern (higher drift on weekends)
+        mock_aggregate.return_value = {
+            'windows': [
+                {'drift_detected': False, 'drift_score': 0.1},  # Weekday
+                {'drift_detected': False, 'drift_score': 0.2},  # Weekday
+                {'drift_detected': False, 'drift_score': 0.15}, # Weekday
+                {'drift_detected': False, 'drift_score': 0.12}, # Weekday
+                {'drift_detected': False, 'drift_score': 0.18}, # Weekday
+                {'drift_detected': True, 'drift_score': 0.4},   # Weekend
+                {'drift_detected': True, 'drift_score': 0.5}    # Weekend
+            ]
+        }
         
-        # Simulate higher drift on weekends
-        drift_scores = []
-        for date in dates:
-            if date.weekday() >= 5:  # Weekend
-                drift_scores.append(np.random.uniform(0.4, 0.6))
-            else:  # Weekday
-                drift_scores.append(np.random.uniform(0.1, 0.3))
-        
-        weekly_data = pd.DataFrame({
-            'date': dates,
-            'avg_psi': drift_scores
-        })
-        
-        trends = identify_trends(weekly_data, test_settings)
+        trends = identify_trends(test_settings)
         
         # Should detect pattern (implementation dependent)
-        assert isinstance(trends, dict)
+        assert isinstance(trends, list)
 
     def test_action_priority_ordering(self, test_settings):
         """Test that recommendations are prioritized."""
-        critical_trends = {
-            'recall': 'critically_degraded',
-            'fpr': 'significantly_increased',
-            'drift_frequency': 'very_high'
+        aggregated_metrics = {
+            'drift_summary': {
+                'total_windows': 7,
+                'drift_detected_windows': 5,
+                'avg_drift_score': 0.4
+            }
         }
+        critical_trends = [
+            {'direction': 'increasing', 'concern_level': 'HIGH', 'magnitude': 0.6, 'detection_rate': 0.7}
+        ]
         
-        recommendations = recommend_actions(critical_trends, test_settings)
+        recommendations = recommend_actions(aggregated_metrics, critical_trends)
         
         # Should provide multiple prioritized actions
         assert isinstance(recommendations, list)
         if len(recommendations) > 0:
             # First recommendation should be high priority
-            assert isinstance(recommendations[0], (str, dict))
+            assert isinstance(recommendations[0], str)
 
-    @patch('src.pipelines.daily_analysis.AlertManager')
-    def test_alert_on_critical_trends(self, mock_alerts, test_settings):
+    @patch('src.pipelines.daily_analysis.aggregate_daily_metrics')
+    @patch('src.pipelines.daily_analysis.identify_trends')
+    def test_alert_on_critical_trends(self, mock_trends, mock_aggregate, test_settings):
         """Test that critical trends trigger alerts."""
-        with patch('src.pipelines.daily_analysis.DriftDatabaseService'):
-            with patch('src.pipelines.daily_analysis.identify_trends') as mock_trends:
-                mock_trends.return_value = {'recall': 'critically_degraded'}
-                
-                run_daily_analysis(test_settings)
-                
-                # Critical trends should trigger alerts
-                # (implementation dependent)
+        mock_aggregate.return_value = {
+            'drift_summary': {'total_windows': 7, 'drift_detected_windows': 4, 'avg_drift_score': 0.35}
+        }
+        mock_trends.return_value = [{'direction': 'increasing', 'concern_level': 'HIGH', 'magnitude': 0.3, 'detection_rate': 0.5}]
+        
+        result = run_daily_analysis(test_settings)
+        
+        # Critical trends should be identified
+        assert result.get('status') == 'success'
+        assert 'trends' in result
 
-    def test_historical_comparison(self, daily_metrics_history, test_settings):
+    def test_historical_comparison(self, test_settings):
         """Test comparison with historical baselines."""
-        current_metrics = daily_metrics_history.iloc[0].to_dict()
+        aggregated_metrics = {
+            'drift_summary': {'total_windows': 7, 'drift_detected_windows': 2, 'avg_drift_score': 0.25}
+        }
         
-        report = generate_daily_report(
-            daily_metrics=current_metrics,
-            historical_data=daily_metrics_history,
-            settings=test_settings
-        )
-        
-        # Report should include historical context
-        assert isinstance(report, dict)
+        with patch('src.pipelines.daily_analysis.FraudDetectionAPIClient') as mock_api:
+            mock_api_instance = MagicMock()
+            mock_api_instance.generate_drift_report.return_value = {'summary': 'Historical comparison report'}
+            mock_api.return_value = mock_api_instance
+            
+            report = generate_daily_report(aggregated_metrics, test_settings)
+            
+            # Report should include historical context
+            assert isinstance(report, dict)
 
     def test_metrics_aggregation_accuracy(self, test_settings):
         """Test accuracy of metrics aggregation."""
-        hourly_data = pd.DataFrame({
-            'timestamp': [datetime.utcnow() - timedelta(hours=i) for i in range(24)],
-            'psi_score': [0.3] * 24,
-            'fraud_rate': [0.002] * 24
-        })
-        
-        with patch('src.pipelines.daily_analysis.DriftDatabaseService') as mock_db:
-            mock_db_instance = MagicMock()
-            mock_db_instance.query_historical_drift.return_value = hourly_data
-            mock_db.return_value = mock_db_instance
+        with patch('src.pipelines.daily_analysis.FraudDetectionAPIClient') as mock_api:
+            mock_api_instance = MagicMock()
+            mock_api_instance.run_sliding_window_analysis.return_value = {
+                'timestamp': datetime.utcnow().isoformat(),
+                'analysis_period': '24h',
+                'window_size': '1h',
+                'windows': [
+                    {'drift_detected': False, 'drift_score': 0.3},
+                    {'drift_detected': False, 'drift_score': 0.25}
+                ]
+            }
+            mock_api.return_value = mock_api_instance
             
             metrics = aggregate_daily_metrics(test_settings)
             

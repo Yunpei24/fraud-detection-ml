@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
-from training.src.data.preprocessor import fill_na, check_data_quality  # Corrected import
-from training.src.data.schema_validation import validate_schema  # Corrected import
+from src.data.utils import fill_na, check_data_quality  # Corrected import
+from src.data.schema_validation import validate_schema  # Corrected import
 import sys
 import os
 
@@ -15,7 +15,7 @@ def test_handle_missing_values_no_change(tiny_credit_df):
 def test_validate_schema_passes(tiny_credit_df):
     # Ensure that no ValueError is raised when required columns are present
     try:
-        validate_schema(tiny_credit_df, required=["Time", "Amount", "Class"])
+        validate_schema(tiny_credit_df, required=["Time", "amount", "Class"])
     except ValueError as e:
         pytest.fail(f"Unexpected error raised: {e}")
 

@@ -1,176 +1,226 @@
 """
-PostgreSQL Hook for Fraud Detection Database
-Uses centralized configuration from airflow.src.config.settings
+Custom PostgreSQL Hook for Fraud Detection
+===========================================
+Extends Airflow PostgresHook with convenience methods for fraud detection queries.
 """
-from typing import Any, Dict, List, Optional
-from airflow.hooks.base import BaseHook
-import sqlalchemy as sa
-import pandas as pd
-import sys
-from pathlib import Path
-
-# Add airflow/src to path
-AIRFLOW_SRC = Path(__file__).parent.parent.parent / "src"
-sys.path.insert(0, str(AIRFLOW_SRC))
-
-from config.settings import settings
+from typing import Any, List, Optional, Tuple
+from airflow.providers.postgres.hooks.postgres import PostgresHook
 
 
-class FraudPostgresHook(BaseHook):
-    """Hook for interacting with fraud detection PostgreSQL database"""
+class FraudPostgresHook(PostgresHook):
+    """
+    Custom PostgreSQL hook for fraud detection with convenience methods.
     
-    def __init__(self, database_url: Optional[str] = None):
+    This hook extends the standard Airflow PostgresHook with methods
+    specifically designed for fraud detection queries.
+    
+    Usage:
+        hook = FraudPostgresHook(postgres_conn_id='postgres_default')
+        results = hook.fetch_all("SELECT * FROM transactions LIMIT 10")
+    """
+    
+    def __init__(self, postgres_conn_id: str = 'postgres_default', **kwargs):
         """
-        Initialize PostgreSQL hook.
+        Initialize FraudPostgresHook.
         
         Args:
-            database_url: PostgreSQL connection URL (defaults to settings.fraud_database_url)
+            postgres_conn_id: Airflow connection ID for PostgreSQL
+            **kwargs: Additional arguments passed to PostgresHook
         """
-        super().__init__()
-        self.database_url = database_url or settings.fraud_database_url
-        self.engine = None
+        super().__init__(postgres_conn_id=postgres_conn_id, **kwargs)
     
-    def _get_database_url(self) -> str:
-        """Get database URL from settings"""
-        from airflow.config.settings import settings
-        return settings.fraud_database_url
-    
-    def get_engine(self) -> sa.Engine:
-        """Get SQLAlchemy engine"""
-        if self.engine is None:
-            self.engine = sa.create_engine(self.database_url)
-        return self.engine
-    
-    def execute_query(self, query: str, params: Optional[tuple] = None) -> Any:
-        """Execute SQL query"""
-        engine = self.get_engine()
-        with engine.connect() as conn:
-            result = conn.execute(sa.text(query), params or ())
-            conn.commit()
-            return result
-    
-    def fetch_one(self, query: str, params: Optional[tuple] = None) -> Optional[tuple]:
-        """Fetch single row"""
-        result = self.execute_query(query, params)
-        return result.fetchone()
-    
-    def fetch_all(self, query: str, params: Optional[tuple] = None) -> List[tuple]:
-        """Fetch all rows"""
-        result = self.execute_query(query, params)
-        return result.fetchall()
-    
-    def fetch_dataframe(self, query: str) -> pd.DataFrame:
-        """Fetch results as pandas DataFrame"""
-        engine = self.get_engine()
-        return pd.read_sql(query, engine)
-    
-    def insert_many(self, table: str, records: List[Dict[str, Any]]) -> int:
-        """Bulk insert records"""
-        if not records:
-            return 0
-        
-        df = pd.DataFrame(records)
-        engine = self.get_engine()
-        
-        rows_inserted = df.to_sql(
-            table, 
-            engine, 
-            if_exists='append', 
-            index=False
-        )
-        
-        return rows_inserted
-    
-    def get_drift_metrics(self, hours: int = 24) -> pd.DataFrame:
-        """Get recent drift metrics"""
-        query = f"""
-            SELECT *
-            FROM drift_metrics
-            WHERE detected_at >= NOW() - INTERVAL '{hours} hours'
-            ORDER BY detected_at DESC
-        """
-        return self.fetch_dataframe(query)
-    
-    def get_retraining_triggers(self, limit: int = 10) -> pd.DataFrame:
-        """Get recent retraining triggers"""
-        query = f"""
-            SELECT *
-            FROM retraining_triggers
-            ORDER BY triggered_at DESC
-            LIMIT {limit}
-        """
-        return self.fetch_dataframe(query)
-    
-    def get_model_versions(self, is_production: bool = None) -> pd.DataFrame:
-        """Get model versions"""
-        query = "SELECT * FROM model_versions"
-        if is_production is not None:
-            query += f" WHERE is_production = {is_production}"
-        query += " ORDER BY registered_at DESC"
-        return self.fetch_dataframe(query)
-    
-    def save_drift_metric(
-        self, 
-        metric_type: str,
-        metric_name: str,
-        metric_value: float,
-        threshold: float,
-        threshold_exceeded: bool,
-        severity: str
-    ) -> None:
-        """Save drift metric"""
-        query = """
-            INSERT INTO drift_metrics 
-            (metric_type, metric_name, metric_value, threshold, threshold_exceeded, severity)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """
-        self.execute_query(query, (
-            metric_type, metric_name, metric_value, 
-            threshold, threshold_exceeded, severity
-        ))
-    
-    def save_retraining_trigger(
+    def fetch_all(
         self,
-        trigger_reason: str,
-        drift_type: str,
-        drift_severity: str,
-        airflow_dag_id: str,
-        airflow_run_id: str
-    ) -> None:
-        """Save retraining trigger"""
-        query = """
-            INSERT INTO retraining_triggers 
-            (trigger_reason, drift_type, drift_severity, airflow_dag_id, airflow_run_id, status)
-            VALUES (%s, %s, %s, %s, %s, 'pending')
+        query: str,
+        parameters: Optional[Tuple[Any, ...]] = None
+    ) -> List[Tuple[Any, ...]]:
         """
-        self.execute_query(query, (
-            trigger_reason, drift_type, drift_severity, 
-            airflow_dag_id, airflow_run_id
-        ))
+        Fetch all rows from a SQL query.
+        
+        Args:
+            query: SQL query string
+            parameters: Query parameters (tuple)
+            
+        Returns:
+            List of tuples containing query results
+            
+        Example:
+            results = hook.fetch_all(
+                "SELECT * FROM transactions WHERE amount > %s",
+                (100.0,)
+            )
+        """
+        conn = self.get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            if parameters:
+                cursor.execute(query, parameters)
+            else:
+                cursor.execute(query)
+            
+            return cursor.fetchall()
+        finally:
+            cursor.close()
     
-    def update_retraining_status(
+    def fetch_one(
         self,
-        airflow_run_id: str,
-        status: str,
-        model_version: Optional[str] = None
-    ) -> None:
-        """Update retraining trigger status"""
-        if status == 'completed':
-            query = """
-                UPDATE retraining_triggers
-                SET status = %s, completed_at = NOW(), model_version = %s
-                WHERE airflow_run_id = %s
-            """
-            self.execute_query(query, (status, model_version, airflow_run_id))
+        query: str,
+        parameters: Optional[Tuple[Any, ...]] = None
+    ) -> Optional[Tuple[Any, ...]]:
+        """
+        Fetch one row from a SQL query.
+        
+        Args:
+            query: SQL query string
+            parameters: Query parameters (tuple)
+            
+        Returns:
+            Single tuple containing query result, or None if no results
+            
+        Example:
+            result = hook.fetch_one(
+                "SELECT COUNT(*) FROM transactions WHERE is_fraud = %s",
+                (True,)
+            )
+        """
+        conn = self.get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            if parameters:
+                cursor.execute(query, parameters)
+            else:
+                cursor.execute(query)
+            
+            return cursor.fetchone()
+        finally:
+            cursor.close()
+    
+    def execute_query(
+        self,
+        query: str,
+        parameters: Optional[Tuple[Any, ...]] = None,
+        autocommit: bool = True
+    ) -> int:
+        """
+        Execute a SQL query and return number of affected rows.
+        
+        Useful for INSERT, UPDATE, DELETE operations.
+        
+        Args:
+            query: SQL query string
+            parameters: Query parameters (tuple)
+            autocommit: Whether to auto-commit the transaction
+            
+        Returns:
+            Number of affected rows
+            
+        Example:
+            rows_affected = hook.execute_query(
+                "UPDATE transactions SET processed = %s WHERE id = %s",
+                (True, 12345)
+            )
+        """
+        conn = self.get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            if parameters:
+                cursor.execute(query, parameters)
+            else:
+                cursor.execute(query)
+            
+            if autocommit:
+                conn.commit()
+            
+            return cursor.rowcount
+        except Exception as e:
+            if autocommit:
+                conn.rollback()
+            raise e
+        finally:
+            cursor.close()
+    
+    def fetch_dataframe(
+        self,
+        query: str,
+        parameters: Optional[Tuple[Any, ...]] = None
+    ):
+        """
+        Fetch query results as a pandas DataFrame.
+        
+        Args:
+            query: SQL query string
+            parameters: Query parameters (tuple)
+            
+        Returns:
+            pandas DataFrame with query results
+            
+        Example:
+            df = hook.fetch_dataframe(
+                "SELECT * FROM transactions WHERE created_at >= %s",
+                ('2025-01-01',)
+            )
+        """
+        import pandas as pd
+        
+        conn = self.get_conn()
+        
+        try:
+            if parameters:
+                df = pd.read_sql(query, conn, params=parameters)
+            else:
+                df = pd.read_sql(query, conn)
+            
+            return df
+        finally:
+            conn.close()
+    
+    def check_table_exists(self, table_name: str, schema: str = 'public') -> bool:
+        """
+        Check if a table exists in the database.
+        
+        Args:
+            table_name: Name of the table
+            schema: Database schema (default: 'public')
+            
+        Returns:
+            True if table exists, False otherwise
+        """
+        query = """
+            SELECT EXISTS (
+                SELECT 1 
+                FROM information_schema.tables 
+                WHERE table_schema = %s 
+                AND table_name = %s
+            )
+        """
+        
+        result = self.fetch_one(query, (schema, table_name))
+        return result[0] if result else False
+    
+    def get_row_count(self, table_name: str, where_clause: str = "") -> int:
+        """
+        Get row count for a table.
+        
+        Args:
+            table_name: Name of the table
+            where_clause: Optional WHERE clause (without 'WHERE' keyword)
+            
+        Returns:
+            Number of rows
+            
+        Example:
+            count = hook.get_row_count(
+                "transactions",
+                "created_at >= NOW() - INTERVAL '24 hours'"
+            )
+        """
+        if where_clause:
+            query = f"SELECT COUNT(*) FROM {table_name} WHERE {where_clause}"
         else:
-            query = """
-                UPDATE retraining_triggers
-                SET status = %s
-                WHERE airflow_run_id = %s
-            """
-            self.execute_query(query, (status, airflow_run_id))
-    
-    def close(self) -> None:
-        """Close database connection"""
-        if self.engine:
-            self.engine.dispose()
+            query = f"SELECT COUNT(*) FROM {table_name}"
+        
+        result = self.fetch_one(query)
+        return result[0] if result else 0

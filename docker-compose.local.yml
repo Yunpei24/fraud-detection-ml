@@ -1,0 +1,630 @@
+services:
+  # ==============================================================================
+  # INFRASTRUCTURE SERVICES
+  # ==============================================================================
+  
+  postgres:
+    image: postgres:15-alpine
+    container_name: fraud-postgres
+    environment:
+      POSTGRES_USER: fraud_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fraud_pass_dev_2024}
+      POSTGRES_DB: fraud_detection
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./00_create_databases.sh:/docker-entrypoint-initdb.d/00_create_databases.sh:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - fraud-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fraud_user -d fraud_detection"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: fraud-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_pass_dev}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - fraud-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ==============================================================================
+  # KAFKA INFRASTRUCTURE
+  # ==============================================================================
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: fraud-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_LOG4J_ROOT_LOGLEVEL: WARN
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    networks:
+      - fraud-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: fraud-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      
+      # Listeners configuration
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      
+      # Topic settings
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      
+      # Performance tuning
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      
+      # Log settings
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
+      KAFKA_LOG4J_LOGGERS: "kafka.controller=WARN,kafka.producer.async.DefaultEventHandler=WARN,state.change.logger=WARN"
+      
+      # Retention
+      KAFKA_LOG_RETENTION_HOURS: 168  # 7 days
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824  # 1GB
+    ports:
+      - "9092:9092"    # Internal (Docker network)
+      - "29092:29092"  # External (host access)
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - fraud-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  mlflow:
+    build:
+      context: ./mlflow
+      dockerfile: Dockerfile
+    image: fraud-detection/mlflow:local
+    # image: hcr.io/mlflow/mlflow:v2.10.2
+    container_name: fraud-mlflow
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri postgresql://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/mlflow_db
+      --default-artifact-root /mlflow/artifacts
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+    ports:
+      - "5001:5000"  # Port externe 5001 (5000 already usedd by ControlCenter)
+    networks:
+      - fraud-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ==============================================================================
+  # APPLICATION SERVICES - BUILD LOCAL (PAS D'ACR)
+  # ==============================================================================
+
+  api:
+    build:
+      context: .  # ← Contexte racine pour accéder à common/
+      dockerfile: ./api/Dockerfile
+    image: fraud-detection/api:local  # ← Image locale, pas ACR
+    container_name: fraud-api
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=fraud_detection
+      - POSTGRES_USER=fraud_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fraud_pass_dev_2024}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_pass_dev}
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MODEL_NAME=fraud_detection_xgboost
+      - LOG_LEVEL=INFO
+      - PROMETHEUS_PORT=9090
+      - CORS_ORIGINS=["http://localhost:3000","http://localhost:8000"]
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
+      - AZURE_STORAGE_CONTAINER_NAME=${AZURE_STORAGE_CONTAINER_NAME:-fraud-models}
+      - ENVIRONMENT=development
+      - REQUIRE_API_KEY=true
+      - API_KEYS=${API_KEYS:-dev_api_key_12345,test_api_key_67890}
+    ports:
+      - "8000:8000"  # API
+      - "9090:9090"  # Prometheus metrics
+    networks:
+      - fraud-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  data:
+    build:
+      context: .  # ← Contexte racine pour accéder à common/
+      dockerfile: ./data/Dockerfile
+    image: fraud-detection/data:local  # ← Image locale, pas ACR
+    container_name: fraud-data
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=fraud_detection
+      - POSTGRES_USER=fraud_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fraud_pass_dev_2024}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_pass_dev}
+      - DATA_SOURCE=/data/creditcard.csv
+      - ARTIFACT_DIR=/artifacts
+      - LOG_LEVEL=INFO
+      - PROMETHEUS_PORT=9091
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_TOPIC=fraud-detection-transactions
+    volumes:
+      - ./creditcard.csv:/data/creditcard.csv:ro
+      - data_artifacts:/artifacts
+    ports:
+      - "9091:9091"  # Prometheus metrics
+    networks:
+      - fraud-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  drift:
+    build:
+      context: .  # ← Contexte racine pour accéder à common/
+      dockerfile: ./drift/Dockerfile
+    image: fraud-detection/drift:local  # ← Image locale, pas ACR
+    container_name: fraud-drift
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=fraud_detection
+      - POSTGRES_USER=fraud_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fraud_pass_dev_2024}
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - DATA_DRIFT_THRESHOLD=0.2
+      - CONCEPT_DRIFT_THRESHOLD=0.05
+      - MONITORING_WINDOW_HOURS=24
+      - LOG_LEVEL=INFO
+      - PROMETHEUS_PORT=9095
+      # 🚨 NEW: Airflow integration for retraining trigger
+      - AIRFLOW_API_URL=http://airflow-webserver:8080/api/v1
+      - AIRFLOW_USERNAME=${AIRFLOW_USERNAME:-airflow}
+      - AIRFLOW_PASSWORD=${AIRFLOW_PASSWORD:-airflow}
+      - RETRAINING_COOLDOWN_HOURS=48
+    ports:
+      - "9095:9095"  # Prometheus metrics
+    networks:
+      - fraud-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9095/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  training:
+    build:
+      context: .  # ← Contexte racine pour accéder à common/
+      dockerfile: ./training/Dockerfile
+    image: fraud-detection/training:local  # ← Image locale, pas ACR
+    container_name: fraud-training
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=fraud_detection
+      - POSTGRES_USER=fraud_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fraud_pass_dev_2024}
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MODEL_NAME=fraud_detection_xgboost
+      - EXPERIMENT_NAME=fraud-detection
+      - DATA_PATH=/data/creditcard.csv
+      - LOG_LEVEL=INFO
+      - PROMETHEUS_PORT=9095
+    volumes:
+      - ./config:/app/config:ro  # Mount centralized config
+      - ./creditcard.csv:/app/data/raw/creditcard.csv:ro
+      - training_artifacts:/app/artifacts
+      - mlflow_artifacts:/mlflow/artifacts  # Mount MLflow artifacts volume for direct access
+    ports:
+      - "9096:9095"  # Prometheus metrics
+    networks:
+      - fraud-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9095/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ==============================================================================
+  # AIRFLOW ORCHESTRATION
+  # ==============================================================================
+
+  # Airflow base image (build once, use twice)
+  airflow-base:
+    build:
+      context: .  # ← Contexte racine pour accéder à common/
+      dockerfile: ./airflow/Dockerfile
+    image: fraud-detection/airflow:local  # ← Image locale, pas ACR
+    # This service is not run, just used to build the image
+    profiles:
+      - build-only
+
+  # Airflow DB initialization (runs once then exits)
+  airflow-init:
+    image: fraud-detection/airflow:local
+    container_name: fraud-airflow-init
+    command: >
+      bash -c "
+      airflow db init &&
+      airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@localhost.com --password admin || true &&
+      python /opt/airflow/scripts/setup_connections.py &&
+      python /opt/airflow/scripts/setup_smtp_connection.py || echo 'SMTP setup failed, continuing...'
+      "
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/fraud_detection
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY:-ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg=}
+    volumes:
+      - ./config:/opt/airflow/config:ro  # Mount centralized config
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/config:/opt/airflow/config-airflow  # Airflow-specific config
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./airflow/scripts:/opt/airflow/scripts
+      - /var/run/docker.sock:/var/run/docker.sock  # For DockerOperator
+    networks:
+      - fraud-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"  # Run only once
+
+  airflow-webserver:
+    image: fraud-detection/airflow:local  # ← Réutilise l'image construite
+    container_name: fraud-airflow-webserver
+    command: webserver
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/fraud_detection
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/fraud_detection
+      - AIRFLOW__CELERY__BROKER_URL=redis://:${REDIS_PASSWORD:-redis_pass_dev}@redis:6379/0
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY:-ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg=}
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth
+      - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=true
+      - PYTHONPATH=/opt/airflow:/opt/airflow/config:/opt/airflow/plugins
+      - DOCKER_NETWORK=fraud-detection-ml_fraud-network
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@localhost.com}
+      - ENVIRONMENT=local  # Use local Docker images
+    volumes:
+      - ./config:/opt/airflow/config:ro  # Mount centralized config
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/config:/opt/airflow/config-airflow  # Airflow-specific config
+      - ./airflow/plugins:/opt/airflow/plugins
+      - /var/run/docker.sock:/var/run/docker.sock  # For DockerOperator
+    ports:
+      - "8080:8080"
+    networks:
+      - fraud-network
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  airflow-scheduler:
+    image: fraud-detection/airflow:local 
+    container_name: fraud-airflow-scheduler
+    command: scheduler
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/fraud_detection
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/fraud_detection
+      - AIRFLOW__CELERY__BROKER_URL=redis://:${REDIS_PASSWORD:-redis_pass_dev}@redis:6379/0
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY:-ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2aGOv2oasOM1Pg=}
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - PYTHONPATH=/opt/airflow:/opt/airflow/config:/opt/airflow/plugins
+      - DOCKER_NETWORK=fraud-detection-ml_fraud-network
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@localhost.com}
+      - ENVIRONMENT=local  # Use local Docker images
+    volumes:
+      - ./config:/opt/airflow/config:ro  # Mount centralized config
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/config:/opt/airflow/config-airflow  # Airflow-specific config
+      - ./airflow/plugins:/opt/airflow/plugins
+      - /var/run/docker.sock:/var/run/docker.sock  # For DockerOperator
+    networks:
+      - fraud-network
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  airflow-worker:
+    image: fraud-detection/airflow:local  # ← Réutilise l'image construite
+    container_name: fraud-airflow-worker
+    command: celery worker
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/fraud_detection
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/fraud_detection
+      - AIRFLOW__CELERY__BROKER_URL=redis://:${REDIS_PASSWORD:-redis_pass_dev}@redis:6379/0
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY:-ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg=}
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - PYTHONPATH=/opt/airflow:/opt/airflow/config:/opt/airflow/plugins
+      - DOCKER_NETWORK=fraud-detection-ml_fraud-network
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@localhost.com}
+      - ENVIRONMENT=local  # Use local Docker images
+      # Celery worker specific settings
+      - AIRFLOW__CELERY__WORKER_CONCURRENCY=2
+      - AIRFLOW__CELERY__WORKER_PREFETCH_MULTIPLIER=1
+      - AIRFLOW__CELERY__WORKER_MAX_TASKS_PER_CHILD=50
+      - AIRFLOW__CELERY__WORKER_AUTOSCALE=2,4
+    volumes:
+      - ./config:/opt/airflow/config:ro  # Mount centralized config
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/config:/opt/airflow/config-airflow  # Airflow-specific config
+      - ./airflow/plugins:/opt/airflow/plugins
+      - /var/run/docker.sock:/var/run/docker.sock  # For DockerOperator
+    networks:
+      - fraud-network
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A airflow.executors.celery_executor inspect active"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ==============================================================================
+  # MONITORING SERVICES (Complete Stack)
+  # ==============================================================================
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: fraud-prometheus
+    ports:
+      - "9094:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - fraud-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: fraud-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-worldmap-panel
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - fraud-network
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: fraud-alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - fraud-network
+    restart: unless-stopped
+
+  # Node Exporter for infrastructure metrics
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: fraud-node-exporter
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - fraud-network
+    restart: unless-stopped
+
+  # Redis Exporter (if using Redis for caching)
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: fraud-redis-exporter
+    environment:
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    ports:
+      - "9121:9121"
+    networks:
+      - fraud-network
+    restart: unless-stopped
+    depends_on:
+      - redis
+
+# ==============================================================================
+# VOLUMES
+# ==============================================================================
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  zookeeper_data:
+    driver: local
+  zookeeper_logs:
+    driver: local
+  kafka_data:
+    driver: local
+  mlflow_artifacts:
+    driver: local
+  data_artifacts:
+    driver: local
+  training_artifacts:
+    driver: local
+  airflow_plugins:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  alertmanager_data:
+    driver: local
+
+# ==============================================================================
+# NETWORKS
+# ==============================================================================
+
+networks:
+  fraud-network:
+    name: fraud-detection-network
+    driver: bridge

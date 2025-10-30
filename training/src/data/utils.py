@@ -29,3 +29,13 @@ def fill_na(
             out[c] = out[c].fillna(out[c].mode().iloc[0] if not out[c].mode().empty else out[c].iloc[0])
 
     return out
+
+def check_data_quality(df: pd.DataFrame) -> dict:
+    """
+    Perform basic data quality checks and return a report.
+    """
+    return {
+        "n_rows": len(df),
+        "n_cols": len(df.columns),
+        "null_counts": df.isnull().sum().to_dict()
+    }

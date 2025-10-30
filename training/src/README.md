@@ -28,7 +28,7 @@ Key details:
 
 Rows: 284,807
 
-Features: 30 (28 PCA-transformed features, Time, and Amount)
+Features: 30 (28 PCA-transformed features, Time, and amount)
 
 Target: Class (1 = Fraud, 0 = Legitimate)
 

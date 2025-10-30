@@ -1,10 +1,4 @@
-"""
-Airflow Hooks for Fraud Detection System
-"""
-from .postgres_hook import FraudPostgresHook
-from .mlflow_hook import MLflowHook
+"""Custom hooks for fraud detection"""
+from plugins.hooks.postgres_hook import FraudPostgresHook
 
-__all__ = [
-    'FraudPostgresHook',
-    'MLflowHook'
-]
+__all__ = ["FraudPostgresHook"]

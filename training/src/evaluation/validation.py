@@ -1,7 +1,7 @@
 # training/src/evaluation/validation.py
 from __future__ import annotations
 
-from typing import Dict, Tuple
+from typing import Dict
 
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
@@ -107,8 +107,11 @@ def validate_all_models(
     """
     ok = True
     for name, metrics in models_results.items():
-        r_ok = metrics.get("recall", 0.0) >= min_recall
-        f_ok = metrics.get("fpr", 1.0) <= max_fpr
+        if name=="isolation_forest":
+            # Isolation Forest does not provide recall/fpr metrics
+            continue
+        r_ok = metrics.get("recall") >= min_recall
+        f_ok = metrics.get("fpr") <= max_fpr
         ok = ok and r_ok and f_ok
     return ok
 

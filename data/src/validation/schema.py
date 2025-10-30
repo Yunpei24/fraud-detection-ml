@@ -110,6 +110,7 @@ class SchemaValidator:
             if not fields_valid:
                 report["field_errors"] = missing
                 report["invalid_rows"] = len(df)
+                logger.error(f"Schema validation failed: missing required fields {missing}")
                 return False, report
             
             # Check field types
@@ -158,7 +159,7 @@ class ProductionSchemaValidator:
     - merchant_id: Merchant identifier
     - amount: Transaction amount
     - currency: Currency code
-    - transaction_time: Timestamp of transaction
+    - time: Timestamp of transaction
     - customer_zip, merchant_zip: Location data
     - customer_country, merchant_country: Country codes
     - device_id: Device identifier (optional)
@@ -180,7 +181,7 @@ class ProductionSchemaValidator:
         """Fields that must be present."""
         return [
             'transaction_id', 'customer_id', 'merchant_id',
-            'amount', 'currency', 'transaction_time',
+            'amount', 'currency', 'time',
             'customer_zip', 'merchant_zip',
             'customer_country', 'merchant_country'
         ]
@@ -203,7 +204,7 @@ class ProductionSchemaValidator:
             'merchant_id': str,
             'amount': float,
             'currency': str,
-            'transaction_time': str,  # Timestamp as string (will be parsed)
+            'time': str,  # Timestamp as string (will be parsed)
             'customer_zip': str,
             'merchant_zip': str,
             'customer_country': str,
@@ -214,6 +215,8 @@ class ProductionSchemaValidator:
             'mcc': int,
             'transaction_type': str,
             'is_disputed': bool,
+            'source_system': str,
+            'ingestion_timestamp': str,
         }
     
     def validate_fields(self, df: pd.DataFrame) -> tuple[bool, list]:
@@ -289,7 +292,7 @@ class ProductionSchemaValidator:
         # Validate amount (should be positive)
         if 'amount' in df.columns:
             if (df['amount'] < 0).any():
-                errors.append("Amount values should be non-negative")
+                errors.append("amount values should be non-negative")
         
         # Validate currency (basic check - should be 3-letter code)
         if 'currency' in df.columns:

@@ -1,36 +1,42 @@
 """
 DAG 06: Model Performance Tracking
-Suivi quotidien des performances du modèle en production
-Utilise module_loader et config centralisée
+Daily tracking of model performance in production
+Uses PostgresHook for metrics calculation
 
-Schedule: Quotidien 3h AM
+Schedule: Daily at 3 AM
+Refactored to remove obsolete settings/helpers imports
 """
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
-import sys
-from pathlib import Path
+from plugins.hooks.postgres_hook import FraudPostgresHook
+import os
 
-# Add config and plugins to path
-AIRFLOW_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(AIRFLOW_ROOT / "config"))
-sys.path.insert(0, str(AIRFLOW_ROOT / "plugins"))
+# Import centralized configuration
+from config.constants import TABLE_NAMES, SCHEDULES, THRESHOLDS, ALERT_CONFIG
 
-from settings import settings
-from module_loader import loader
-from helpers import (
-    calculate_percentage_change,
-    validate_training_metrics,
-    format_metric_value,
-    create_alert_message
-)
-from hooks.postgres_hook import FraudPostgresHook
+# Configuration from environment
+ALERT_EMAIL = os.getenv('ALERT_EMAIL', ALERT_CONFIG['DEFAULT_EMAIL'])
+MIN_RECALL_THRESHOLD = THRESHOLDS['MIN_RECALL']
+MIN_PRECISION_THRESHOLD = THRESHOLDS['MIN_PRECISION']
+PERFORMANCE_DEGRADATION_THRESHOLD = THRESHOLDS['PERFORMANCE_DEGRADATION_THRESHOLD']
+
+# Helper functions (inline replacements for obsolete helpers.py)
+def calculate_percentage_change(baseline: float, current: float) -> float:
+    """Calculate percentage change between baseline and current value"""
+    if baseline == 0:
+        return 0.0
+    return ((current - baseline) / baseline) * 100
+
+def format_metric_value(value: float) -> str:
+    """Format metric value as percentage"""
+    return f"{value:.2%}"
 
 default_args = {
     'owner': 'ml-team',
     'depends_on_past': False,
-    'email': settings.alert_email_recipients,
+    'email': [ALERT_EMAIL],
     'email_on_failure': True,
     'retries': 1,
     'retry_delay': timedelta(minutes=5)
@@ -38,7 +44,7 @@ default_args = {
 
 
 def compute_daily_metrics(**context):
-    """Calcule métriques modèle dernières 24h using FraudPostgresHook"""
+    """Calculate model metrics for last 24h using FraudPostgresHook"""
     import pandas as pd
     from sklearn.metrics import (
         recall_score, precision_score, f1_score,
@@ -48,16 +54,16 @@ def compute_daily_metrics(**context):
     # Use hook instead of direct SQLAlchemy
     hook = FraudPostgresHook()
     
-    # Récupérer predictions vs actuals dernières 24h
-    query = """
+    # Retrieve predictions vs actuals last 24h
+    query = f"""
         SELECT 
             p.prediction,
             p.probability,
             t.is_fraud as actual,
             p.model_version,
             p.created_at
-        FROM predictions p
-        JOIN transactions t ON p.transaction_id = t.transaction_id
+        FROM {TABLE_NAMES['PREDICTIONS']} p
+        JOIN {TABLE_NAMES['TRANSACTIONS']} t ON p.transaction_id = t.transaction_id
         WHERE p.created_at >= NOW() - INTERVAL '24 hours'
         AND t.analyst_reviewed = true
     """
@@ -99,7 +105,7 @@ def compute_daily_metrics(**context):
 
 
 def compare_to_baseline(**context):
-    """Compare métriques actuelles au baseline using FraudPostgresHook and helpers"""
+    """Compare current metrics to baseline using FraudPostgresHook"""
     ti = context['task_instance']
     current_metrics = ti.xcom_pull(task_ids='compute_daily_metrics')
     
@@ -109,24 +115,24 @@ def compare_to_baseline(**context):
     # Use hook instead of direct SQLAlchemy
     hook = FraudPostgresHook()
     
-    # Récupérer baseline (moyenne 30 derniers jours)
-    query = """
+    # Retrieve baseline (average last 30 days)
+    query = f"""
         SELECT 
             AVG(recall) as baseline_recall,
             AVG(precision) as baseline_precision,
             AVG(f1_score) as baseline_f1,
             AVG(auc_roc) as baseline_auc
-        FROM model_versions
+        FROM {TABLE_NAMES['MODEL_VERSIONS']}
         WHERE is_production = true
         AND registered_at >= NOW() - INTERVAL '30 days'
     """
     
     result = hook.fetch_one(query)
     
-    # Use centralized thresholds from settings
+    # Use thresholds from environment variables
     baseline = {
-        'recall': float(result[0] or settings.min_recall_threshold),
-        'precision': float(result[1] or settings.min_precision_threshold),
+        'recall': float(result[0] or MIN_RECALL_THRESHOLD),
+        'precision': float(result[1] or MIN_PRECISION_THRESHOLD),
         'f1_score': float(result[2] or 0.77),
         'auc_roc': float(result[3] or 0.85)
     }
@@ -155,8 +161,8 @@ def compare_to_baseline(**context):
         }
     }
     
-    # Use centralized degradation threshold from settings
-    degradation_threshold = settings.performance_degradation_threshold if hasattr(settings, 'performance_degradation_threshold') else 0.05
+    # Use degradation threshold from environment
+    degradation_threshold = PERFORMANCE_DEGRADATION_THRESHOLD
     
     # Déterminer si dégradation significative
     degraded = (
@@ -179,10 +185,10 @@ def check_performance_thresholds(**context):
     if metrics.get('status') == 'no_data':
         return {'status': 'skipped'}
     
-    # Use centralized thresholds from settings instead of hardcoded values
-    min_recall = settings.min_recall_threshold
-    min_precision = settings.min_precision_threshold
-    max_fpr = settings.max_fpr_threshold if hasattr(settings, 'max_fpr_threshold') else 0.05
+    # Use thresholds from environment variables
+    min_recall = MIN_RECALL_THRESHOLD
+    min_precision = MIN_PRECISION_THRESHOLD
+    max_fpr = 0.05  # Max false positive rate
     
     violations = []
     
@@ -279,15 +285,19 @@ def send_performance_alert(**context):
     
     from plugins.operators.alert_operator import FraudDetectionAlertOperator
     
-    # Use create_alert_message helper for consistency
+    # Create alert message
     violations = threshold_check.get('violations', [])
     violations_msg = "\n".join([f"  - {v['message']}" for v in violations])
     
-    alert_message = create_alert_message(
-        alert_type='model_performance',
-        summary=f"Model performance degradation detected ({len(violations)} violations)",
-        details=violations_msg
-    )
+    alert_message = f"""
+    Model Performance Alert
+    =======================
+    Type: model_performance
+    Summary: Model performance degradation detected ({len(violations)} violations)
+    
+    Details:
+    {violations_msg}
+    """
     
     alert_op = FraudDetectionAlertOperator(
         task_id='performance_alert_internal',
@@ -351,8 +361,8 @@ def generate_performance_report(**context):
 with DAG(
     '06_model_performance_tracking',
     default_args=default_args,
-    description='Suivi quotidien des performances du modèle en production',
-    schedule_interval='0 3 * * *',  # 3 AM daily
+    description='Daily model performance tracking and alerting',
+    schedule_interval=SCHEDULES['PERFORMANCE_TRACKING'],  # Daily at 3 AM
     start_date=days_ago(1),
     catchup=False,
     tags=['monitoring', 'performance', 'ml']

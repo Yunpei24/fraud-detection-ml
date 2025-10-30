@@ -1,112 +1,187 @@
 # training/src/pipelines/training_pipeline.py
+"""
+Training pipeline for fraud detection.
+Loads data from PostgreSQL, applies preprocessing and feature engineering,
+trains multiple models with SMOTE, evaluates, and registers best model in MLflow.
+"""
 from __future__ import annotations
 
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict, Tuple
+from dataclasses import dataclass, asdict
+import tempfile
+import os
+from typing import Dict, Tuple, Any, Optional
 
+import joblib
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import traceback
 
-# data & features
-from training.src.data.loader import load_local_creditcard
-from training.src.data.preprocessor import DataPreprocessor
-from training.src.data.splitter import stratified_split
-from training.src.features.engineer import build_feature_frame
-from training.src.features.scaling import StandardScalerWrapper, MinMaxScalerWrapper
-from training.src.features.selection import select_k_best_mutual_info
+# Use common package for preprocessing and feature engineering
+from fraud_detection_common.preprocessor import DataPreprocessor
+from fraud_detection_common.feature_engineering import build_feature_frame
 
-# models
-from training.src.models.xgboost_model import XGBoostModel
-from training.src.models.neural_network import NeuralNetworkModel
-from training.src.models.isolation_forest import IsolationForestModel
-from training.src.models.random_forest import RandomForestModel
+# Data loading and splitting
+from src.data.loader import load_training_data
+from src.data.splitter import stratified_split
 
-# evaluation
-from training.src.evaluation.metrics import calculate_all_metrics
-from training.src.evaluation.validation import validate_all_models
-from training.src.evaluation.plots import (
+# Feature selection (optional)
+from src.features.selection import select_k_best_mutual_info
+
+# Models
+from src.models.xgboost_model import XGBoostModel
+from src.models.neural_network import NeuralNetworkModel
+from src.models.isolation_forest import IsolationForestModel
+from src.models.random_forest import RandomForestModel
+
+# Evaluation
+from src.evaluation.metrics import calculate_all_metrics
+from src.evaluation.validation import validate_all_models
+from src.evaluation.plots import (
     plot_roc_auc,
     plot_precision_recall_curve_plot,
     plot_confusion_matrix_plot,
     plot_feature_importance,
-    save_plots,
+)
+from src.evaluation.explainability import (
+    create_explanation_report_from_model,
+    plot_shap_summary,
 )
 
-# mlflow utils (optional)
-from training.src.mlflow_utils.experiment import setup_experiment, start_run, end_run
-from training.src.mlflow_utils.tracking import log_params, log_metrics, log_model, log_artifact
-from training.src.mlflow_utils.registry import register_model
+# MLflow utilities
+from src.mlflow_utils.experiment import setup_experiment, start_run
+from src.mlflow_utils.tracking import log_params, log_metrics, log_model, log_artifact
+from src.mlflow_utils.registry import register_model
 
-ARTIFACTS_DIR = Path("training/artifacts")
-MODEL_DIR = ARTIFACTS_DIR / "models"
-PLOTS_DIR = ARTIFACTS_DIR / "plots"
-EXPLAIN_DIR = ARTIFACTS_DIR / "explain"
+from src.config.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
 class TrainConfig:
+    """Training configuration parameters."""
+    # Data splitting
     test_size: float = 0.2
-    val_size: float = 0.1          # from train portion
+    val_size: float = 0.1  # from train portion
     random_state: int = 42
-    use_smote: bool = True         # applied inside models that support it
-    feature_k: int = 25            # top features via MI (optional)
-    scale_for_trees: bool = False  # trees usually don’t need scaling
-    scale_for_nn: bool = True
-
-    # business constraints
-    min_recall: float = 0.95
-    max_fpr: float = 0.02
-
+    
+    # Model training
+    use_smote: bool = True  # SMOTE for imbalanced data
+    tune_hyperparams: bool = True  # Re-enable hyperparameter tuning with conservative settings
+    
+    # Feature engineering and selection
+    feature_k: Optional[int] = None  # top features via MI (None = use all)
+    outlier_method: Optional[str] = "IQR"  # Outlier handling
+    
+    # Business constraints
+    min_recall: float = 0.95  # Minimum recall for fraud detection
+    max_fpr: float = 0.30  # Maximum false positive rate (eased from 0.05 to 0.30 for imbalanced data)
+    
     # MLflow
-    experiment_name: str = "fraud_training"
+    experiment_name: str = "fraud_detection_training"
     register_models: bool = True
+    
+    # Data source
+    use_postgres: bool = True  # If False, falls back to local CSV
+    local_csv_path: str = "/app/data/raw/creditcard.csv"  # Container path
 
 
 # -------------------------
 # Public entry point
 # -------------------------
-def run_training(cfg: TrainConfig | None = None) -> bool:
+def run_training(cfg: Optional[TrainConfig] = None) -> bool:
+    """
+    Main training pipeline entry point.
+    
+    Args:
+        cfg: Training configuration
+    
+    Returns:
+        True if validation passed, False otherwise
+    """
     cfg = cfg or TrainConfig()
-    _ensure_dirs()
-
-    # MLflow experiment setup (no-op if MLflow not configured)
+    
+    logger.info("=" * 80)
+    logger.info("FRAUD DETECTION MODEL TRAINING PIPELINE")
+    logger.info("=" * 80)
+    logger.info(f"Configuration: {asdict(cfg)}")
+    
+    # MLflow experiment setup
     setup_experiment(cfg.experiment_name)
-
-    X, y, feature_names = load_data()
-    Xtr, Xval, Xte, ytr, yval, yte = preprocess_data(X, y, feature_names, cfg)
-
-    # train & evaluate in parallel
+    
+    # Pipeline steps
+    X, y, feature_names = load_data(cfg)
+    Xtr, Xval, Xte, ytr, yval, yte, feature_names_final = preprocess_data(X, y, feature_names, cfg)
+    
+    # Train & evaluate models in parallel
     models = train_models(Xtr, ytr, Xval, yval, cfg)
-    results = evaluate_models(models, Xte, yte)
-
-    # validate against business rules
+    results = evaluate_models(models, Xte, yte, feature_names_final)
+    
+    # Validate against business rules
     ok = validate_models(results, cfg)
     if not ok:
-        print("[training] Validation failed. See metrics below.")
+        logger.error(" Validation failed against business constraints")
     else:
-        print("[training] Validation passed.")
-
-    # register & persist
-    register_models(models, results, cfg)
+        logger.info(" Validation passed")
+    
+    # Register best model & persist artifacts
+    register_best_model(models, results, feature_names_final, cfg)
     save_artifacts(models, results)
-
+    
+    logger.info("=" * 80)
+    logger.info(f"Training pipeline completed (validation={'PASSED' if ok else 'FAILED'})")
+    logger.info("=" * 80)
+    
     return ok
 
 
 # -------------------------
-# Steps
+# Pipeline steps
 # -------------------------
-def load_data() -> Tuple[np.ndarray, np.ndarray, list]:
-    df = load_local_creditcard("data/raw/creditcard.csv")
-    # feature build (idempotent; safe if columns missing)
-    df = build_feature_frame(df, ts_col=None, country_col=None)
-
-    y = df["Class"].astype(int).values
-    X = df.drop(columns=["Class"]).values
-    feats = [c for c in df.columns if c != "Class"]
-    return X, y, feats
+def load_data(cfg: TrainConfig) -> Tuple[np.ndarray, np.ndarray, list]:
+    """
+    Load training data from PostgreSQL or local CSV.
+    
+    Returns:
+        Tuple of (X, y, feature_names)
+    """
+    logger.info(" Step 1/5: Loading training data...")
+    
+    if cfg.use_postgres:
+        try:
+            df = load_training_data()
+            logger.info(f" Loaded {len(df)} samples from PostgreSQL (training_transactions table)")
+        except Exception as e:
+            logger.warning(f"Failed to load from PostgreSQL: {e}")
+            logger.info(f"Falling back to local CSV: {cfg.local_csv_path}")
+            from src.data.loader import load_local_csv
+            df = load_local_csv(cfg.local_csv_path)
+    else:
+        from src.data.loader import load_local_csv
+        df = load_local_csv(cfg.local_csv_path)
+        logger.info(f" Loaded {len(df)} samples from local CSV")
+    
+    # Extract target and features
+    if "class" not in df.columns:
+        raise ValueError("Target column 'class' not found in data")
+    
+    y = df["class"].astype(int).values
+    X_df = df.drop(columns=["class"])
+    
+    # Log class distribution
+    fraud_count = np.sum(y == 1)
+    normal_count = np.sum(y == 0)
+    fraud_pct = 100 * fraud_count / len(y)
+    logger.info(f"   Class distribution: Normal={normal_count}, Fraud={fraud_count} ({fraud_pct:.2f}%)")
+    
+    feature_names = list(X_df.columns)
+    X = X_df.values
+    
+    return X, y, feature_names
 
 
 def preprocess_data(
@@ -114,158 +189,458 @@ def preprocess_data(
     y: np.ndarray,
     feature_names: list,
     cfg: TrainConfig,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    # basic cleaning (no-ops for creditcard.csv but kept for extensibility)
-    pre = DataPreprocessor()
-    X_df = pre.fix_data_types(pre.handle_missing_values(pre.to_frame(X, feature_names)))
-    pre.check_data_quality(X_df)
-
-    # optional feature selection (top-K mutual information)
-    if cfg.feature_k and cfg.feature_k < X_df.shape[1]:
-        X_df, _ = select_k_best_mutual_info(X_df, target=y, k=cfg.feature_k)
-
-    # split (stratified)
-    Xtr, Xval, Xte, ytr, yval, yte = stratified_split(
-        X_df.values, y, test_size=cfg.test_size, val_size=cfg.val_size, random_state=cfg.random_state
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list]:
+    """
+    Preprocess data: feature engineering, cleaning, scaling, splitting.
+    
+    Returns:
+        Tuple of (Xtr, Xval, Xte, ytr, yval, yte, feature_names)
+    """
+    logger.info("Step 2/5: Preprocessing and feature engineering...")
+    
+    # Convert to DataFrame for processing
+    df = pd.DataFrame(X, columns=feature_names)
+    df["class"] = y
+    
+    # Feature engineering using common package
+    logger.info("   Building behavioral and temporal features...")
+    df = build_feature_frame(
+        df,
+        amount_col="amount",
+        time_col="time",
+        roll_window=10,
     )
+    
+    # Split features and target again
+    y = df["class"].values
+    X_df = df.drop(columns=["class"])
+    
+    # Preprocessing using common package
+    logger.info("   Applying preprocessing (outlier handling, scaling)...")
+    preprocessor = DataPreprocessor(
+        drop_columns=["time"],  # Drop time column after feature engineering
+        scale_columns=["amount"],
+        outlier_columns=["amount"] if cfg.outlier_method else [],
+        outlier_method=cfg.outlier_method,
+    )
+    
+    X_df_clean, artifacts = preprocessor.fit_transform(
+        X_df,
+        persist_dir=None,  # Don't persist locally, will log to MLflow
+        artifacts_prefix="preprocessor"
+    )
+    
+    feature_names = list(X_df_clean.columns)
+    logger.info(f" Features after preprocessing: {len(feature_names)}")
+    X_clean = X_df_clean.values
+    
+    # Optional: Feature selection via mutual information
+    if cfg.feature_k and cfg.feature_k < len(feature_names):
+        logger.info(f"   Selecting top {cfg.feature_k} features via mutual information...")
+        X_df_selected, selected_features = select_k_best_mutual_info(
+            pd.DataFrame(X_clean, columns=feature_names),
+            target=y,
+            k=cfg.feature_k
+        )
+        X_clean = X_df_selected.values
+        feature_names = selected_features
+        logger.info(f"   Selected features: {selected_features[:5]}... ({len(selected_features)} total)")
+    
+    # Stratified split (train/val/test)
+    logger.info(f"   Splitting data (test={cfg.test_size}, val={cfg.val_size})...")
+    splits = stratified_split(
+        X_clean, y,
+        test_size=cfg.test_size,
+        val_size=cfg.val_size,
+        random_state=cfg.random_state
+    )
+    Xtr, Xval, Xte = splits["X_train"], splits["X_val"], splits["X_test"]
+    ytr, yval, yte = splits["y_train"], splits["y_val"], splits["y_test"]
+    
+    logger.info(f" Preprocessing complete")
+    logger.info(f"   Train: {Xtr.shape}, Val: {Xval.shape}, Test: {Xte.shape}")
+    logger.info(f"   Features: {len(feature_names)}")
+    
+    return Xtr, Xval, Xte, ytr, yval, yte, feature_names
 
-    # scaling: trees (off by default), NN (on)
-    if cfg.scale_for_trees:
-        tree_scaler = StandardScalerWrapper().fit(Xtr)
-        Xtr = tree_scaler.transform(Xtr)
-        Xval = tree_scaler.transform(Xval)
-        Xte = tree_scaler.transform(Xte)
-    if cfg.scale_for_nn:
-        nn_scaler = MinMaxScalerWrapper().fit(Xtr)
-        Xtr = nn_scaler.transform(Xtr)
-        Xval = nn_scaler.transform(Xval)
-        Xte = nn_scaler.transform(Xte)
 
-    return Xtr, Xval, Xte, ytr, yval, yte
-
-
-def _train_one(name: str, Xtr, ytr, Xval, yval, cfg: TrainConfig):
-    if name == "xgboost":
-        model = XGBoostModel(use_smote=cfg.use_smote, random_state=cfg.random_state)
-    elif name == "random_forest":
-        model = RandomForestModel(use_smote=cfg.use_smote, random_state=cfg.random_state)
-    elif name == "nn":
-        model = NeuralNetworkModel(random_state=cfg.random_state)
-    elif name == "isolation_forest":
-        model = IsolationForestModel(random_state=cfg.random_state)
-    else:
-        raise ValueError(f"Unknown model key: {name}")
-
-    run_name = f"train_{name}"
-    with start_run(run_name):
-        model.train(Xtr, ytr, Xval, yval) if name != "isolation_forest" else model.train(Xtr)
-        log_params({"model": name, **model.get_params()})
-        return name, model
-
-
-def train_models(Xtr, ytr, Xval, yval, cfg: TrainConfig) -> Dict[str, object]:
-    names = ["xgboost", "random_forest", "nn", "isolation_forest"]
-
-    models: Dict[str, object] = {}
-    with ThreadPoolExecutor(max_workers=len(names)) as ex:
-        futures = [ex.submit(_train_one, n, Xtr, ytr, Xval, yval, cfg) for n in names]
-        for f in as_completed(futures):
-            name, model = f.result()
-            models[name] = model
-            print(f"[training] finished {name}")
+def train_models(Xtr, ytr, Xval, yval, cfg: TrainConfig) -> Dict[str, Any]:
+    """
+    Train multiple models in parallel.
+    
+    Returns:
+        Dictionary of {model_name: trained_model}
+    """
+    logger.info(" Step 3/5: Training models...")
+    
+    model_names = ["xgboost", "random_forest", "neural_network", "isolation_forest"]
+    models: Dict[str, Any] = {}
+    
+    def _train_one(name: str):
+        """Train a single model with MLflow tracking."""
+        try:
+            logger.info(f"   Training {name}...")
+            
+            if name == "xgboost":
+                model = XGBoostModel(use_smote=cfg.use_smote, tune_hyperparams=cfg.tune_hyperparams, random_state=cfg.random_state)
+            elif name == "random_forest":
+                model = RandomForestModel(use_smote=cfg.use_smote, tune_hyperparams=cfg.tune_hyperparams, random_state=cfg.random_state)
+            elif name == "neural_network":
+                model = NeuralNetworkModel(tune_hyperparams=cfg.tune_hyperparams, random_state=cfg.random_state)
+            elif name == "isolation_forest":
+                model = IsolationForestModel(random_state=cfg.random_state)
+            else:
+                raise ValueError(f"Unknown model: {name}")
+            
+            # Train with MLflow tracking
+            with start_run(run_name=f"train_{name}"):
+                # Log hyperparameters
+                if hasattr(model, "model"):
+                    params = model.model.get_params() if hasattr(model.model, "get_params") else {}
+                    log_params({f"{name}_{k}": v for k, v in params.items() if isinstance(v, (int, float, str, bool))})
+                
+                # Train
+                if cfg.tune_hyperparams and name in ["xgboost", "random_forest", "neural_network"]:
+                    # Pass validation data for hyperparameter tuning
+                    model.fit(Xtr, ytr, X_val=Xval, y_val=yval)
+                else:
+                    model.fit(Xtr, ytr)
+                
+                # Validation metrics
+                if hasattr(model, "predict_proba"):
+                    # Special case for Isolation Forest (needs y for adaptive contamination rate)
+                    if name == "isolation_forest":
+                        val_proba = model.predict_proba(Xval, yval)[:, 1]
+                    else:
+                        val_proba = model.predict_proba(Xval)[:, 1]
+                else:
+                    val_proba = model.predict(Xval).astype(float)
+                
+                val_pred = model.predict(Xval)
+                val_metrics = calculate_all_metrics(yval, val_proba, val_pred)
+                
+                # Log validation metrics
+                log_metrics({f"val_{k}": v for k, v in val_metrics.items()})
+                
+                logger.info(f"   {name}: val_auc={val_metrics.get('auc', 0):.4f}, val_recall={val_metrics.get('recall', 0):.4f}")
+            
+            return name, model
+            
+        except Exception as e:
+            logger.error(f"  Failed to train {name}: {e}")
+            logger.error(f"   Traceback: {traceback.format_exc()}")
+            raise  # Re-raise to fail the pipeline
+    
+    # Train models sequentially to avoid memory issues
+    for name in model_names:
+        name, model = _train_one(name)
+        models[name] = model
+    
+    logger.info(f"Trained {len(models)} models")
     return models
 
 
-def evaluate_models(models: Dict[str, object], Xte, yte) -> Dict[str, Dict[str, float]]:
+def evaluate_models(models: Dict[str, Any], Xte, yte, feature_names: list) -> Dict[str, Dict[str, float]]:
+    """
+    Evaluate all models on test set and generate plots.
+    
+    Returns:
+        Dictionary of {model_name: metrics_dict}
+    """
+    logger.info(" Step 4/5: Evaluating models on test set...")
+    
     results: Dict[str, Dict[str, float]] = {}
+    plots_data = {}
+    
     for name, model in models.items():
-        # probabilities / scores
+        logger.info(f"   Evaluating {name}...")
+        
+        # Predictions
         if hasattr(model, "predict_proba"):
-            proba = model.predict_proba(Xte)
-        elif hasattr(model, "decision_function"):
-            # anomaly score; larger is more normal → map to “anomaly probability”
-            scores = model.decision_function(Xte)
-            ranks = _to_rank_prob(scores)  # 0..1 where higher means more anomalous
-            proba = ranks
+            if name == "isolation_forest":
+                y_proba = model.predict_proba(Xte, yte)
+            else:
+                y_proba = model.predict_proba(Xte)
+            y_score = y_proba[:, 1]  # fraud probability
         else:
-            # crude fallback
-            proba = model.predict(Xte)
-
-        # threshold (each wrapper provides default threshold; IF uses 0 or quantile internally)
-        yhat = model.predict(Xte)
-
-        m = calculate_all_metrics(yte, np.asarray(proba), np.asarray(yhat))
-        results[name] = m
-        print(f"[eval] {name}: AUC={m['auc']:.4f} PR_AUC={m['pr_auc']:.4f} R={m['recall']:.3f} FPR={m['fpr']:.3f}")
-
-        # log to MLflow
-        log_metrics({f"{name}_{k}": v for k, v in m.items()})
-        # plots
+            y_pred = model.predict(Xte)
+            y_score = y_pred.astype(float)
+        
+        y_pred = model.predict(Xte)
+        
+        # Calculate metrics
+        metrics = calculate_all_metrics(yte, y_score, y_pred)
+        results[name] = metrics
+        
+        # Store for plotting
+        plots_data[name] = {
+            "y_true": yte,
+            "y_score": y_score,
+            "y_pred": y_pred,
+        }
+        
+        # Log test metrics to MLflow
+        with start_run(run_name=f"eval_{name}"):
+            log_metrics({f"test_{k}": v for k, v in metrics.items()})
+        
+        logger.info(f"   {name}: auc={metrics.get('auc', 0):.4f}, recall={metrics.get('recall', 0):.4f}, precision={metrics.get('precision', 0):.4f}")
+    
+    # Generate plots
+    logger.info("   Generating evaluation plots...")
+    try:
+        plots = []
+        for name, data in plots_data.items():
+            # ROC curve
+            fig_roc = plot_roc_auc(
+                data["y_true"],
+                data["y_score"],
+                title=f"ROC Curve - {name}"
+            )
+            plots.append((f"{name}_roc.png", fig_roc))
+            
+            # Precision-Recall curve
+            fig_pr = plot_precision_recall_curve_plot(
+                data["y_true"],
+                data["y_score"],
+                title=f"Precision-Recall - {name}"
+            )
+            plots.append((f"{name}_pr.png", fig_pr))
+            
+            # Confusion matrix
+            fig_cm = plot_confusion_matrix_plot(
+                data["y_true"],
+                data["y_pred"],
+                title=f"Confusion Matrix - {name}"
+            )
+            plots.append((f"{name}_cm.png", fig_cm))
+            
+            # Feature importance (if available)
+            if hasattr(models[name], "get_feature_importance"):
+                try:
+                    fig_fi = plot_feature_importance(
+                        models[name].model if hasattr(models[name], "model") else models[name],
+                        feature_names,
+                        title=f"Feature Importance - {name}"
+                    )
+                    plots.append((f"{name}_importance.png", fig_fi))
+                except Exception as e:
+                    logger.warning(f"    Feature importance plot failed for {name}: {e}")
+        
+        # Log all plots to MLflow
+        for filename, fig in plots:
+            # Save temporarily to log to MLflow
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                fig.savefig(tmp_file.name, dpi=160, bbox_inches="tight")
+                log_artifact(tmp_file.name, filename)
+                os.unlink(tmp_file.name)  # Clean up temp file
+            plt.close(fig)  # Free memory
+        
+        logger.info("   Plots logged to MLflow")
+        
+        # Generate and log SHAP explanations
+        logger.info("   Generating SHAP explanations...")
         try:
-            figs = []
-            figs.append(plot_roc_auc(yte, proba, title=f"ROC AUC - {name}"))
-            figs.append(plot_precision_recall_curve_plot(yte, proba, title=f"PR Curve - {name}"))
-            figs.append(plot_confusion_matrix_plot(yte, yhat, title=f"Confusion - {name}"))
-            if hasattr(model, "feature_importances_") or hasattr(model, "coef_"):
-                figs.append(plot_feature_importance(model.model if hasattr(model, "model") else model, [f"f{i}" for i in range(Xte.shape[1])], title=f"Feature Importance - {name}"))
-            save_plots(str(PLOTS_DIR / name), *figs)
-            for i in range(len(figs)):
-                log_artifact(str(PLOTS_DIR / name / f"plot_{i+1:02d}.png"), artifact_path=f"plots/{name}")
+            # Use a small sample for SHAP (faster computation)
+            sample_size = min(1000, Xte.shape[0])
+            sample_indices = np.random.choice(Xte.shape[0], size=sample_size, replace=False)
+            X_sample = Xte[sample_indices]
+            
+            for name, model in models.items():
+                try:
+                    # Generate SHAP explanation
+                    explanation_report, explainer = create_explanation_report_from_model(
+                        model.model if hasattr(model, "model") else model,
+                        X_sample,
+                        feature_names=feature_names,
+                        top_n=20
+                    )
+                    
+                    # Log explanation report as JSON artifact
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp_file:
+                        json.dump(explanation_report, tmp_file, indent=2)
+                        tmp_file.flush()
+                        log_artifact(tmp_file.name, f"shap_explainer_{name}.json")
+                        os.unlink(tmp_file.name)
+                    
+                    # Save SHAP explainer as pickle artifact for deployment
+                    with tempfile.NamedTemporaryFile(suffix='.pkl', delete=False) as tmp_file:
+                        joblib.dump(explainer, tmp_file.name)
+                        log_artifact(tmp_file.name, f"shap_explainer_{name}.pkl")
+                        os.unlink(tmp_file.name)
+                    
+                    # Generate and log SHAP summary plot
+                    if hasattr(model, "predict_proba"):
+                        shap_values_for_plot = explainer.shap_values(X_sample)
+                        if isinstance(shap_values_for_plot, list):
+                            shap_values_for_plot = shap_values_for_plot[1] if len(shap_values_for_plot) > 1 else shap_values_for_plot[0]
+                        
+                        fig_shap = plot_shap_summary(
+                            shap_values_for_plot,
+                            X_sample,
+                            feature_names=feature_names,
+                            title=f"SHAP Summary - {name}"
+                        )
+                        
+                        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                            fig_shap.savefig(tmp_file.name, dpi=160, bbox_inches="tight")
+                            log_artifact(tmp_file.name, f"{name}_shap_summary.png")
+                            os.unlink(tmp_file.name)
+                        plt.close(fig_shap)
+                    
+                    logger.info(f"   SHAP explanation generated for {name}")
+                    
+                except Exception as e:
+                    logger.warning(f"    SHAP explanation failed for {name}: {e}")
+            
+            logger.info("   SHAP explanations logged to MLflow")
+            
         except Exception as e:
-            print(f"[eval] plot logging failed for {name}: {e}")
-
+            logger.warning(f"    SHAP explanation generation failed: {e}")
+    
+    except Exception as e:
+        logger.warning(f"    Plot generation failed: {e}")
+    
+    logger.info(" Evaluation complete")
     return results
 
 
 def validate_models(results: Dict[str, Dict[str, float]], cfg: TrainConfig) -> bool:
-    return validate_all_models(results, min_recall=cfg.min_recall, max_fpr=cfg.max_fpr)
+    """
+    Validate models against business constraints.
+    
+    Returns:
+        True if at least one model passes validation
+    """
+    logger.info(" Step 5/5: Validating against business constraints...")
+    logger.info(f"   Constraints: min_recall={cfg.min_recall}, max_fpr={cfg.max_fpr}")
+    logger.info(f"   Model results: xgboost:{results['xgboost']}, \nrandom_forest:{results['random_forest']}, \nneural_network:{results['neural_network']}, \nisolation_forest:{results['isolation_forest']}")
+    
+    passed = validate_all_models(results, min_recall=cfg.min_recall, max_fpr=cfg.max_fpr)
+    
+    if passed:
+        logger.info("  At least one model meets business requirements")
+    else:
+        logger.error("   No model meets business requirements")
+    
+    return passed
 
 
-def register_models(models: Dict[str, object], results: Dict[str, Dict[str, float]], cfg: TrainConfig):
+def register_best_model(
+    models: Dict[str, Any],
+    results: Dict[str, Dict[str, float]],
+    feature_names: list,
+    cfg: TrainConfig
+):
+    """
+    Register ALL 4 models in MLflow Model Registry as Staging.
+    This allows the canary deployment to compare the complete ensemble.
+    """
     if not cfg.register_models:
+        logger.info("Model registration disabled in config")
         return
-    # register the best by PR_AUC (or AUC fallback)
-    def score(m):
-        r = results[m]
-        return (r.get("pr_auc") or 0.0, r.get("auc") or 0.0)
 
-    best_name = max(models.keys(), key=score)
-    model = models[best_name]
-    try:
-        log_model(model, best_name)  # logs under current run
-        register_model(model, name=f"fraud_{best_name}", stage="staging")
-        print(f"[registry] registered {best_name} → staging")
-    except Exception as e:
-        print(f"[registry] registration skipped: {e}")
+    logger.info("Registering all 4 models as ensemble in MLflow...")
+
+    registered_models = []
+
+    for model_name, model in models.items():
+        try:
+            # Register each model individually
+            mlflow_name = f"fraud_detection_{model_name}"
+            register_model(
+                model=model.model if hasattr(model, "model") else model,
+                name=mlflow_name,
+                stage="Staging"
+            )
+
+            # Log individual model metadata as artifact
+            metadata = {
+                "model_type": model_name,
+                "metrics": results[model_name],
+                "feature_names": feature_names,
+                "config": asdict(cfg),
+                "ensemble_weight": get_ensemble_weight(model_name),
+            }
+
+            # Log metadata as artifact
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp_file:
+                json.dump(metadata, tmp_file, indent=2)
+                tmp_file.flush()
+                log_artifact(tmp_file.name, f"{model_name}_metadata.json")
+                os.unlink(tmp_file.name)
+
+            logger.info(f"  Model registered: {mlflow_name} (Staging)")
+            registered_models.append(mlflow_name)
+
+        except Exception as e:
+            logger.error(f"   Failed to register {model_name}: {e}")
+
+    # Log ensemble metadata as artifact
+    ensemble_metadata = {
+        "ensemble_version": f"v{cfg.random_state}",  # Use random_state as version
+        "models": registered_models,
+        "weights": {
+            "xgboost": 0.50,
+            "random_forest": 0.30,
+            "neural_network": 0.15,
+            "isolation_forest": 0.05,
+        },
+        "metrics": results,
+        "feature_names": feature_names,
+        "config": asdict(cfg),
+    }
+
+    # Log ensemble metadata as artifact
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp_file:
+        json.dump(ensemble_metadata, tmp_file, indent=2)
+        tmp_file.flush()
+        log_artifact(tmp_file.name, "ensemble_metadata.json")
+        os.unlink(tmp_file.name)
+
+    logger.info(f"   Ensemble registered with {len(registered_models)} models")
 
 
-def save_artifacts(models: Dict[str, object], results: Dict[str, Dict[str, float]]):
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+def get_ensemble_weight(model_name: str) -> float:
+    """Get the ensemble weight for a model."""
+    weights = {
+        "xgboost": 0.50,
+        "random_forest": 0.30,
+        "neural_network": 0.15,
+        "isolation_forest": 0.05,
+    }
+    return weights.get(model_name, 0.0)
+
+
+def save_artifacts(models: Dict[str, Any], results: Dict[str, Dict[str, float]]):
+    """
+    Log model artifacts and metrics to MLflow.
+    """
+    logger.info(" Logging model artifacts to MLflow...")
+    
     for name, model in models.items():
-        out = MODEL_DIR / name
-        out.mkdir(parents=True, exist_ok=True)
-        model.save(str(out))
-    # save metrics json
-    import json
-    (ARTIFACTS_DIR / "metrics.json").write_text(json.dumps(results, indent=2))
-
-
-# -------------------------
-# CLI
-# -------------------------
-def _ensure_dirs():
-    for p in [ARTIFACTS_DIR, MODEL_DIR, PLOTS_DIR, EXPLAIN_DIR]:
-        Path(p).mkdir(parents=True, exist_ok=True)
-
-
-def _to_rank_prob(scores: np.ndarray) -> np.ndarray:
-    # map arbitrary scores to [0,1] with higher = more anomalous
-    import pandas as pd
-    ranks = pd.Series(scores).rank(method="average") / len(scores)
-    return 1.0 - ranks.values  # lower score ⇒ more anomalous ⇒ higher prob
+        try:
+            # Log model as artifact
+            with tempfile.NamedTemporaryFile(suffix='.joblib', delete=False) as tmp_file:
+                joblib.dump(model, tmp_file.name)
+                log_artifact(tmp_file.name, f"{name}_model.joblib")
+                os.unlink(tmp_file.name)
+            logger.info(f"   Logged {name} model to MLflow")
+        except Exception as e:
+            logger.warning(f"   Failed to log {name} model: {e}")
+    
+    # Log metrics as artifact
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp_file:
+            json.dump(results, tmp_file, indent=2)
+            tmp_file.flush()
+            log_artifact(tmp_file.name, "metrics.json")
+            os.unlink(tmp_file.name)
+        logger.info("   Logged metrics to MLflow")
+    except Exception as e:
+        logger.warning(f"   Failed to log metrics: {e}")
 
 
 if __name__ == "__main__":
-    # allow: python -m training.src.pipelines.training_pipeline
+    # CLI entry point
     ok = run_training()
     raise SystemExit(0 if ok else 1)

@@ -1,9 +1,26 @@
 """
-Feature engineering - abstract base and utilities for feature creation.
+Feature engineering - uses the centralized fraud_detection_common package.
 
-This module provides abstract base class for feature engineering and concrete
-implementations for different data sources (Kaggle, Production, etc.).
+REFACTORED: This module now imports feature engineering logic from the common package
+to ensure consistency across all modules (training, api, drift, data).
 """
+
+# Import feature engineering from the common package
+from fraud_detection_common.feature_engineering import (
+    add_behavioral_features,
+    add_temporal_features,
+    add_geo_risk,
+    build_feature_frame
+)
+
+# Export for backward compatibility
+__all__ = [
+    "add_behavioral_features",
+    "add_temporal_features",
+    "add_geo_risk",
+    "build_feature_frame"
+]
+
 
 import logging
 import pandas as pd
@@ -65,7 +82,7 @@ class FeatureEngineer(BaseFeatureEngineer):
     
     DEPRECATED: Use source-specific engineers (KaggleFeatureEngineer, etc.)
     This class is kept for backward compatibility but assumes production schema
-    with customer_id, merchant_id, transaction_time, amount fields.
+    with customer_id, merchant_id, time, amount fields.
     
     For new code, use KaggleFeatureEngineer from src.transformation.kaggle_features
     """
@@ -73,7 +90,7 @@ class FeatureEngineer(BaseFeatureEngineer):
     def __init__(self):
         super().__init__(engineer_name="LegacyFeatureEngineer")
 
-    def create_temporal_features(self, df: pd.DataFrame, datetime_col: str = "transaction_time") -> pd.DataFrame:
+    def create_temporal_features(self, df: pd.DataFrame, datetime_col: str = "time") -> pd.DataFrame:
         """
         Extract temporal features from datetime column
         
@@ -132,7 +149,7 @@ class FeatureEngineer(BaseFeatureEngineer):
             logger.warning(f"Column '{amount_col}' not found")
             return df_features
 
-        # Amount-based features
+        # amount-based features
         df_features['amount_log'] = np.log1p(df_features[amount_col])
         df_features['amount_squared'] = df_features[amount_col] ** 2
         df_features['amount_bucket'] = pd.cut(
@@ -263,7 +280,7 @@ class FeatureEngineer(BaseFeatureEngineer):
             df: Input dataframe
             customer_col: Customer ID column
             merchant_col: Merchant ID column
-            amount_col: Amount column
+            amount_col: amount column
         
         Returns:
             DataFrame with interaction features

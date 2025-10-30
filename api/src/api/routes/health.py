@@ -95,7 +95,14 @@ async def detailed_health_check(
     
     # Determine overall status
     all_healthy = model_healthy and cache_healthy and database_healthy
-    overall_status = "healthy" if all_healthy else "degraded"
+    any_healthy = model_healthy or cache_healthy or database_healthy
+    
+    if all_healthy:
+        overall_status = "healthy"
+    elif any_healthy:
+        overall_status = "degraded"
+    else:
+        overall_status = "unhealthy"
     
     return DetailedHealthCheckResponse(
         status=overall_status,

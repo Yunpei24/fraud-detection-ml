@@ -1,21 +1,36 @@
 """
 Configuration module for Fraud Detection ML training pipeline.
-Centralized settings for data paths, model hyperparameters,
-training parameters, and MLflow tracking.
+Migrated to use centralized configuration for consistency.
 """
 
-from dataclasses import dataclass
+import sys
 from pathlib import Path
+from dataclasses import dataclass
 
+# Add project root to path to import centralized config
+# project_root = Path(__file__).parent.parent.parent.parent
+# sys.path.insert(0, str(project_root))
+
+from config import get_settings
+# try:
+#     from config import get_settings
+# except ImportError:
+#     # Fallback for when running from training directory
+#     import sys
+#     sys.path.insert(0, str(project_root / "config"))
+#     from config import get_settings
+
+# Get centralized settings
+settings = get_settings()
 
 # ------------------------------------------------------------
 # 1. Data paths
 # ------------------------------------------------------------
 @dataclass
 class DataPaths:
-    RAW_DATA: Path = Path("data/raw/creditcard.csv")
+    RAW_DATA: Path = Path(settings.training.train_data_path).parent / "creditcard.csv"
     PROCESSED_DATA: Path = Path("data/processed/train.parquet")
-    MODELS_DIR: Path = Path("models/")
+    MODELS_DIR: Path = Path(settings.training.model_output_dir)
     ARTIFACTS_DIR: Path = Path("training/artifacts/")
     SCALER_PATH: Path = Path("training/artifacts/scaler.pkl")
     LOG_DIR: Path = Path("training/logs/")
@@ -74,7 +89,7 @@ class TrainingParameters:
     random_state: int = 42
     use_smote: bool = True
     target_col: str = "Class"
-    threshold: float = 0.5
+    threshold: float = settings.training.eval_threshold
     min_recall: float = 0.95
     max_fpr: float = 0.02
 
@@ -84,9 +99,9 @@ class TrainingParameters:
 # ------------------------------------------------------------
 @dataclass
 class MLflowConfig:
-    tracking_uri: str = "file:mlruns"
-    experiment_name: str = "fraud_detection_training"
-    registered_model_name: str = "fraud_detector"
+    tracking_uri: str = settings.mlflow.tracking_uri
+    experiment_name: str = settings.mlflow.experiment_name
+    registered_model_name: str = settings.mlflow.model_name
     register_model: bool = True
 
 
@@ -97,11 +112,22 @@ class MLflowConfig:
 class TrainingConfig:
     """
     Master configuration object to access all sub-configs.
+    Migrated to use centralized settings.
     """
     data: DataPaths = DataPaths()
     model: ModelParameters = ModelParameters()
     training: TrainingParameters = TrainingParameters()
     mlflow: MLflowConfig = MLflowConfig()
+
+    # Additional centralized settings
+    batch_size: int = settings.training.batch_size
+    epochs: int = settings.training.epochs
+    validation_split: float = settings.training.validation_split
+    early_stopping_patience: int = settings.training.early_stopping_patience
+    cv_folds: int = settings.training.cv_folds
+    enable_feature_selection: bool = settings.training.enable_feature_selection
+    enable_scaling: bool = settings.training.enable_scaling
+    prometheus_port: int = settings.training.prometheus_port
 
 
 # ------------------------------------------------------------

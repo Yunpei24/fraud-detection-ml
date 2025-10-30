@@ -2,26 +2,23 @@
 Hourly drift monitoring pipeline.
 
 This pipeline runs every hour to:
-1. Fetch recent predictions from database
-2. Compute drift metrics (data, target, concept)
-3. Check against thresholds
-4. Trigger alerts if needed
-5. Update monitoring dashboards
+1. Call the API's drift detection service
+2. Check against thresholds
+3. Trigger alerts if needed
+4. Update monitoring dashboards
 """
 
 import pandas as pd
 import numpy as np
-from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from typing import Dict, Any, Optional
+from datetime import datetime
 import time
 import structlog
 
-from ..detection.data_drift import DataDriftDetector
-from ..detection.target_drift import TargetDriftDetector
-from ..detection.concept_drift import ConceptDriftDetector
+from ..api_client import FraudDetectionAPIClient
 from ..alerting.alert_manager import AlertManager
-from ..storage.database import DriftDatabaseService
-from ..monitoring.metrics import update_drift_metrics, increment_predictions_processed
+from ..monitoring.metrics import update_drift_metrics
+from ..retraining.trigger import RetrainingTrigger
 from ..config.settings import Settings
 
 logger = structlog.get_logger(__name__)
@@ -55,83 +52,56 @@ def fetch_recent_predictions(hours: int = 1, settings: Optional[Settings] = None
         return pd.DataFrame()
 
 
-def compute_all_drifts(
-    current_data: pd.DataFrame,
-    baseline_data: pd.DataFrame,
+def call_api_drift_detection(
+    window_hours: int = 1,
+    reference_window_days: int = 30,
     settings: Optional[Settings] = None
 ) -> Dict[str, Any]:
     """
-    Compute all types of drift (data, target, concept).
-    
+    Call the API's drift detection service.
+
     Args:
-        current_data: Current production data
-        baseline_data: Baseline/training data
+        window_hours: Hours of current data to analyze
+        reference_window_days: Days of reference data for comparison
         settings: Configuration settings
-        
+
     Returns:
-        Dictionary with all drift results
+        Drift detection results from the API
     """
-    logger.info("computing_all_drifts")
-    
-    start_time = time.time()
+    logger.info("calling_api_drift_detection", window_hours=window_hours)
+
     settings = settings or Settings()
-    
-    drift_results = {
-        "timestamp": datetime.utcnow().isoformat(),
-        "data_drift": {},
-        "target_drift": {},
-        "concept_drift": {}
+
+    # Create API client
+    api_client = FraudDetectionAPIClient(
+        base_url=settings.api_base_url,
+        timeout=settings.api_timeout
+    )
+
+    # Call the API's comprehensive drift detection
+    result = api_client.detect_comprehensive_drift(
+        window_hours=window_hours,
+        reference_window_days=reference_window_days,
+        auth_token=getattr(settings, 'api_auth_token', None)
+    )
+
+    if 'error' in result:
+        logger.error("api_drift_detection_failed", error=result['error'])
+        return result
+
+    # Transform API results to match expected format for downstream processing
+    transformed_result = {
+        "timestamp": result.get('timestamp', datetime.utcnow().isoformat()),
+        "data_drift": result.get('data_drift', {}),
+        "target_drift": result.get('target_drift', {}),
+        "concept_drift": result.get('concept_drift', {}),
+        "multivariate_drift": result.get('multivariate_drift', {}),
+        "drift_summary": result.get('drift_summary', {}),
+        "api_response": result  # Keep original API response for reference
     }
-    
-    try:
-        # Data drift detection
-        if len(current_data) >= settings.min_samples_for_drift:
-            data_detector = DataDriftDetector(
-                baseline_data=baseline_data,
-                threshold=settings.data_drift_threshold
-            )
-            drift_results["data_drift"] = data_detector.detect_drift(
-                current_data,
-                threshold=settings.data_drift_threshold
-            )
-        
-        # Target drift detection
-        if "Class" in current_data.columns and "Class" in baseline_data.columns:
-            target_detector = TargetDriftDetector(
-                baseline_labels=baseline_data["Class"].values,
-                baseline_fraud_rate=settings.baseline_fraud_rate
-            )
-            drift_results["target_drift"] = target_detector.detect_shift(
-                current_labels=current_data["Class"].values,
-                threshold=settings.target_drift_threshold
-            )
-        
-        # Concept drift detection
-        if "prediction" in current_data.columns and "Class" in current_data.columns:
-            concept_detector = ConceptDriftDetector(
-                baseline_recall=settings.baseline_recall,
-                baseline_precision=settings.baseline_precision,
-                baseline_fpr=settings.baseline_fpr,
-                baseline_f1=settings.baseline_f1
-            )
-            drift_results["concept_drift"] = concept_detector.detect_degradation(
-                y_true=current_data["Class"].values,
-                y_pred=current_data["prediction"].values,
-                recall_threshold=settings.concept_drift_threshold,
-                fpr_threshold=settings.concept_drift_threshold
-            )
-        
-        duration = time.time() - start_time
-        logger.info("drift_computation_complete", duration_seconds=duration)
-        
-        # Update Prometheus metrics
-        update_drift_metrics(drift_results)
-        increment_predictions_processed(len(current_data))
-    
-    except Exception as e:
-        logger.error("drift_computation_failed", error=str(e))
-    
-    return drift_results
+
+    logger.info("api_drift_detection_completed")
+    return transformed_result
 
 
 def check_thresholds(drift_results: Dict[str, Any]) -> bool:
@@ -139,22 +109,30 @@ def check_thresholds(drift_results: Dict[str, Any]) -> bool:
     Check if any drift thresholds were exceeded.
     
     Args:
-        drift_results: Results from drift detection
+        drift_results: Results from API drift detection
         
     Returns:
         True if any threshold exceeded, False otherwise
     """
+    # Check the drift summary from API response
+    drift_summary = drift_results.get("drift_summary", {})
+    overall_drift_detected = drift_summary.get("overall_drift_detected", False)
+    
+    # Also check individual drift types for backward compatibility
     data_drift = drift_results.get("data_drift", {}).get("drift_detected", False)
     target_drift = drift_results.get("target_drift", {}).get("drift_detected", False)
     concept_drift = drift_results.get("concept_drift", {}).get("drift_detected", False)
+    multivariate_drift = drift_results.get("multivariate_drift", {}).get("drift_detected", False)
     
-    exceeded = data_drift or target_drift or concept_drift
+    exceeded = overall_drift_detected or data_drift or target_drift or concept_drift or multivariate_drift
     
     logger.info(
         "threshold_check_complete",
+        overall_drift=overall_drift_detected,
         data_drift=data_drift,
         target_drift=target_drift,
         concept_drift=concept_drift,
+        multivariate_drift=multivariate_drift,
         exceeded=exceeded
     )
     
@@ -169,7 +147,7 @@ def trigger_alerts(
     Trigger alerts if drift detected.
     
     Args:
-        drift_results: Results from drift detection
+        drift_results: Results from API drift detection
         settings: Configuration settings
     """
     logger.info("checking_for_alerts")
@@ -177,6 +155,19 @@ def trigger_alerts(
     settings = settings or Settings()
     alert_manager = AlertManager(settings)
     
+    # Check overall drift detection from API
+    drift_summary = drift_results.get("drift_summary", {})
+    if drift_summary.get("overall_drift_detected", False):
+        severity = "HIGH" if drift_summary.get("severity_score", 0) >= 3 else "MEDIUM"
+        alert_manager.trigger_alert(
+            alert_type="drift_detected",
+            severity=severity,
+            message=f"Drift detected: {drift_summary.get('drift_types_detected', [])}",
+            details=drift_summary
+        )
+        return
+    
+    # Fallback: Check individual drift types for backward compatibility
     # Data drift alert
     if drift_results.get("data_drift", {}).get("drift_detected"):
         data_drift = drift_results["data_drift"]
@@ -239,39 +230,68 @@ def run_hourly_monitoring(settings: Optional[Settings] = None) -> Dict[str, Any]
     settings = settings or Settings()
     
     try:
-        # 1. Fetch recent predictions
-        current_data = fetch_recent_predictions(hours=1, settings=settings)
+        # 1. Call API drift detection service
+        drift_results = call_api_drift_detection(
+            window_hours=1,  # Analyze last 1 hour of data
+            reference_window_days=settings.reference_window_days,
+            settings=settings
+        )
         
-        if current_data.empty:
-            logger.warning("no_recent_predictions_found")
-            return {"status": "no_data", "timestamp": datetime.utcnow().isoformat()}
+        if 'error' in drift_results:
+            logger.error("drift_detection_failed", error=drift_results['error'])
+            return {
+                "status": "api_error",
+                "timestamp": datetime.utcnow().isoformat(),
+                "error": drift_results['error']
+            }
         
-        # 2. Load baseline data
-        # TODO: Load actual baseline data
-        baseline_data = pd.DataFrame()
-        
-        # 3. Compute all drifts
-        drift_results = compute_all_drifts(current_data, baseline_data, settings)
-        
-        # 4. Save to database
-        db_service = DriftDatabaseService(settings)
-        db_service.save_drift_metrics(drift_results)
-        
-        # 5. Check thresholds
+        # 2. Check thresholds using API results
         threshold_exceeded = check_thresholds(drift_results)
         
-        # 6. Trigger alerts if needed
+        # 3. Trigger alerts if needed
         if threshold_exceeded:
             trigger_alerts(drift_results, settings)
         
-        # 7. Update dashboards
+        # 4. Update dashboards
         update_dashboards(drift_results)
+        
+        # 6. Check for retraining triggers
+        retraining_trigger = RetrainingTrigger(settings)
+        should_retrain, reason = retraining_trigger.should_retrain(drift_results)
+        
+        if should_retrain:
+            priority = retraining_trigger.get_retrain_priority(drift_results)
+            logger.warning(
+                "triggering_retraining",
+                priority=priority,
+                reason=reason
+            )
+            
+            # Trigger Airflow DAG 01_training_pipeline
+            success = retraining_trigger.trigger_airflow_dag(
+                dag_id="01_training_pipeline",
+                priority=priority,
+                conf={
+                    "triggered_by": "drift_detection",
+                    "drift_results": drift_results,
+                    "reason": reason
+                }
+            )
+            
+            if success:
+                logger.info("retraining_triggered_successfully", dag_id="01_training_pipeline")
+            else:
+                logger.error("retraining_trigger_failed", dag_id="01_training_pipeline")
+        else:
+            logger.info("retraining_not_needed", reason=reason)
         
         result = {
             "status": "success",
             "timestamp": datetime.utcnow().isoformat(),
             "drift_results": drift_results,
-            "threshold_exceeded": threshold_exceeded
+            "threshold_exceeded": threshold_exceeded,
+            "retraining_triggered": should_retrain,
+            "retraining_reason": reason if should_retrain else None
         }
         
         logger.info("hourly_monitoring_pipeline_complete", result=result["status"])

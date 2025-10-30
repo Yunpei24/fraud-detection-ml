@@ -105,7 +105,7 @@ transaction = {
     "merchant_id": "MRCH001",
     "amount": 150.50,
     "currency": "USD",
-    "transaction_time": "2025-10-18T10:30:00"
+    "time": "2025-10-18T10:30:00"
 }
 
 is_valid, report = validator.validate(transaction)

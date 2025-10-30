@@ -1,40 +1,12 @@
 #!/usr/bin/env python3
 """
-Script pour configurer les connexions Airflow automatiquement
+Script for configuring Airflow connections automatically
 Usage: python setup_connections.py
 """
 
 from airflow.models import Connection
 from airflow import settings
 import os
-
-
-def setup_databricks_connection():
-    """Configure Databricks connection"""
-    conn_id = 'databricks_default'
-    
-    # Check if exists
-    session = settings.Session()
-    existing = session.query(Connection).filter(Connection.conn_id == conn_id).first()
-    
-    if existing:
-        print(f"⚠️  Connection '{conn_id}' already exists")
-        return
-    
-    # Create new connection
-    conn = Connection(
-        conn_id=conn_id,
-        conn_type='databricks',
-        host=os.getenv('DATABRICKS_HOST', 'https://your-workspace.cloud.databricks.com'),
-        login='token',
-        password=os.getenv('DATABRICKS_TOKEN', 'your-token-here')
-    )
-    
-    session.add(conn)
-    session.commit()
-    session.close()
-    
-    print(f"✅ Databricks connection '{conn_id}' created")
 
 
 def setup_postgres_connection():
@@ -45,16 +17,16 @@ def setup_postgres_connection():
     existing = session.query(Connection).filter(Connection.conn_id == conn_id).first()
     
     if existing:
-        print(f"⚠️  Connection '{conn_id}' already exists")
+        print(f" Connection '{conn_id}' already exists")
         return
     
     conn = Connection(
         conn_id=conn_id,
         conn_type='postgres',
-        host='postgres-fraud',
-        schema='fraud_db',
-        login='postgres',
-        password='postgres',
+        host='postgres',
+        schema='fraud_detection',
+        login='fraud_user',
+        password='fraud_pass_dev_2024',
         port=5432
     )
     
@@ -62,7 +34,7 @@ def setup_postgres_connection():
     session.commit()
     session.close()
     
-    print(f"✅ PostgreSQL connection '{conn_id}' created")
+    print(f" PostgreSQL connection '{conn_id}' created")
 
 
 def setup_http_connections():
@@ -100,7 +72,7 @@ def setup_http_connections():
         )
         
         session.add(conn)
-        print(f"✅ HTTP connection '{conn_id}' created")
+        print(f" HTTP connection '{conn_id}' created")
     
     session.commit()
     session.close()
@@ -109,20 +81,19 @@ def setup_http_connections():
 def main():
     """Setup all connections"""
     print("="*60)
-    print("🔧 Configuration des connexions Airflow")
+    print("🔧 Configuration of all Airflow connections")
     print("="*60)
     
     try:
-        setup_databricks_connection()
         setup_postgres_connection()
         setup_http_connections()
         
-        print("\n✅ Toutes les connexions configurées!")
-        print("\nVérifier dans l'UI: Admin > Connections")
+        print("\n All the connections are configurated!")
+        print("\nCheck in the UI: Admin > Connections")
         
     except Exception as e:
-        print(f"\n❌ Erreur: {e}")
-        print("Vous pouvez configurer manuellement dans l'UI Airflow")
+        print(f"\n Error: {e}")
+        print("You can configure manually in the Airflow UI")
 
 
 if __name__ == '__main__':

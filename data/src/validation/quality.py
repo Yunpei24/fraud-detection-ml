@@ -8,13 +8,12 @@ import numpy as np
 import pandas as pd
 from typing import Optional, Dict, List
 
-from config.constants import (
-    MAX_MISSING_PERCENTAGE,
-    MAX_DUPLICATE_ROWS,
-    OUTLIER_STD_THRESHOLD
-)
-
 logger = logging.getLogger(__name__)
+
+# Quality thresholds
+MAX_MISSING_PERCENTAGE = 0.05  # 5% max missing values
+MAX_DUPLICATE_ROWS = 0.01      # 1% max duplicates
+OUTLIER_STD_THRESHOLD = 5      # 5 standard deviations
 
 
 class QualityValidator:
@@ -139,6 +138,8 @@ class QualityValidator:
                     "is_valid": False,
                     "message": f"Column '{col}' not found in dataframe"
                 }
+                issue = f"Column '{col}' not found in dataframe"
+                self.issues.append(issue)
                 continue
 
             actual_type = str(df[col].dtype)

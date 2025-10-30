@@ -27,7 +27,7 @@ DEFAULT_THRESHOLD: float = 0.5
 # 2. Dataset Column Names
 # ------------------------------------------------------------
 TARGET_COLUMN: str = "Class"
-AMOUNT_COLUMN: str = "Amount"
+AMOUNT_COLUMN: str = "amount"
 TIME_COLUMN: str = "Time"
 
 # All 28 PCA-transformed feature names (V1–V28)

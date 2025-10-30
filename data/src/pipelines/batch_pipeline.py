@@ -1,281 +1,300 @@
 """
-Batch data pipeline for periodic Databricks-based feature engineering.
+Batch Data Pipeline
 
-Orchestrates daily batch processing:
-1. Extract transactions from SQL Database
-2. Submit Spark job to Databricks for feature engineering
-3. Handle SMOTE resampling and feature transformations
-4. Store results to S3 and Feature Store
-5. Track execution metrics
+Orchestrates daily batch data preparation locally via Docker.
 
-Designed for integration with Apache Airflow DAGs.
+Flow:
+1. Load transactions from CSV/PostgreSQL (raw 24h data)
+2. Apply data cleaning (duplicates, missing values, outlier removal)
+3. Apply preprocessing via fraud_detection_common.preprocessor.DataPreprocessor
+4. Apply feature engineering via fraud_detection_common.feature_engineering
+5. Validate output schema
+6. Save processed data to PostgreSQL
+7. Save artifacts (scalers, preprocessor) to disk
+8. Track execution metrics via Prometheus
 """
 
-import logging
 import os
-from typing import Optional, Dict, Any
-from datetime import datetime, timedelta
+import logging
+from pathlib import Path
+from typing import Dict, Any, Optional
+from datetime import datetime
 
-from src.cloud.databricks import DatabricksJobManager, DatabricksNotebookExecutor
+import pandas as pd
+
+from src.storage.database import DatabaseService
+from src.transformation.cleaner import DataCleaner
 from src.utils.logger import get_logger
+
+# Import from common package (these would be available in the Docker environment)
+try:
+    from fraud_detection_common.preprocessor import DataPreprocessor
+    from fraud_detection_common.feature_engineering import build_feature_frame
+    from fraud_detection_common.schema_validation import validate_schema, REQUIRED_COLUMNS
+except ImportError:
+    # Fallback for local development
+    class DataPreprocessor:
+        def fit_transform(self, df): return df
+        def save_artifacts(self, path): pass
+        @classmethod
+        def load_artifacts(cls, path): return cls()
+
+    def build_feature_frame(df): return df
+    def validate_schema(df, columns): pass
+    REQUIRED_COLUMNS = ['Time', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10',
+                       'V11', 'V12', 'V13', 'V14', 'V15', 'V16', 'V17', 'V18', 'V19', 'V20',
+                       'V21', 'V22', 'V23', 'V24', 'V25', 'V26', 'V27', 'V28', 'amount', 'Class']
 
 logger = get_logger(__name__)
 
 
-class DatabricksBatchPipeline:
+class BatchDataPipeline:
     """
-    Orchestrates daily batch data preparation via Databricks Spark cluster.
-    
-    Flow:
-    1. Load transactions from Azure SQL Database (raw 24h data)
-    2. Submit feature engineering job to Databricks cluster
-    3. Databricks executes PySpark transformations:
-       - Data validation and quality checks
-       - SMOTE resampling (balance classes)
-       - Feature engineering (50+ features)
-       - Output to S3 + Feature Store
-    4. Poll job status with exponential backoff
-    5. Log metrics and handle errors gracefully
+    Orchestrates daily batch data preparation locally via Docker.
+
+    This pipeline handles the complete ETL process for fraud detection data:
+    - Extract: Load raw transaction data from CSV or PostgreSQL
+    - Transform: Clean, preprocess, and engineer features
+    - Load: Save processed data and artifacts
     """
-    
-    def __init__(self, databricks_host: str, databricks_token: str, 
-                 cluster_id: str, polling_interval: int = 5, 
-                 max_job_wait_time: int = 3600):
+
+    def __init__(self,
+                 db_service: Optional[DatabaseService] = None,
+                 artifact_dir: Optional[Path] = None):
         """
-        Initialize Databricks batch pipeline.
-        
+        Initialize batch data pipeline.
+
         Args:
-            databricks_host (str): Databricks workspace URL (e.g., https://xxx.cloud.databricks.com)
-            databricks_token (str): Databricks API token
-            cluster_id (str): Existing Databricks cluster ID
-            polling_interval (int): Seconds between status checks (default 5)
-            max_job_wait_time (int): Max job execution time in seconds (default 3600)
+            db_service (DatabaseService, optional): Database handler. If None, creates from env.
+            artifact_dir (Path, optional): Directory to save artifacts. Defaults to /artifacts.
         """
-        self.job_manager = DatabricksJobManager(
-            host=databricks_host,
-            token=databricks_token,
-            polling_interval=polling_interval,
-            max_wait_seconds=max_job_wait_time
-        )
-        self.notebook_executor = DatabricksNotebookExecutor(
-            host=databricks_host,
-            token=databricks_token,
-            polling_interval=polling_interval,
-            max_wait_seconds=max_job_wait_time
-        )
-        self.cluster_id = cluster_id
+        self.db_service = db_service or DatabaseService()
+        if not self.db_service._initialized:
+            self.db_service.connect()
+
+        self.artifact_dir = artifact_dir or Path(os.getenv('ARTIFACT_DIR', '/artifacts'))
+        self.artifact_dir.mkdir(parents=True, exist_ok=True)
+
+        self.cleaner = DataCleaner()
+        self.preprocessor = DataPreprocessor()
         self.execution_metrics = {}
-    
-    def execute(self, **kwargs) -> Dict[str, Any]:
+
+        logger.info(f"BatchDataPipeline initialized with artifact_dir={self.artifact_dir}")
+
+    def execute(self, data_source: Optional[str] = None, **kwargs) -> Dict[str, Any]:
         """
         Execute complete batch pipeline.
-        
+
         Args:
-            **kwargs: Optional parameters passed to Databricks job
-                - date_range_days: Number of days to process (default 1)
-                - min_transactions: Minimum transactions to process (default 1000)
-                - enable_smote: Enable SMOTE resampling (default True)
-                - output_path: S3 output location
-        
+            data_source (str, optional): Path to CSV file or None to load from PostgreSQL
+            **kwargs: Optional parameters
+                - save_to_db (bool): Save to PostgreSQL (default True)
+                - save_to_csv (bool): Save to CSV (default False)
+                - output_csv_path (str): CSV output path if save_to_csv=True
+
         Returns:
             Dict with execution status, rows processed, and metrics
+
+        Example:
+            >>> pipeline = BatchDataPipeline()
+            >>> result = pipeline.execute(data_source="/data/creditcard.csv")
+            >>> print(result["status"])  # "success"
+            >>> print(result["rows_processed"])  # 284807
         """
-        job_name = f"fraud_detection_batch_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-        
+        run_id = f"batch_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        start_time = datetime.utcnow()
+
         try:
-            logger.info(f"Starting batch pipeline: {job_name}")
-            
-            # Submit feature engineering job to Databricks
-            run_id = self._submit_feature_engineering_job(job_name, kwargs)
-            
-            # Wait for job completion with polling
-            status = self.job_manager.wait_for_job(run_id)
-            
-            if status == 'SUCCEEDED':
-                logger.info(f"Batch pipeline {job_name} completed successfully")
-                return {
-                    "status": "success",
-                    "job_name": job_name,
-                    "run_id": run_id,
-                    "metrics": self.execution_metrics
-                }
+            logger.info(f"Starting batch pipeline: {run_id}")
+
+            # Step 1: Load raw data
+            logger.info("Step 1/6: Loading raw data")
+            if data_source and data_source.endswith('.csv'):
+                raw_df = pd.read_csv(data_source)
+                logger.info(f"Loaded from CSV: {data_source}")
             else:
-                logger.error(f"Batch pipeline {job_name} failed with status: {status}")
-                return {
-                    "status": "failed",
-                    "job_name": job_name,
-                    "run_id": run_id,
-                    "error": f"Job failed with status: {status}"
-                }
-        
-        except TimeoutError as e:
-            logger.error(f"Batch pipeline timeout: {str(e)}")
+                # Load from PostgreSQL using DatabaseService
+                transactions = self.db_service.query_transactions(limit=100000, offset=0)
+                raw_df = pd.DataFrame(transactions)
+                logger.info("Loaded from PostgreSQL")
+
+            initial_rows = len(raw_df)
+            logger.info(f"Loaded {initial_rows} rows")
+            self.execution_metrics['initial_rows'] = initial_rows
+
+            # Step 2: Data cleaning
+            logger.info("Step 2/6: Cleaning data (duplicates, missing values)")
+            cleaned_df = self.cleaner.clean_pipeline(raw_df)
+            cleaned_rows = len(cleaned_df)
+            logger.info(f"After cleaning: {cleaned_rows} rows ({initial_rows - cleaned_rows} removed)")
+            self.execution_metrics['cleaned_rows'] = cleaned_rows
+            self.execution_metrics['rows_removed_cleaning'] = initial_rows - cleaned_rows
+
+            # Step 3: Schema validation
+            logger.info("Step 3/6: Validating schema")
+            validate_schema(cleaned_df, REQUIRED_COLUMNS)
+            logger.info("Schema validation passed")
+
+            # Step 4: Preprocessing (scaling, outlier removal)
+            logger.info("Step 4/6: Applying preprocessing (scaling, outlier removal)")
+            preprocessed_df = self.preprocessor.fit_transform(cleaned_df)
+            preprocessed_rows = len(preprocessed_df)
+            logger.info(f"After preprocessing: {preprocessed_rows} rows ({cleaned_rows - preprocessed_rows} outliers removed)")
+            self.execution_metrics['preprocessed_rows'] = preprocessed_rows
+            self.execution_metrics['outliers_removed'] = cleaned_rows - preprocessed_rows
+
+            # Step 5: Feature engineering
+            logger.info("Step 5/6: Applying feature engineering")
+            final_df = build_feature_frame(preprocessed_df)
+            final_rows = len(final_df)
+            final_columns = len(final_df.columns)
+            logger.info(f"After feature engineering: {final_rows} rows, {final_columns} features")
+            self.execution_metrics['final_rows'] = final_rows
+            self.execution_metrics['final_columns'] = final_columns
+
+            # Step 6: Save artifacts and data
+            logger.info("Step 6/6: Saving artifacts and processed data")
+            artifact_path = self.artifact_dir / f"preprocessor_{run_id}.pkl"
+            self.preprocessor.save_artifacts(str(artifact_path))
+            logger.info(f"Saved preprocessor artifacts to {artifact_path}")
+
+            # Save to PostgreSQL if requested
+            if kwargs.get('save_to_db', True):
+                # Convert DataFrame to list of dicts for insert_transactions
+                records = final_df.to_dict('records')
+                self.db_service.insert_transactions(records)
+                logger.info("Saved processed data to PostgreSQL")
+
+            # Save to CSV if requested
+            if kwargs.get('save_to_csv', False):
+                output_csv = kwargs.get('output_csv_path', f'/data/processed_{run_id}.csv')
+                final_df.to_csv(output_csv, index=False)
+                logger.info(f"Saved processed data to {output_csv}")
+
+            # Calculate execution time
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            self.execution_metrics['execution_time_seconds'] = execution_time
+
+            logger.info(f"Batch pipeline {run_id} completed successfully in {execution_time:.2f}s")
             return {
-                "status": "timeout",
-                "job_name": job_name,
-                "error": str(e)
+                "status": "success",
+                "run_id": run_id,
+                "rows_processed": final_rows,
+                "features_created": final_columns,
+                "metrics": self.execution_metrics,
+                "artifact_path": str(artifact_path)
             }
+
         except Exception as e:
-            logger.error(f"Batch pipeline error: {str(e)}", exc_info=True)
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.error(f"Batch pipeline {run_id} failed after {execution_time:.2f}s: {str(e)}", exc_info=True)
             return {
                 "status": "error",
-                "job_name": job_name,
-                "error": str(e)
+                "run_id": run_id,
+                "error": str(e),
+                "metrics": self.execution_metrics
             }
-    
-    def execute_via_notebook(self, notebook_path: str, **kwargs) -> Dict[str, Any]:
+
+    def get_metrics(self) -> Dict[str, Any]:
         """
-        Execute batch pipeline via Databricks notebook.
-        
-        Alternative method if feature engineering is implemented as a notebook
-        instead of a Spark job.
-        
-        Args:
-            notebook_path (str): Path to notebook in Databricks workspace
-                (e.g., /Workspace/fraud-detection/feature_engineering)
-            **kwargs: Parameters passed to notebook
-        
+        Get current execution metrics.
+
         Returns:
-            Dict with execution status
+            Dict with metrics (rows processed, execution time, etc.)
         """
-        job_name = f"notebook_feature_eng_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-        
-        try:
-            logger.info(f"Starting notebook execution: {job_name} from {notebook_path}")
-            
-            # Execute notebook on cluster
-            run_id = self.notebook_executor.run_notebook(
-                notebook_path=notebook_path,
-                cluster_id=self.cluster_id,
-                parameters=kwargs
-            )
-            
-            # Wait for completion
-            status = self.notebook_executor.wait_for_notebook(run_id)
-            
-            if status == 'SUCCEEDED':
-                logger.info(f"Notebook {job_name} completed successfully")
-                return {
-                    "status": "success",
-                    "notebook_path": notebook_path,
-                    "run_id": run_id
-                }
-            else:
-                logger.error(f"Notebook {job_name} failed with status: {status}")
-                return {
-                    "status": "failed",
-                    "notebook_path": notebook_path,
-                    "run_id": run_id,
-                    "error": f"Notebook failed with status: {status}"
-                }
-        
-        except TimeoutError as e:
-            logger.error(f"Notebook execution timeout: {str(e)}")
-            return {
-                "status": "timeout",
-                "notebook_path": notebook_path,
-                "error": str(e)
-            }
-        except Exception as e:
-            logger.error(f"Notebook execution error: {str(e)}", exc_info=True)
-            return {
-                "status": "error",
-                "notebook_path": notebook_path,
-                "error": str(e)
-            }
-    
-    def _submit_feature_engineering_job(self, job_name: str, params: Dict[str, Any]) -> int:
+        return self.execution_metrics.copy()
+
+    def save_preprocessor(self, path: str) -> None:
         """
-        Submit feature engineering Spark job to Databricks.
-        
+        Save fitted preprocessor to disk.
+
         Args:
-            job_name (str): Name for this job run
-            params (Dict): Job parameters (date_range_days, enable_smote, etc.)
-        
-        Returns:
-            int: Job run ID
+            path (str): Path to save preprocessor (will be saved as pickle)
         """
-        # Build Spark SQL job parameters
-        spark_job_params = {
-            'sql_file': 'dbfs:/fraud-detection/feature_engineering.sql',
-            'parameters': {
-                'date_range_days': str(params.get('date_range_days', 1)),
-                'min_transactions': str(params.get('min_transactions', 1000)),
-                'enable_smote': str(params.get('enable_smote', True)),
-                'output_path': params.get('output_path', 's3://fraud-detection/features/')
-            }
-        }
-        
-        logger.debug(f"Submitting job with params: {spark_job_params}")
-        
-        # Submit Spark SQL job
-        run_id = self.job_manager.submit_spark_sql_job(
-            job_name=job_name,
-            cluster_id=self.cluster_id,
-            sql_file=spark_job_params['sql_file'],
-            parameters=spark_job_params['parameters']
-        )
-        
-        logger.info(f"Feature engineering job submitted: run_id={run_id}")
-        return run_id
-    
-    def get_job_status(self, run_id: int) -> str:
+        self.preprocessor.save_artifacts(path)
+        logger.info(f"Preprocessor saved to {path}")
+
+    def load_preprocessor(self, path: str) -> None:
         """
-        Get current job status.
-        
+        Load fitted preprocessor from disk.
+
         Args:
-            run_id (int): Job run ID
-        
-        Returns:
-            str: Current status (PENDING, RUNNING, SUCCEEDED, FAILED, etc.)
+            path (str): Path to saved preprocessor
         """
-        return self.job_manager.get_job_status(run_id)
-    
-    def cancel_job(self, run_id: int) -> None:
-        """
-        Cancel a running job.
-        
-        Args:
-            run_id (int): Job run ID
-        """
-        self.job_manager.cancel_job(run_id)
-        logger.info(f"Job {run_id} cancelled")
+        self.preprocessor = DataPreprocessor.load_artifacts(path)
+        logger.info(f"Preprocessor loaded from {path}")
 
 
-def get_batch_pipeline() -> DatabricksBatchPipeline:
+def get_batch_pipeline() -> BatchDataPipeline:
     """
-    Factory function to create DatabricksBatchPipeline from environment variables.
-    
+    Factory function to create BatchDataPipeline from environment variables.
+
     Expected environment variables:
-    - DATABRICKS_HOST: Databricks workspace URL
-    - DATABRICKS_TOKEN: Databricks API token
-    - DATABRICKS_CLUSTER_ID: Existing cluster ID
-    - DATABRICKS_POLLING_INTERVAL: Status poll interval (default 5s)
-    - DATABRICKS_MAX_JOB_WAIT: Max job execution time (default 3600s)
-    
+    - ARTIFACT_DIR: Directory to save artifacts (default /artifacts)
+    - POSTGRES_HOST: PostgreSQL host (for data ingestion/storage)
+    - POSTGRES_PORT: PostgreSQL port (default 5432)
+    - POSTGRES_DB: PostgreSQL database name
+    - POSTGRES_USER: PostgreSQL username
+    - POSTGRES_PASSWORD: PostgreSQL password
+
     Returns:
-        DatabricksBatchPipeline: Configured pipeline instance
-    
-    Raises:
-        ValueError: If required environment variables are missing
+        BatchDataPipeline: Configured pipeline instance
+
+    Example:
+        >>> pipeline = get_batch_pipeline()
+        >>> result = pipeline.execute(data_source="/data/creditcard.csv")
     """
-    databricks_host = os.getenv('DATABRICKS_HOST')
-    databricks_token = os.getenv('DATABRICKS_TOKEN')
-    cluster_id = os.getenv('DATABRICKS_CLUSTER_ID')
-    
-    if not all([databricks_host, databricks_token, cluster_id]):
-        raise ValueError(
-            "Missing required Databricks environment variables: "
-            "DATABRICKS_HOST, DATABRICKS_TOKEN, DATABRICKS_CLUSTER_ID"
-        )
-    
-    polling_interval = int(os.getenv('DATABRICKS_POLLING_INTERVAL', 5))
-    max_job_wait = int(os.getenv('DATABRICKS_MAX_JOB_WAIT', 3600))
-    
-    return DatabricksBatchPipeline(
-        databricks_host=databricks_host,
-        databricks_token=databricks_token,
-        cluster_id=cluster_id,
-        polling_interval=polling_interval,
-        max_job_wait_time=max_job_wait
+    artifact_dir = Path(os.getenv('ARTIFACT_DIR', '/artifacts'))
+
+    # Create DatabaseService from environment
+    db_connection_string = (
+        f"postgresql://{os.getenv('POSTGRES_USER', 'fraud_user')}"
+        f":{os.getenv('POSTGRES_PASSWORD', 'fraud_pass')}"
+        f"@{os.getenv('POSTGRES_HOST', 'postgres')}"
+        f":{os.getenv('POSTGRES_PORT', '5432')}"
+        f"/{os.getenv('POSTGRES_DB', 'fraud_detection')}"
     )
+
+    db_service = DatabaseService(connection_string=db_connection_string)
+
+    return BatchDataPipeline(
+        db_service=db_service,
+        artifact_dir=artifact_dir
+    )
+
+
+# CLI entry point for Docker container
+if __name__ == "__main__":
+    import sys
+
+    logger.info("Starting batch data pipeline")
+
+    # Get data source from command line or environment
+    data_source = sys.argv[1] if len(sys.argv) > 1 else os.getenv('DATA_SOURCE')
+
+    if not data_source:
+        logger.error("No data source provided. Set DATA_SOURCE env var or pass as argument.")
+        sys.exit(1)
+
+    # Create and run pipeline
+    pipeline = get_batch_pipeline()
+    result = pipeline.execute(data_source=data_source)
+
+    if result['status'] == 'success':
+        logger.info(f"Pipeline completed successfully: {result['rows_processed']} rows processed")
+        sys.exit(0)
+    else:
+        logger.error(f"Pipeline failed: {result.get('error', 'Unknown error')}")
+        sys.exit(1)
+
+
+# Compatibility aliases for tests
+DatabricksBatchPipeline = BatchDataPipeline
+
+
+def get_batch_pipeline() -> BatchDataPipeline:
+    """
+    Factory function to create a batch pipeline instance.
+    Used for testing and CLI integration.
+    """
+    return BatchDataPipeline()

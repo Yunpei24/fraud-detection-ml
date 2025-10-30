@@ -11,21 +11,25 @@ RUN apt-get update && \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Switch to airflow user (Apache Airflow enforces this for pip)
 USER airflow
 
-# Copy requirements
-COPY requirements.txt /requirements.txt
+# Install common package as airflow user
+COPY --chown=airflow:root common/ /opt/airflow/common/
+RUN pip install --user --no-cache-dir /opt/airflow/common
 
-# Install Python dependencies
+# Copy requirements
+COPY airflow/requirements.txt /requirements.txt
+
+# Install Python dependencies (sans -e ../common qui est déjà installé)
 RUN pip install --no-cache-dir -r /requirements.txt
 
 # Create necessary directories
 RUN mkdir -p /opt/airflow/dags /opt/airflow/logs /opt/airflow/plugins /opt/airflow/config
 
-# Copy Airflow configurations
-COPY config/ /opt/airflow/config/
-COPY plugins/ /opt/airflow/plugins/
-COPY dags/ /opt/airflow/dags/
+# Copy Airflow configurations and DAGs
+COPY airflow/config/ /opt/airflow/config/
+COPY airflow/dags/ /opt/airflow/dags/
 
 # Set working directory
 WORKDIR /opt/airflow
