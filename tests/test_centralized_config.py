@@ -183,8 +183,7 @@ class TestModuleIntegration:
     def test_training_module_config(self):
         """Test training module can load config"""
         try:
-            from training.src.config import \
-                get_settings as get_training_settings
+            from training.src.config import get_settings as get_training_settings
 
             training_settings = get_training_settings()
 
@@ -236,8 +235,7 @@ class TestConfigurationConsistency:
 
         # Check that modules use the same MLflow URI
         try:
-            from training.src.config import \
-                get_settings as get_training_settings
+            from training.src.config import get_settings as get_training_settings
 
             training_settings = get_training_settings()
             assert (

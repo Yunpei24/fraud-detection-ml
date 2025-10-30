@@ -7,11 +7,14 @@ import numpy as np
 import pandas as pd
 import pytest
 from src.config.settings import Settings
-from src.pipelines.hourly_monitoring import (call_api_drift_detection,
-                                             check_thresholds,
-                                             fetch_recent_predictions,
-                                             run_hourly_monitoring,
-                                             trigger_alerts, update_dashboards)
+from src.pipelines.hourly_monitoring import (
+    call_api_drift_detection,
+    check_thresholds,
+    fetch_recent_predictions,
+    run_hourly_monitoring,
+    trigger_alerts,
+    update_dashboards,
+)
 
 
 @pytest.mark.integration

@@ -7,14 +7,26 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from ...api.dependencies import (get_cache_service, get_database_service,
-                                 get_prediction_service, verify_api_key)
+from ...api.dependencies import (
+    get_cache_service,
+    get_database_service,
+    get_prediction_service,
+    verify_api_key,
+)
 from ...config import get_logger
-from ...models import (BatchPredictionResponse, BatchTransactionRequest,
-                       ErrorResponse, PredictionResponse, TransactionRequest)
+from ...models import (
+    BatchPredictionResponse,
+    BatchTransactionRequest,
+    ErrorResponse,
+    PredictionResponse,
+    TransactionRequest,
+)
 from ...services import CacheService, DatabaseService, PredictionService
-from ...utils import (InvalidInputException, PredictionFailedException,
-                      validate_batch_request)
+from ...utils import (
+    InvalidInputException,
+    PredictionFailedException,
+    validate_batch_request,
+)
 
 logger = get_logger(__name__)
 

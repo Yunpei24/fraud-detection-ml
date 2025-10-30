@@ -37,12 +37,18 @@ except ImportError:
     KAFKA_AVAILABLE = False
     print("kafka-python not installed")
 
-from src.config.constants import (API_TIMEOUT_SECONDS, API_URL,
-                                  KAFKA_AUTO_OFFSET_RESET,
-                                  KAFKA_BOOTSTRAP_SERVERS,
-                                  KAFKA_CONSUMER_GROUP, KAFKA_MAX_POLL_RECORDS,
-                                  KAFKA_TIMEOUT_MS, KAFKA_TOPIC,
-                                  WEBAPP_TIMEOUT_SECONDS, WEBAPP_URL)
+from src.config.constants import (
+    API_TIMEOUT_SECONDS,
+    API_URL,
+    KAFKA_AUTO_OFFSET_RESET,
+    KAFKA_BOOTSTRAP_SERVERS,
+    KAFKA_CONSUMER_GROUP,
+    KAFKA_MAX_POLL_RECORDS,
+    KAFKA_TIMEOUT_MS,
+    KAFKA_TOPIC,
+    WEBAPP_TIMEOUT_SECONDS,
+    WEBAPP_URL,
+)
 from src.storage.database import DatabaseService
 from src.transformation.cleaner import DataCleaner
 from src.utils.logger import get_logger
