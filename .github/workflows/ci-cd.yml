@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: frauddetectionacr-bzbrfqcgdyapcag6.azurecr.io
+  REGISTRY: ${{ secrets.REGISTRY }}
 
 jobs:
   # ==============================================================================
@@ -518,7 +518,7 @@ jobs:
     - name: Notify deployment success
       if: success()
       run: |
-        # Send notification (Azure DevOps, Slack, Teams, etc.)
+        # Send notification (Azure DevOps,s Teams, etc.)
         echo "Deployment to production successful"
 
     - name: Notify deployment failure
