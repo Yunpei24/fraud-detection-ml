@@ -12,6 +12,7 @@ from typing import Any, Dict
 import numpy as np
 import pandas as pd
 import pytest
+
 # Import modules to test
 from src.config.settings import Settings
 

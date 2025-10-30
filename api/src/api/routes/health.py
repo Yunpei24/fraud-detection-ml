@@ -7,8 +7,11 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, status
 
-from ...api.dependencies import (get_cache_service, get_database_service,
-                                 get_prediction_service)
+from ...api.dependencies import (
+    get_cache_service,
+    get_database_service,
+    get_prediction_service,
+)
 from ...config import constants, get_logger, settings
 from ...models import DetailedHealthCheckResponse, HealthCheckResponse
 from ...services import CacheService, DatabaseService, PredictionService

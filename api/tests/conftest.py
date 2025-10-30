@@ -8,8 +8,12 @@ import pytest
 from fastapi.testclient import TestClient
 from src.main import app
 from src.models import EnsembleModel
-from src.services import (CacheService, DatabaseService, EvidentlyDriftService,
-                          PredictionService)
+from src.services import (
+    CacheService,
+    DatabaseService,
+    EvidentlyDriftService,
+    PredictionService,
+)
 
 
 @pytest.fixture
@@ -33,9 +37,12 @@ def client(
     Returns:
         TestClient instance
     """
-    from src.api.dependencies import (get_cache_service, get_database_service,
-                                      get_drift_service,
-                                      get_prediction_service)
+    from src.api.dependencies import (
+        get_cache_service,
+        get_database_service,
+        get_drift_service,
+        get_prediction_service,
+    )
     from src.api.routes.auth import get_current_analyst_user
 
     # Override dependencies with mocks

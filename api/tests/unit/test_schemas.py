@@ -4,9 +4,14 @@ Unit tests for Pydantic schemas.
 
 import pytest
 from pydantic import ValidationError
-from src.models import (BatchPredictionResponse, BatchTransactionRequest,
-                        ErrorResponse, HealthCheckResponse, PredictionResponse,
-                        TransactionRequest)
+from src.models import (
+    BatchPredictionResponse,
+    BatchTransactionRequest,
+    ErrorResponse,
+    HealthCheckResponse,
+    PredictionResponse,
+    TransactionRequest,
+)
 
 
 class TestTransactionRequest:

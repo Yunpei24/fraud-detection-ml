@@ -8,10 +8,12 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pandas as pd
 import pytest
-from src.services.database_service import (DatabaseConnectionError,
-                                           DatabaseService,
-                                           QueryExecutionError,
-                                           TransactionError)
+from src.services.database_service import (
+    DatabaseConnectionError,
+    DatabaseService,
+    QueryExecutionError,
+    TransactionError,
+)
 
 
 @pytest.mark.unit

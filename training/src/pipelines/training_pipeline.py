@@ -19,31 +19,40 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from fraud_detection_common.feature_engineering import build_feature_frame
+
 # Use common package for preprocessing and feature engineering
 from fraud_detection_common.preprocessor import DataPreprocessor
 from src.config.logging_config import get_logger
+
 # Data loading and splitting
 from src.data.loader import load_training_data
 from src.data.splitter import stratified_split
 from src.evaluation.explainability import (
-    create_explanation_report_from_model, plot_shap_summary)
+    create_explanation_report_from_model,
+    plot_shap_summary,
+)
+
 # Evaluation
 from src.evaluation.metrics import calculate_all_metrics
-from src.evaluation.plots import (plot_confusion_matrix_plot,
-                                  plot_feature_importance,
-                                  plot_precision_recall_curve_plot,
-                                  plot_roc_auc)
+from src.evaluation.plots import (
+    plot_confusion_matrix_plot,
+    plot_feature_importance,
+    plot_precision_recall_curve_plot,
+    plot_roc_auc,
+)
 from src.evaluation.validation import validate_all_models
+
 # Feature selection (optional)
 from src.features.selection import select_k_best_mutual_info
+
 # MLflow utilities
 from src.mlflow_utils.experiment import setup_experiment, start_run
 from src.mlflow_utils.registry import register_model
-from src.mlflow_utils.tracking import (log_artifact, log_metrics, log_model,
-                                       log_params)
+from src.mlflow_utils.tracking import log_artifact, log_metrics, log_model, log_params
 from src.models.isolation_forest import IsolationForestModel
 from src.models.neural_network import NeuralNetworkModel
 from src.models.random_forest import RandomForestModel
+
 # Models
 from src.models.xgboost_model import XGBoostModel
 
