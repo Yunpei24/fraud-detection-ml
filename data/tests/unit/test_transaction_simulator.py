@@ -19,8 +19,7 @@ try:
 except ImportError:
     KafkaError = Exception  # Fallback for when kafka is not available
 
-from src.ingestion.transaction_simulator import (KAFKA_AVAILABLE,
-                                                 TransactionSimulator)
+from src.ingestion.transaction_simulator import KAFKA_AVAILABLE, TransactionSimulator
 
 
 @pytest.mark.unit

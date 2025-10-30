@@ -4,9 +4,13 @@ from __future__ import annotations
 from typing import Dict, Tuple
 
 import numpy as np
-from sklearn.metrics import (average_precision_score, confusion_matrix,
-                             precision_recall_curve,
-                             precision_recall_fscore_support, roc_auc_score)
+from sklearn.metrics import (
+    average_precision_score,
+    confusion_matrix,
+    precision_recall_curve,
+    precision_recall_fscore_support,
+    roc_auc_score,
+)
 
 
 def calculate_auc_roc(y_true: np.ndarray, y_pred_proba: np.ndarray) -> float:

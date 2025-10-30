@@ -459,9 +459,9 @@ class CacheService:
             client = self.connect()
             result = client.hgetall(key)
             return {
-                k.decode("utf-8") if isinstance(k, bytes) else k: (
-                    v.decode("utf-8") if isinstance(v, bytes) else v
-                )
+                k.decode("utf-8")
+                if isinstance(k, bytes)
+                else k: (v.decode("utf-8") if isinstance(v, bytes) else v)
                 for k, v in result.items()
             }
         except Exception as e:

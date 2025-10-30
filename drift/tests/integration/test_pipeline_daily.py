@@ -7,10 +7,13 @@ import numpy as np
 import pandas as pd
 import pytest
 from src.config.settings import Settings
-from src.pipelines.daily_analysis import (aggregate_daily_metrics,
-                                          generate_daily_report,
-                                          identify_trends, recommend_actions,
-                                          run_daily_analysis)
+from src.pipelines.daily_analysis import (
+    aggregate_daily_metrics,
+    generate_daily_report,
+    identify_trends,
+    recommend_actions,
+    run_daily_analysis,
+)
 
 
 @pytest.mark.integration

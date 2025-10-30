@@ -28,8 +28,12 @@ from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.utils.trigger_rule import TriggerRule
 
 # Import centralized configuration
-from config.constants import (DOCKER_IMAGE_TRAINING, DOCKER_NETWORK, ENV_VARS,
-                              TABLE_NAMES)
+from config.constants import (
+    DOCKER_IMAGE_TRAINING,
+    DOCKER_NETWORK,
+    ENV_VARS,
+    TABLE_NAMES,
+)
 
 # Default args
 default_args = {

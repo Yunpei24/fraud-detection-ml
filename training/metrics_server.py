@@ -25,8 +25,7 @@ import sys
 import time
 
 import structlog
-from prometheus_client import (Counter, Gauge, Histogram, Info,
-                               start_http_server)
+from prometheus_client import Counter, Gauge, Histogram, Info, start_http_server
 
 logger = structlog.get_logger(__name__)
 
