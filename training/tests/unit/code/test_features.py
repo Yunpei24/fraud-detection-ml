@@ -2,9 +2,7 @@ import os
 import sys
 
 from src.features.engineer import (  # Corrected import path
-    add_behavioral_features,
-    build_feature_frame,
-)
+    add_behavioral_features, build_feature_frame)
 
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "src"))

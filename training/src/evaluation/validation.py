@@ -4,11 +4,8 @@ from __future__ import annotations
 from typing import Dict
 
 import numpy as np
-from sklearn.metrics import (
-    average_precision_score,
-    precision_recall_fscore_support,
-    roc_auc_score,
-)
+from sklearn.metrics import (average_precision_score,
+                             precision_recall_fscore_support, roc_auc_score)
 from sklearn.model_selection import StratifiedKFold
 
 

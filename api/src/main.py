@@ -7,24 +7,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .api.routes import (
-    admin_router,
-    audit_router,
-    drift_router,
-    explain_router,
-    health_router,
-    metrics_router,
-    predict_router,
-    transaction_router,
-)
+from .api.routes import (admin_router, audit_router, drift_router,
+                         explain_router, health_router, metrics_router,
+                         predict_router, transaction_router)
 from .config import constants, get_logger, settings
-from .monitoring.prometheus import (
-    ACTIVE_CONNECTIONS,
-    API_ERRORS_TOTAL,
-    API_REQUEST_DURATION_SECONDS,
-    API_REQUESTS_TOTAL,
-    INVALID_REQUESTS_TOTAL,
-)
+from .monitoring.prometheus import (ACTIVE_CONNECTIONS, API_ERRORS_TOTAL,
+                                    API_REQUEST_DURATION_SECONDS,
+                                    API_REQUESTS_TOTAL, INVALID_REQUESTS_TOTAL)
 from .utils import FraudDetectionException
 
 logger = get_logger(__name__)

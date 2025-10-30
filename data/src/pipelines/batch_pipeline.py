@@ -29,10 +29,8 @@ from src.utils.logger import get_logger
 try:
     from fraud_detection_common.feature_engineering import build_feature_frame
     from fraud_detection_common.preprocessor import DataPreprocessor
-    from fraud_detection_common.schema_validation import (
-        REQUIRED_COLUMNS,
-        validate_schema,
-    )
+    from fraud_detection_common.schema_validation import (REQUIRED_COLUMNS,
+                                                          validate_schema)
 except ImportError:
     # Fallback for local development
     class DataPreprocessor:

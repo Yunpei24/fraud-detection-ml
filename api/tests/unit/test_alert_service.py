@@ -3,12 +3,8 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from src.services.alert_service import (
-    AlertService,
-    AlertSeverity,
-    get_alert_service,
-    init_alert_service,
-)
+from src.services.alert_service import (AlertService, AlertSeverity,
+                                        get_alert_service, init_alert_service)
 
 
 class TestAlertSeverity:

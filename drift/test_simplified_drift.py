@@ -85,12 +85,10 @@ def test_pipeline_import():
     print("Testing pipeline import...")
 
     try:
-        from pipelines.hourly_monitoring import (
-            call_api_drift_detection,
-            check_thresholds,
-            run_hourly_monitoring,
-            trigger_alerts,
-        )
+        from pipelines.hourly_monitoring import (call_api_drift_detection,
+                                                 check_thresholds,
+                                                 run_hourly_monitoring,
+                                                 trigger_alerts)
 
         print("✅ Pipeline functions imported successfully")
         return True
@@ -183,12 +181,10 @@ def test_pipeline_import():
     print("Testing pipeline import...")
 
     try:
-        from pipelines.hourly_monitoring import (
-            call_api_drift_detection,
-            check_thresholds,
-            run_hourly_monitoring,
-            trigger_alerts,
-        )
+        from pipelines.hourly_monitoring import (call_api_drift_detection,
+                                                 check_thresholds,
+                                                 run_hourly_monitoring,
+                                                 trigger_alerts)
 
         print("✅ Pipeline functions imported successfully")
         return True
