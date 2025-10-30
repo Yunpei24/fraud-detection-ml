@@ -1,4 +1,5 @@
 """Test database connection after PostgreSQL migration"""
+
 from unittest.mock import Mock, patch
 
 import pytest

@@ -1,6 +1,7 @@
 """
 Audit trails API routes for compliance reporting.
 """
+
 import time
 from datetime import datetime
 from typing import List

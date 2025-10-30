@@ -6,6 +6,7 @@ Uses PostgresHook for metrics calculation
 Schedule: Daily at 3 AM
 Refactored to remove obsolete settings/helpers imports
 """
+
 import os
 from datetime import datetime, timedelta
 

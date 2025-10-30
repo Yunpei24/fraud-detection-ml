@@ -3,6 +3,7 @@ Custom Alert Operator for Fraud Detection
 ==========================================
 Sends alerts for fraud detection events via multiple channels.
 """
+
 import json
 import logging
 from datetime import datetime
@@ -122,12 +123,16 @@ class FraudDetectionAlertOperator(BaseOperator):
             "message": self.message,
             "details": self.details,
             "dag_id": context.get("dag").dag_id if "dag" in context else "unknown",
-            "task_id": context.get("task_instance").task_id
-            if "task_instance" in context
-            else "unknown",
-            "execution_date": context.get("execution_date").isoformat()
-            if "execution_date" in context
-            else None,
+            "task_id": (
+                context.get("task_instance").task_id
+                if "task_instance" in context
+                else "unknown"
+            ),
+            "execution_date": (
+                context.get("execution_date").isoformat()
+                if "execution_date" in context
+                else None
+            ),
             "timestamp": datetime.utcnow().isoformat(),
         }
 

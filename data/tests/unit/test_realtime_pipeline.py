@@ -2,10 +2,11 @@
 Unit tests for Rea        with patch('src.pipelines.realtime_pipeline.DatabaseService') as mock_db_service:
             mock_db_instance = MagicMock()
             mock_db_service.return_value = mock_db_instance
-            
+
             pipeline = RealtimePipeline(connect_db=False) Pipeline
 Tests Kafka consumption, data cleaning, API prediction, and database saving
 """
+
 from datetime import datetime
 from unittest.mock import MagicMock, Mock, patch
 

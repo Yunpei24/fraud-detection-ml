@@ -1,6 +1,7 @@
 """
 Validation utilities for the Fraud Detection API.
 """
+
 from typing import Any, Dict, List
 
 import numpy as np

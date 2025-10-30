@@ -1,6 +1,7 @@
 """
 Custom exceptions for the Fraud Detection API.
 """
+
 from typing import Any, Dict, Optional
 
 

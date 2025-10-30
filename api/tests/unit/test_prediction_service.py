@@ -2,6 +2,7 @@
 Unit tests for Prediction Service
 Tests model prediction functionality and error handling
 """
+
 from unittest.mock import MagicMock, Mock, patch
 
 import pandas as pd

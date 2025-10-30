@@ -1,6 +1,7 @@
 """
 Helper utilities for the Fraud Detection API.
 """
+
 import json
 import time
 from datetime import datetime
@@ -122,9 +123,9 @@ def format_explanation(explanation: Dict[str, Any]) -> Dict[str, Any]:
             {
                 "index": feature.get("feature"),
                 "impact": feature.get("shap_value"),
-                "direction": "increases"
-                if feature.get("shap_value", 0) > 0
-                else "decreases",
+                "direction": (
+                    "increases" if feature.get("shap_value", 0) > 0 else "decreases"
+                ),
                 "strength": abs(feature.get("shap_value", 0)),
             }
         )

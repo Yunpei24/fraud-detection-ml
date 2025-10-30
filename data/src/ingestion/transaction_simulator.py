@@ -10,7 +10,7 @@ Simulates the Kaggle Credit Card Fraud Detection dataset:
 Usage:
     # Batch of 1000 transactions
     python -m src.ingestion.transaction_simulator --mode batch --count 1000
-    
+
     # Continuous streaming (10 txn/sec)
     python -m src.ingestion.transaction_simulator --mode stream --rate 10
 """

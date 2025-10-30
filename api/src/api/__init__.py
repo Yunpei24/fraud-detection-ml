@@ -1,6 +1,7 @@
 """
 API package for fraud detection routes and dependencies.
 """
+
 from .dependencies import (
     get_cache_service,
     get_database_service,

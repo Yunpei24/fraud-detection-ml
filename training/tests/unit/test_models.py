@@ -2,6 +2,7 @@
 Unit Tests for Training Models
 Tests XGBoost, Random Forest, Neural Network, and Isolation Forest models
 """
+
 import numpy as np
 import pandas as pd
 import pytest

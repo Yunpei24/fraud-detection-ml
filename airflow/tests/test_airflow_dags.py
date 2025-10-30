@@ -1,6 +1,7 @@
 """
 Unit tests for Airflow DAGs and configuration
 """
+
 import sys
 from pathlib import Path
 

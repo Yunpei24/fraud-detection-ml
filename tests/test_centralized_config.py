@@ -2,6 +2,7 @@
 Comprehensive validation of centralized configuration system across all modules.
 This test ensures that all modules can properly access and use the centralized settings.
 """
+
 import sys
 from pathlib import Path
 

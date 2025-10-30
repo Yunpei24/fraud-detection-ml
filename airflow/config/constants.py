@@ -3,6 +3,7 @@ Centralized Configuration Constants for Fraud Detection Airflow DAGs
 All table names, thresholds, and environment variables are defined here
 to eliminate hardcoded values across the codebase.
 """
+
 import os
 
 # ============================================================================

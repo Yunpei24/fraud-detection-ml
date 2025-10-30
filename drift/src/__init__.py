@@ -3,7 +3,7 @@ Drift Detection Component
 
 Monitors production ML system for drift:
 - Data Drift: Feature distribution changes
-- Target Drift: Label distribution changes  
+- Target Drift: Label distribution changes
 - Concept Drift: Model performance degradation
 
 This component integrates with:

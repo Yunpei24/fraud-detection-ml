@@ -2,6 +2,7 @@
 Unit tests for API Endpoints
 Tests FastAPI routes, request validation, error responses, and middleware
 """
+
 import json
 from unittest.mock import MagicMock, Mock, patch
 

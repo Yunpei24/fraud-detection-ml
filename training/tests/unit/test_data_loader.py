@@ -2,6 +2,7 @@
 Unit Tests for Training Data Loader
 Tests the data loading functionality from PostgreSQL
 """
+
 from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
@@ -72,7 +73,7 @@ class TestValidateDataSchema:
         invalid_df = pd.DataFrame(
             {
                 "time": [1, 2],
-                "amount": [100.0, 200.0]
+                "amount": [100.0, 200.0],
                 # Missing: v1, class
             }
         )

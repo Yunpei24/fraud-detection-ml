@@ -2,6 +2,7 @@
 Traffic Router for canary deployment.
 Routes traffic between champion and canary models based on configuration.
 """
+
 import json
 import logging
 import os

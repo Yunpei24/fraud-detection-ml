@@ -1,6 +1,7 @@
 """
 Logging configuration for drift detection component.
 """
+
 import logging
 import sys
 from typing import Optional
@@ -34,9 +35,11 @@ def get_logger(name: str, log_level: Optional[str] = None) -> logging.Logger:
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
             structlog.processors.UnicodeDecoder(),
-            structlog.processors.JSONRenderer()
-            if settings.log_format == "json"
-            else structlog.dev.ConsoleRenderer(),
+            (
+                structlog.processors.JSONRenderer()
+                if settings.log_format == "json"
+                else structlog.dev.ConsoleRenderer()
+            ),
         ],
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),

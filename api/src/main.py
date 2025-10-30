@@ -157,9 +157,9 @@ async def general_exception_handler(request: Request, exc: Exception):
         content={
             "error_code": "E999",
             "message": "Internal server error",
-            "details": {"error": str(exc)}
-            if settings.environment != "production"
-            else {},
+            "details": (
+                {"error": str(exc)} if settings.environment != "production" else {}
+            ),
         },
     )
 

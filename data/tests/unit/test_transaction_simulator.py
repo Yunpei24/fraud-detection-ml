@@ -2,6 +2,7 @@
 Unit tests for Transaction Simulator
 Tests fraud generation, transaction simulation, and Kafka integration
 """
+
 import json
 import random
 import time

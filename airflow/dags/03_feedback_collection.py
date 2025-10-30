@@ -6,6 +6,7 @@ Uses PostgreSQL hooks for database queries
 Schedule: Daily at 1 AM
 Refactored to remove dependencies on obsolete helpers/module_loader
 """
+
 import os
 from datetime import datetime, timedelta
 

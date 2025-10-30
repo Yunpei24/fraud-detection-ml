@@ -6,6 +6,7 @@ Uses PostgresHook for validation
 Schedule: Daily at 2 AM
 Refactored to remove obsolete settings/module_loader imports
 """
+
 import os
 from datetime import datetime, timedelta
 

@@ -1,6 +1,7 @@
 """
 Models module containing schemas and ML models.
 """
+
 from .ml_models import EnsembleModel
 from .schemas import (
     AuditLogEntry,

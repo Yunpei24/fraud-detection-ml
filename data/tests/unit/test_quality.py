@@ -2,6 +2,7 @@
 Unit tests for Data Quality Validator
 Tests missing values, duplicates, outliers, and data type validation
 """
+
 from unittest.mock import Mock, patch
 
 import numpy as np

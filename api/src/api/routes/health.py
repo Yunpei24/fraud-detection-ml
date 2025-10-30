@@ -1,6 +1,7 @@
 """
 Health check API routes.
 """
+
 import time
 from datetime import datetime
 

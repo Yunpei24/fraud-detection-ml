@@ -13,6 +13,7 @@ Triggers:
 - Drift detected (via sensor)
 - Performance degradation (via sensor)
 """
+
 from __future__ import annotations
 
 import json

@@ -1,6 +1,7 @@
 """
 Pytest configuration and fixtures.
 """
+
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -111,9 +112,9 @@ def mock_prediction_service(mock_model):
             "predictions": [
                 {
                     "transaction_id": f"TEST-{i:03d}",
-                    "prediction": 0
-                    if i % 5 != 0
-                    else 1,  # Every 5th transaction is fraud
+                    "prediction": (
+                        0 if i % 5 != 0 else 1
+                    ),  # Every 5th transaction is fraud
                     "confidence": 0.8 + (i * 0.01),
                     "fraud_score": 0.2 - (i * 0.01),
                     "risk_level": "low" if i % 5 != 0 else "high",

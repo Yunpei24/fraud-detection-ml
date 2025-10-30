@@ -1,6 +1,7 @@
 """
 Prediction service for fraud detection.
 """
+
 import json
 import random
 import time
@@ -315,9 +316,9 @@ class PredictionService:
             "predictions": predictions,
             "errors": errors if errors else None,
             "processing_time": total_time,
-            "avg_processing_time": total_time / len(transactions)
-            if transactions
-            else 0,
+            "avg_processing_time": (
+                total_time / len(transactions) if transactions else 0
+            ),
         }
 
     def _prepare_features(self, features: List[float]) -> np.ndarray:

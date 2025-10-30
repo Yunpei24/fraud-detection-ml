@@ -202,11 +202,15 @@ def identify_trends(settings: Optional[Settings] = None) -> List[Dict[str, Any]]
                 "start_value": float(drift_scores[0]),
                 "end_value": float(drift_scores[-1]),
                 "detection_rate": detection_rate,
-                "concern_level": "HIGH"
-                if trend_magnitude > 0.5 or detection_rate > 0.5
-                else "MEDIUM"
-                if trend_magnitude > 0.2 or detection_rate > 0.3
-                else "LOW",
+                "concern_level": (
+                    "HIGH"
+                    if trend_magnitude > 0.5 or detection_rate > 0.5
+                    else (
+                        "MEDIUM"
+                        if trend_magnitude > 0.2 or detection_rate > 0.3
+                        else "LOW"
+                    )
+                ),
             }
         )
 

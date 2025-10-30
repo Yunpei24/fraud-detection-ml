@@ -272,16 +272,20 @@ class ModelRegistry:
         return {
             "total_versions": total_versions,
             "versions_by_stage": versions_by_stage,
-            "current_production": {
-                "version_id": current_prod.version_id,
-                "framework": current_prod.framework.value,
-                "created_at": current_prod.created_at.isoformat(),
-                "deployed_at": current_prod.deployed_at.isoformat()
-                if current_prod.deployed_at
-                else None,
-            }
-            if current_prod
-            else None,
+            "current_production": (
+                {
+                    "version_id": current_prod.version_id,
+                    "framework": current_prod.framework.value,
+                    "created_at": current_prod.created_at.isoformat(),
+                    "deployed_at": (
+                        current_prod.deployed_at.isoformat()
+                        if current_prod.deployed_at
+                        else None
+                    ),
+                }
+                if current_prod
+                else None
+            ),
         }
 
 

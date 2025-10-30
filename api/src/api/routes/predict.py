@@ -1,6 +1,7 @@
 """
 Prediction API routes.
 """
+
 import time
 from typing import List
 

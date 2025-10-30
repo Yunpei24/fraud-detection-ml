@@ -2,6 +2,7 @@
 Application settings for the Fraud Detection API.
 Standalone configuration using environment variables.
 """
+
 import os
 from pathlib import Path
 

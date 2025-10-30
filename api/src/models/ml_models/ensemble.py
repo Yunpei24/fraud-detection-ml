@@ -2,6 +2,7 @@
 Ensemble ML model for fraud detection.
 Combines XGBoost, Random Forest, Neural Network, and Isolation Forest.
 """
+
 import os
 import pickle
 from datetime import datetime
@@ -393,17 +394,17 @@ class EnsembleModel:
                 "xgboost": "loaded" if self.xgboost_model else "not loaded",
                 "random_forest": "loaded" if self.random_forest_model else "not loaded",
                 "neural_network": "loaded" if self.nn_model else "not loaded",
-                "isolation_forest": "loaded"
-                if self.isolation_forest_model
-                else "not loaded",
+                "isolation_forest": (
+                    "loaded" if self.isolation_forest_model else "not loaded"
+                ),
             },
             "shap_explainers": {
                 "xgboost": "loaded" if self.shap_explainer_xgb else "not loaded",
                 "random_forest": "loaded" if self.shap_explainer_rf else "not loaded",
                 "neural_network": "loaded" if self.shap_explainer_nn else "not loaded",
-                "isolation_forest": "loaded"
-                if self.shap_explainer_iforest
-                else "not loaded",
+                "isolation_forest": (
+                    "loaded" if self.shap_explainer_iforest else "not loaded"
+                ),
             },
         }
 

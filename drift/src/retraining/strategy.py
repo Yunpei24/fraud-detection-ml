@@ -126,25 +126,27 @@ def scheduled_retrain(
         "status": "scheduled",
         "timestamp": datetime.utcnow().isoformat(),
         "scheduled_time": schedule_time,
-        "drift_summary": {
-            "data_drift": drift_results.get("data_drift", {}).get(
-                "drift_detected", False
-            )
+        "drift_summary": (
+            {
+                "data_drift": (
+                    drift_results.get("data_drift", {}).get("drift_detected", False)
+                    if drift_results
+                    else False
+                ),
+                "target_drift": (
+                    drift_results.get("target_drift", {}).get("drift_detected", False)
+                    if drift_results
+                    else False
+                ),
+                "concept_drift": (
+                    drift_results.get("concept_drift", {}).get("drift_detected", False)
+                    if drift_results
+                    else False
+                ),
+            }
             if drift_results
-            else False,
-            "target_drift": drift_results.get("target_drift", {}).get(
-                "drift_detected", False
-            )
-            if drift_results
-            else False,
-            "concept_drift": drift_results.get("concept_drift", {}).get(
-                "drift_detected", False
-            )
-            if drift_results
-            else False,
-        }
-        if drift_results
-        else {},
+            else {}
+        ),
         "training_mode": "full",
         "estimated_duration_hours": 4,
     }

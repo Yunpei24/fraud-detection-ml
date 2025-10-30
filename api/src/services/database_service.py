@@ -1,6 +1,7 @@
 """
 Database service for storing predictions and audit logs.
 """
+
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 

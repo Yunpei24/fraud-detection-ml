@@ -1,6 +1,7 @@
 """
 Authentication service for JWT token management.
 """
+
 import os
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional

@@ -3,6 +3,7 @@ Custom PostgreSQL Hook for Fraud Detection
 ===========================================
 Extends Airflow PostgresHook with convenience methods for fraud detection queries.
 """
+
 from typing import Any, List, Optional, Tuple
 
 from airflow.providers.postgres.hooks.postgres import PostgresHook

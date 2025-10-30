@@ -2,6 +2,7 @@
 Unit tests for Schema Validation
 Tests field presence, data types, and business rules validation
 """
+
 from unittest.mock import Mock, patch
 
 import numpy as np

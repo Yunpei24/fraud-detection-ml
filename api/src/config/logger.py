@@ -1,6 +1,7 @@
 """
 Logging configuration for the Fraud Detection API.
 """
+
 import json
 import logging
 import sys

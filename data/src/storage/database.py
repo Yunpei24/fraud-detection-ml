@@ -291,9 +291,9 @@ class DatabaseService:
             return {
                 "total_transactions": transaction_count,
                 "total_frauds": fraud_count,
-                "fraud_rate": fraud_count / transaction_count
-                if transaction_count > 0
-                else 0,
+                "fraud_rate": (
+                    fraud_count / transaction_count if transaction_count > 0 else 0
+                ),
                 "average_amount": avg_amount,
             }
 

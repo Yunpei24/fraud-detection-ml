@@ -1,6 +1,7 @@
 """
 API routes package.
 """
+
 from .admin import router as admin_router
 from .audit import router as audit_router
 from .drift import router as drift_router

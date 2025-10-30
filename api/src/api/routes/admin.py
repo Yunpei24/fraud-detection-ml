@@ -1,6 +1,7 @@
 """
 Admin API routes.
 """
+
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status

@@ -11,7 +11,7 @@ This unified pipeline replaces batch_pipeline.py and handles:
 Usage:
     # Batch mode (1000 transactions)
     python -m src.pipelines.realtime_pipeline --mode batch --count 1000
-    
+
     # Streaming mode (continuous, 10 txn/sec)
     python -m src.pipelines.realtime_pipeline --mode stream --interval 10
 

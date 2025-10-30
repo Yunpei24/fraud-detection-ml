@@ -721,9 +721,11 @@ class EvidentlyDriftService:
                             "threshold_exceeded": data_drift.get(
                                 "dataset_drift_detected", False
                             ),
-                            "severity": "HIGH"
-                            if data_drift.get("dataset_drift_detected")
-                            else "LOW",
+                            "severity": (
+                                "HIGH"
+                                if data_drift.get("dataset_drift_detected")
+                                else "LOW"
+                            ),
                             "feature_name": None,
                             "details": {
                                 "drifted_columns": data_drift.get("drifted_columns", [])
@@ -764,9 +766,11 @@ class EvidentlyDriftService:
                             "threshold_exceeded": target_drift.get(
                                 "drift_detected", False
                             ),
-                            "severity": "CRITICAL"
-                            if target_drift.get("drift_detected")
-                            else "LOW",
+                            "severity": (
+                                "CRITICAL"
+                                if target_drift.get("drift_detected")
+                                else "LOW"
+                            ),
                             "feature_name": "is_fraud",
                             "details": {
                                 "current_fraud_rate": target_drift.get(
@@ -797,9 +801,11 @@ class EvidentlyDriftService:
                             "threshold_exceeded": concept_drift.get(
                                 "drift_detected", False
                             ),
-                            "severity": "MEDIUM"
-                            if concept_drift.get("drift_detected")
-                            else "LOW",
+                            "severity": (
+                                "MEDIUM"
+                                if concept_drift.get("drift_detected")
+                                else "LOW"
+                            ),
                             "feature_name": None,
                             "details": {
                                 "stattest_name": concept_drift.get("stattest_name"),

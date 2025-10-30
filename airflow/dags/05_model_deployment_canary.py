@@ -14,6 +14,7 @@ Monitoring metrics:
 - Latency P95 < 100ms
 - Prediction accuracy maintained
 """
+
 from __future__ import annotations
 
 import time

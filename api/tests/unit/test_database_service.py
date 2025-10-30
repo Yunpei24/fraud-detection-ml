@@ -2,6 +2,7 @@
 Unit tests for Database Service
 Tests database connections, queries, transactions, and error handling
 """
+
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, Mock, patch
 

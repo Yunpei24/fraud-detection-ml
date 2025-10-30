@@ -80,7 +80,9 @@ class TrainConfig:
 
     # Business constraints
     min_recall: float = 0.95  # Minimum recall for fraud detection
-    max_fpr: float = 0.30  # Maximum false positive rate (eased from 0.05 to 0.30 for imbalanced data)
+    max_fpr: float = (
+        0.30  # Maximum false positive rate (eased from 0.05 to 0.30 for imbalanced data)
+    )
 
     # MLflow
     experiment_name: str = "fraud_detection_training"
@@ -458,9 +460,11 @@ def evaluate_models(
             if hasattr(models[name], "get_feature_importance"):
                 try:
                     fig_fi = plot_feature_importance(
-                        models[name].model
-                        if hasattr(models[name], "model")
-                        else models[name],
+                        (
+                            models[name].model
+                            if hasattr(models[name], "model")
+                            else models[name]
+                        ),
                         feature_names,
                         title=f"Feature Importance - {name}",
                     )
