@@ -217,4 +217,7 @@ tests/integration
 tests/e2e
 tests/airflow
 creditcard.csv
-docker-compose.local.yml
+verify-dockerhub-setup.sh
+DOCKERHUB_SETUP.md
+GITHUB_SECRETS_SETUP.md
+DOCKERHUB_SETUP1.md

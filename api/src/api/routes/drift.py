@@ -11,12 +11,8 @@ from fastapi.responses import JSONResponse
 from ...api.dependencies import get_drift_service
 from ...api.routes.auth import get_current_analyst_user
 from ...config import get_logger
-from ...models import (
-    ComprehensiveDriftResponse,
-    DriftReportResponse,
-    ErrorResponse,
-    SlidingWindowAnalysisResponse,
-)
+from ...models import (ComprehensiveDriftResponse, DriftReportResponse,
+                       ErrorResponse, SlidingWindowAnalysisResponse)
 from ...services.evidently_drift_service import EvidentlyDriftService
 
 logger = get_logger(__name__)
