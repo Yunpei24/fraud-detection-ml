@@ -1,11 +1,9 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from src.api.middleware import (
-    ErrorHandlingMiddleware,
-    RateLimitingMiddleware,
-    RequestLoggingMiddleware,
-)
+from src.api.middleware import (ErrorHandlingMiddleware,
+                                RateLimitingMiddleware,
+                                RequestLoggingMiddleware)
 
 
 class TestRequestLoggingMiddleware:

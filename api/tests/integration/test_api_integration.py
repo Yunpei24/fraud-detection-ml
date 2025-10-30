@@ -8,11 +8,8 @@ from src.services.alert_service import init_alert_service
 
 @pytest.fixture
 def client():
-    from src.api.dependencies import (
-        get_cache_service,
-        get_database_service,
-        get_prediction_service,
-    )
+    from src.api.dependencies import (get_cache_service, get_database_service,
+                                      get_prediction_service)
 
     # Mock services
     mock_prediction_service = AsyncMock()

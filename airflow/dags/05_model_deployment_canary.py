@@ -29,12 +29,8 @@ from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.utils.trigger_rule import TriggerRule
 
 # Import centralized configuration
-from config.constants import (
-    DOCKER_IMAGE_API,
-    DOCKER_IMAGE_TRAINING,
-    DOCKER_NETWORK,
-    ENV_VARS,
-)
+from config.constants import (DOCKER_IMAGE_API, DOCKER_IMAGE_TRAINING,
+                              DOCKER_NETWORK, ENV_VARS)
 
 # Network
 DOCKER_NETWORK = DOCKER_NETWORK
