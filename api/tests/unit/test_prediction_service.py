@@ -14,6 +14,15 @@ from src.services.prediction_service import PredictionService
 class TestPredictionService:
     """Test suite for PredictionService class."""
 
+    @pytest.fixture(autouse=True)
+    def patch_traffic_router(self, mock_traffic_router):
+        """Automatically patch TrafficRouter for all tests in this class."""
+        with patch(
+            "src.services.prediction_service.TrafficRouter",
+            return_value=mock_traffic_router,
+        ):
+            yield
+
     def test_initialization(self, test_model):
         """Test prediction service initialization."""
         service = PredictionService(test_model)
@@ -319,17 +328,31 @@ def test_model():
     preprocessor.transform.return_value = Mock()  # Mock DataFrame
     model.preprocessor = preprocessor
 
-    # Mock traffic router
+    return model
+
+
+@pytest.fixture
+def mock_traffic_router():
+    """Mock traffic router fixture."""
     traffic_router = Mock()
     traffic_router_config = Mock()
     traffic_router_config.canary_enabled = False
     traffic_router_config.canary_traffic_pct = 0
     traffic_router_config.champion_traffic_pct = 100
+    traffic_router_config.canary_model_uris = {}
+    traffic_router_config.champion_model_uris = {}
+    traffic_router_config.ensemble_weights = {}
     traffic_router.config = traffic_router_config
     traffic_router.should_use_canary.return_value = False
-    model.traffic_router = traffic_router
-
-    return model
+    traffic_router.get_model_info.return_value = {
+        "canary_enabled": False,
+        "canary_traffic_pct": 0,
+        "champion_traffic_pct": 100,
+        "canary_model_uris": {},
+        "champion_model_uris": {},
+        "ensemble_weights": {},
+    }
+    return traffic_router
 
 
 @pytest.fixture

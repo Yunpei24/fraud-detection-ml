@@ -131,10 +131,10 @@ services:
 
   mlflow:
     # PRODUCTION: Use custom MLflow image with psycopg2 for PostgreSQL backend
-    build:
-      context: ./mlflow
-      dockerfile: Dockerfile
-    image: ${AZURE_REGISTRY:-frauddetectionacr-xxxxxx.azurecr.io}/mlflow:latest
+    # build:
+    #   context: ./mlflow
+    #   dockerfile: Dockerfile
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/mlflow:develop
     container_name: fraud-mlflow
     command: >
       mlflow server
@@ -164,6 +164,10 @@ services:
   # ==============================================================================
 
   # API service is deployed on Azure Web App - commented out for VM1 deployment
+  # If deploying API via Docker Compose, use:
+  # api:
+  #   image: ${DOCKERHUB_USERNAME:-yoshua24}/api:develop
+  #   container_name: fraud-api
   # api:
   #   build:
   #     context: .  # Root context to access common/
@@ -210,10 +214,10 @@ services:
   #   restart: unless-stopped
 
   data:
-    build:
-      context: .  # ← Context root to access common/
-      dockerfile: ./data/Dockerfile
-    image: ${AZURE_REGISTRY:-frauddetectionacr-xxxxxx.azurecr.io}/data:latest
+    # build:
+    #   context: .  # ← Context root to access common/
+    #   dockerfile: ./data/Dockerfile
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/data:develop
     container_name: fraud-data
     environment:
       - POSTGRES_HOST=postgres
@@ -254,10 +258,10 @@ services:
     restart: unless-stopped
 
   drift:
-    build:
-      context: .  # ← Contexte racine pour accéder à common/
-      dockerfile: ./drift/Dockerfile
-    image: ${AZURE_REGISTRY:-frauddetectionacr-xxxxxx.azurecr.io}/drift:latest
+    # build:
+    #   context: .  # ← Contexte racine pour accéder à common/
+    #   dockerfile: ./drift/Dockerfile
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/drift:develop
     container_name: fraud-drift
     environment:
       - POSTGRES_HOST=postgres
@@ -299,10 +303,10 @@ services:
     restart: unless-stopped
 
   training:
-    build:
-      context: .  # ← Context root to access common/
-      dockerfile: ./training/Dockerfile
-    image: ${AZURE_REGISTRY:-frauddetectionacr-xxxxxx.azurecr.io}/training:latest
+    # build:
+    #   context: .  # ← Context root to access common/
+    #   dockerfile: ./training/Dockerfile
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/training:develop
     container_name: fraud-training
     environment:
       - POSTGRES_HOST=postgres
@@ -350,10 +354,10 @@ services:
 
   # Airflow base image (build once, reuse for webserver + scheduler)
   airflow-base:
-    build:
-      context: .  # Root context to access common/
-      dockerfile: ./airflow/Dockerfile
-    image: ${AZURE_REGISTRY:-frauddetectionacr-xxxxxx.azurecr.io}/airflow:latest
+    # build:
+    #   context: .  # Root context to access common/
+    #   dockerfile: ./airflow/Dockerfile
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop
     profiles:
       - build-only  # Never starts, just used for building
     networks:
@@ -361,7 +365,7 @@ services:
 
   # Airflow init service - initialize database and create admin user
   airflow-init:
-    image: ${AZURE_REGISTRY:-frauddetectionacr-xxxxxxx.azurecr.io}/airflow:latest
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop
     container_name: fraud-airflow-init
     command: >
       bash -c "
@@ -396,7 +400,7 @@ services:
     restart: "no"  # Run once only
 
   airflow-webserver:
-    image: ${AZURE_REGISTRY:-frauddetectionacr-xxxxxx.azurecr.io}/airflow:latest  # Reuses built image
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop  # Reuses built image
     container_name: fraud-airflow-webserver
     command: webserver
     environment:
@@ -409,12 +413,11 @@ services:
       - AIRFLOW__WEBSERVER__SECRET_KEY=${AIRFLOW_SECRET_KEY}
       - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=true
       - AIRFLOW__WEBSERVER__BASE_URL=http://localhost:8080
-      - AZURE_CONTAINER_REGISTRY=${AZURE_REGISTRY:-frauddetectionacr-xxxxxx.azurecr.io}
       - DOCKER_NETWORK=fraud-detection-network
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@frauddetection.com}
       - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
-      - ENVIRONMENT=production  # Use local Docker images
+      - ENVIRONMENT=production  # Use Docker Hub images
       - PYTHONPATH=/opt/airflow:/opt/airflow/config:/opt/airflow/plugins
     volumes:
       - ./config:/opt/airflow/config:ro  # Mount centralized config
@@ -441,7 +444,7 @@ services:
     restart: unless-stopped
 
   airflow-scheduler:
-    image: ${AZURE_REGISTRY:-frauddetectionacr-xxxxxxx.azurecr.io}/airflow:latest  # Reuses built image
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop  # Reuses built image
     container_name: fraud-airflow-scheduler
     command: scheduler
     environment:
@@ -452,12 +455,11 @@ services:
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
       - AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK=true
       - AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL=30
-      - AZURE_CONTAINER_REGISTRY=${AZURE_REGISTRY:-frauddetectionacr-xxxxxx.azurecr.io}
       - DOCKER_NETWORK=fraud-detection-network
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@frauddetection.com}
       - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
-      - ENVIRONMENT=production  # Use local Docker images
+      - ENVIRONMENT=production  # Use Docker Hub images
       - PYTHONPATH=/opt/airflow:/opt/airflow/config:/opt/airflow/plugins
     volumes:
       - ./config:/opt/airflow/config:ro  # Mount centralized config

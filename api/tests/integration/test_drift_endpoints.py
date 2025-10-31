@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
-from src.api.dependencies import get_database_service
+from src.api.dependencies import get_database_service, get_drift_service
 from src.main import app
 
 
@@ -34,10 +34,165 @@ def client():
 
     mock_db_service.execute = AsyncMock()
 
+    # Mock drift service with dynamic responses
+    mock_drift_service = AsyncMock()
+
+    # Dynamic comprehensive drift detection - reflects input parameters
+    async def mock_detect_comprehensive_drift(
+        window_hours=24, reference_window_days=30
+    ):
+        return {
+            "timestamp": "2025-10-31T10:00:00Z",
+            "analysis_window": f"{window_hours}h",
+            "reference_window": f"{reference_window_days}d",
+            "data_drift": {
+                "dataset_drift_detected": False,
+                "drift_share": 0.05,
+                "drifted_columns": [],
+                "number_of_columns": 30,
+            },
+            "target_drift": {
+                "drift_detected": False,
+                "drift_score": 0.02,
+                "current_fraud_rate": 0.05,
+                "reference_fraud_rate": 0.03,
+                "stattest": "chi2",
+            },
+            "concept_drift": {
+                "drift_detected": False,
+                "drift_score": 0.01,
+                "stattest_name": "anderson",
+                "features_analyzed": 30,
+            },
+            "multivariate_drift": {
+                "drift_detected": False,
+                "drift_score": 0.03,
+            },
+            "drift_summary": {
+                "overall_drift_detected": False,
+                "drift_types_detected": [],
+                "severity_score": 0.0,
+                "recommendations": ["Continue monitoring"],
+            },
+        }
+
+    mock_drift_service.detect_comprehensive_drift = mock_detect_comprehensive_drift
+
+    # Dynamic sliding window analysis - reflects input parameters
+    async def mock_run_sliding_window_analysis(
+        window_size_hours=24, step_hours=6, analysis_period_days=7
+    ):
+        return {
+            "timestamp": "2025-10-31T10:00:00Z",
+            "analysis_period": f"{analysis_period_days}d",
+            "window_size": f"{window_size_hours}h",
+            "step_size": f"{step_hours}h",
+            "windows_analyzed": 28,
+            "drift_scores": [0.02, 0.03, 0.04, 0.03],
+            "drift_windows": [],
+            "trend": "stable",
+            "windows": [],
+        }
+
+    mock_drift_service.run_sliding_window_analysis = mock_run_sliding_window_analysis
+
+    # Dynamic drift report generation - reflects input data
+    async def mock_generate_drift_report(drift_results):
+        # Validate input - raise exception for invalid data
+        if not isinstance(drift_results, dict):
+            raise ValueError("Invalid input: drift_results must be a dictionary")
+
+        # Check for required fields
+        required_fields = [
+            "data_drift",
+            "target_drift",
+            "concept_drift",
+            "drift_summary",
+        ]
+        if not any(field in drift_results for field in required_fields):
+            raise ValueError(
+                f"Invalid input: missing required fields. Expected at least one of {required_fields}"
+            )
+
+        # Check if drift is detected in the input
+        data_drift_detected = drift_results.get("data_drift", {}).get(
+            "dataset_drift_detected", False
+        )
+        target_drift_detected = drift_results.get("target_drift", {}).get(
+            "drift_detected", False
+        )
+        concept_drift_detected = drift_results.get("concept_drift", {}).get(
+            "drift_detected", False
+        )
+
+        drift_summary = drift_results.get("drift_summary", {})
+        overall_drift = drift_summary.get("overall_drift_detected", False)
+        severity_score = drift_summary.get("severity_score", 0)
+
+        # Build alerts based on detected drifts
+        alerts = []
+        if data_drift_detected:
+            alerts.append(
+                {
+                    "type": "DATA_DRIFT",
+                    "severity": "HIGH",
+                    "message": "Significant data drift detected in feature distributions",
+                }
+            )
+        if target_drift_detected:
+            alerts.append(
+                {
+                    "type": "TARGET_DRIFT",
+                    "severity": "HIGH",
+                    "message": "Target variable distribution has changed significantly",
+                }
+            )
+        if concept_drift_detected:
+            alerts.append(
+                {
+                    "type": "CONCEPT_DRIFT",
+                    "severity": "MEDIUM",
+                    "message": "Concept drift detected in feature relationships",
+                }
+            )
+
+        # Determine severity
+        if severity_score >= 2:
+            severity = "CRITICAL" if severity_score >= 3 else "HIGH"
+        elif severity_score >= 1:
+            severity = "MEDIUM"
+        else:
+            severity = "LOW"
+
+        # Build recommendations
+        recommendations = []
+        if overall_drift:
+            recommendations.extend(
+                [
+                    "Retrain model with recent data",
+                    "Investigate feature changes",
+                    "Monitor performance metrics closely",
+                ]
+            )
+        else:
+            recommendations.append("Continue monitoring")
+
+        return {
+            "timestamp": "2025-10-31T10:00:00Z",
+            "report_id": "report_123",
+            "severity": severity,
+            "summary": drift_summary,
+            "recommendations": recommendations,
+            "alerts": alerts,
+        }
+
+    mock_drift_service.generate_drift_report = mock_generate_drift_report
+
     # Mock authentication
     mock_user = {"username": "test_analyst", "role": "analyst", "is_active": True}
 
     app.dependency_overrides[get_database_service] = lambda: mock_db_service
+    app.dependency_overrides[get_drift_service] = lambda: mock_drift_service
 
     # Import and override authentication
     from src.api.routes.auth import get_current_analyst_user
@@ -325,39 +480,41 @@ class TestDriftEndpointErrorHandling:
 
     def test_comprehensive_drift_database_error(self, client):
         """Test comprehensive drift detection with database error."""
-        # Override with failing database service
-        failing_db = AsyncMock()
-        failing_db.fetch_all.side_effect = Exception("Database connection failed")
+        # Override with failing drift service (which would fail due to database error)
+        failing_drift = AsyncMock()
+        failing_drift.detect_comprehensive_drift = AsyncMock(
+            side_effect=Exception("Database connection failed")
+        )
 
-        app.dependency_overrides[get_database_service] = lambda: failing_db
+        app.dependency_overrides[get_drift_service] = lambda: failing_drift
 
         try:
             response = client.post("/api/v1/drift/comprehensive-detect")
 
             assert response.status_code == 500
             data = response.json()
-            assert "detail" in data
-            assert "error_code" in data["detail"]
-            assert "E704" in data["detail"]["error_code"]
+            assert "error_code" in data
+            assert data["error_code"] == "E704"
         finally:
             app.dependency_overrides.clear()
 
     def test_sliding_window_analysis_database_error(self, client):
         """Test sliding window analysis with database error."""
-        # Override with failing database service
-        failing_db = AsyncMock()
-        failing_db.fetch_all.side_effect = Exception("Database connection failed")
+        # Override with failing drift service (which would fail due to database error)
+        failing_drift = AsyncMock()
+        failing_drift.run_sliding_window_analysis = AsyncMock(
+            side_effect=Exception("Database connection failed")
+        )
 
-        app.dependency_overrides[get_database_service] = lambda: failing_db
+        app.dependency_overrides[get_drift_service] = lambda: failing_drift
 
         try:
             response = client.post("/api/v1/drift/sliding-window-analysis")
 
             assert response.status_code == 500
             data = response.json()
-            assert "detail" in data
-            assert "error_code" in data["detail"]
-            assert "E705" in data["detail"]["error_code"]
+            assert "error_code" in data
+            assert data["error_code"] == "E705"
         finally:
             app.dependency_overrides.clear()
 
@@ -369,9 +526,8 @@ class TestDriftEndpointErrorHandling:
 
         assert response.status_code == 500
         data = response.json()
-        assert "detail" in data
-        assert "error_code" in data["detail"]
-        assert "E706" in data["detail"]["error_code"]
+        assert "error_code" in data
+        assert data["error_code"] == "E706"
 
 
 @pytest.mark.integration

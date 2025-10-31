@@ -5,3 +5,5 @@ INTEGRATION_GUIDE.py
 test_with_real_data.py
 run_test.sh
 test_imports.sh
+venv_test
+pytest.ini.bak
