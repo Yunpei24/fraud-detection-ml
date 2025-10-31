@@ -118,7 +118,7 @@ class TestHourlyMonitoring:
         # Verify API client was called correctly
         mock_api_client.assert_called_once()
         mock_client_instance.detect_comprehensive_drift.assert_called_once_with(
-            window_hours=1, reference_window_days=30, auth_token=None
+            window_hours=1, reference_window_days=30
         )
 
     @patch("src.pipelines.hourly_monitoring.FraudDetectionAPIClient")
