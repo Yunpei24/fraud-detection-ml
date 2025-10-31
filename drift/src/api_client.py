@@ -26,8 +26,8 @@ class FraudDetectionAPIClient:
     """
 
     def __init__(
-        self, 
-        base_url: str = "http://localhost:8000", 
+        self,
+        base_url: str = "http://localhost:8000",
         timeout: int = 30,
         username: Optional[str] = None,
         password: Optional[str] = None,
@@ -46,19 +46,22 @@ class FraudDetectionAPIClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
-        
+
         # JWT Authentication
         self.username = username or os.getenv("API_USERNAME")
         self.password = password or os.getenv("API_PASSWORD")
         self.auth_token = auth_token or os.getenv("API_TOKEN")
-        
+
         # Token expiry tracking
         self._token_expiry = None
-        
-        logger.info("api_client_initialized", base_url=base_url, 
-                   has_credentials=bool(self.username and self.password),
-                   has_token=bool(self.auth_token))
-        
+
+        logger.info(
+            "api_client_initialized",
+            base_url=base_url,
+            has_credentials=bool(self.username and self.password),
+            has_token=bool(self.auth_token),
+        )
+
         # Authenticate if credentials provided
         if not self.auth_token and self.username and self.password:
             self._authenticate()
@@ -66,7 +69,7 @@ class FraudDetectionAPIClient:
     def _authenticate(self) -> bool:
         """
         Authenticate to API and obtain JWT token.
-        
+
         Returns:
             True if successful
         """
@@ -76,29 +79,32 @@ class FraudDetectionAPIClient:
 
         try:
             url = f"{self.base_url}/auth/login"
-            
+
             payload = {
                 "username": self.username,
                 "password": self.password,
             }
-            
+
             logger.info("authenticating_to_api", url=url)
-            
+
             response = self.session.post(url, data=payload, timeout=10)
-            
+
             if response.status_code == 200:
                 result = response.json()
                 self.auth_token = result.get("access_token")
                 expires_in = result.get("expires_in", 3600)
                 self._token_expiry = time.time() + expires_in - 300
-                
+
                 logger.info("authentication_successful", expires_in=expires_in)
                 return True
             else:
-                logger.error("authentication_failed", status=response.status_code, 
-                           response=response.text)
+                logger.error(
+                    "authentication_failed",
+                    status=response.status_code,
+                    response=response.text,
+                )
                 return False
-                
+
         except Exception as e:
             logger.error("authentication_error", error=str(e))
             return False
@@ -106,52 +112,52 @@ class FraudDetectionAPIClient:
     def _refresh_token_if_needed(self) -> bool:
         """
         Refresh JWT token if close to expiry.
-        
+
         Returns:
             True if token is valid
         """
         if not self.auth_token:
             return self._authenticate()
-        
+
         if self._token_expiry and time.time() >= self._token_expiry:
             logger.info("refreshing_token")
-            
+
             try:
                 url = f"{self.base_url}/auth/refresh"
                 headers = {"Authorization": f"Bearer {self.auth_token}"}
-                
+
                 response = self.session.post(url, headers=headers, timeout=10)
-                
+
                 if response.status_code == 200:
                     result = response.json()
                     self.auth_token = result.get("access_token")
                     expires_in = result.get("expires_in", 3600)
                     self._token_expiry = time.time() + expires_in - 300
-                    
+
                     logger.info("token_refreshed")
                     return True
                 else:
                     return self._authenticate()
-                    
+
             except Exception as e:
                 logger.error("token_refresh_error", error=str(e))
                 return self._authenticate()
-        
+
         return True
 
     def _get_auth_headers(self) -> Dict[str, str]:
         """
         Get headers with JWT authorization.
-        
+
         Returns:
             Headers dict with Authorization
         """
         self._refresh_token_if_needed()
-        
+
         headers = {"Content-Type": "application/json"}
         if self.auth_token:
             headers["Authorization"] = f"Bearer {self.auth_token}"
-        
+
         return headers
 
     def detect_comprehensive_drift(

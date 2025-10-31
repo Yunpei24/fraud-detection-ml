@@ -105,10 +105,10 @@ class RealtimePipeline:
         self.api_username = api_username or os.getenv("API_USERNAME")
         self.api_password = api_password or os.getenv("API_PASSWORD")
         self.api_token = api_token or os.getenv("API_TOKEN")
-        
+
         # Session for connection pooling
         self.session = requests.Session()
-        
+
         # Token expiry tracking
         self._token_expiry = None
         self._token_issued_at = 0
@@ -151,7 +151,7 @@ class RealtimePipeline:
     def _authenticate(self) -> bool:
         """
         Authenticate to API and obtain JWT token
-        
+
         Returns:
             True if successful
         """
@@ -161,44 +161,42 @@ class RealtimePipeline:
 
         try:
             url = f"{self.api_url}/auth/login"
-            
+
             # OAuth2PasswordRequestForm format (form-data, not JSON)
             payload = {
                 "username": self.api_username,
                 "password": self.api_password,
             }
-            
+
             logger.info(f"Authenticating: POST {url}")
-            
+
             response = self.session.post(
-                url,
-                data=payload,  # data, not json (OAuth2 form)
-                timeout=10
+                url, data=payload, timeout=10  # data, not json (OAuth2 form)
             )
-            
+
             if response.status_code == 200:
                 result = response.json()
                 self.api_token = result.get("access_token")
                 expires_in = result.get("expires_in", 3600)
-                
+
                 # Track expiry (refresh 5 min before)
                 self._token_expiry = time.time() + expires_in - 300
                 self._token_issued_at = time.time()
-                
+
                 logger.info("Authentication successful")
                 logger.info(f"Token expires in: {expires_in}s")
-                
+
                 user_info = result.get("user", {})
                 if user_info:
                     logger.info(f"User: {user_info.get('username')}")
-                
+
                 return True
             else:
                 logger.error(f"Authentication failed: {response.status_code}")
                 logger.error(f"Response: {response.text}")
                 self.metrics["auth_failures"] += 1
                 return False
-                
+
         except Exception as e:
             logger.error(f"Authentication error: {str(e)}", exc_info=True)
             self.metrics["auth_failures"] += 1
@@ -207,7 +205,7 @@ class RealtimePipeline:
     def _refresh_token_if_needed(self) -> bool:
         """
         Refresh JWT token if close to expiry
-        
+
         Returns:
             True if token is valid
         """
@@ -215,60 +213,56 @@ class RealtimePipeline:
         if not self.api_token:
             logger.warning("No token available, authenticating...")
             return self._authenticate()
-        
+
         # Check expiry
         if self._token_expiry and time.time() >= self._token_expiry:
             logger.info("Token expiring soon, refreshing...")
-            
+
             try:
                 url = f"{self.api_url}/auth/refresh"
-                
+
                 headers = {
                     "Authorization": f"Bearer {self.api_token}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 }
-                
-                response = self.session.post(
-                    url,
-                    headers=headers,
-                    timeout=10
-                )
-                
+
+                response = self.session.post(url, headers=headers, timeout=10)
+
                 if response.status_code == 200:
                     result = response.json()
                     self.api_token = result.get("access_token")
                     expires_in = result.get("expires_in", 3600)
                     self._token_expiry = time.time() + expires_in - 300
-                    
+
                     logger.info("Token refreshed successfully")
                     return True
                 else:
                     logger.warning(f"Token refresh failed: {response.status_code}")
                     # Fall back to re-authentication
                     return self._authenticate()
-                    
+
             except Exception as e:
                 logger.error(f"Token refresh error: {str(e)}")
                 return self._authenticate()
-        
+
         # Token still valid
         return True
 
     def _get_auth_headers(self) -> Dict[str, str]:
         """
         Get headers with JWT authorization
-        
+
         Returns:
             Headers dict with Authorization
         """
         # Ensure token is valid
         self._refresh_token_if_needed()
-        
+
         headers = {"Content-Type": "application/json"}
-        
+
         if self.api_token:
             headers["Authorization"] = f"Bearer {self.api_token}"
-        
+
         return headers
 
     def _create_kafka_consumer(
@@ -465,13 +459,15 @@ class RealtimePipeline:
         payload = {"transactions": df[features].to_dict(orient="records")}
 
         url = f"{self.api_url}/api/v1/batch-predict"
-        
+
         for attempt in range(max_retries):
             try:
                 # Get authenticated headers
                 headers = self._get_auth_headers()
-                
-                logger.info(f"Calling: POST {url} (attempt {attempt + 1}/{max_retries})")
+
+                logger.info(
+                    f"Calling: POST {url} (attempt {attempt + 1}/{max_retries})"
+                )
 
                 response = self.session.post(
                     url,
@@ -484,7 +480,9 @@ class RealtimePipeline:
                     # Success
                     results = response.json()
 
-                    df["predicted_fraud"] = [r["is_fraud"] for r in results["predictions"]]
+                    df["predicted_fraud"] = [
+                        r["is_fraud"] for r in results["predictions"]
+                    ]
                     df["fraud_probability"] = [
                         r["fraud_probability"] for r in results["predictions"]
                     ]
@@ -504,7 +502,7 @@ class RealtimePipeline:
                     # Unauthorized - refresh and retry
                     logger.warning("401 Unauthorized, refreshing token...")
                     self.metrics["auth_failures"] += 1
-                    
+
                     if self._authenticate():
                         if attempt < max_retries - 1:
                             continue
@@ -521,7 +519,7 @@ class RealtimePipeline:
                     # Server error - retry
                     logger.warning(f"Server error {response.status_code}, retrying...")
                     if attempt < max_retries - 1:
-                        time.sleep(2 ** attempt)  # Exponential backoff
+                        time.sleep(2**attempt)  # Exponential backoff
                         continue
                     raise Exception(f"Server error: {response.status_code}")
 
@@ -534,7 +532,7 @@ class RealtimePipeline:
             except requests.exceptions.Timeout:
                 logger.warning(f"Timeout (attempt {attempt + 1}/{max_retries})")
                 if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
                     continue
                 raise
 
@@ -542,7 +540,7 @@ class RealtimePipeline:
                 logger.error(f"Prediction failed: {str(e)}")
                 if attempt == max_retries - 1:
                     break
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
 
         # All attempts failed
         logger.error(f"All {max_retries} attempts failed")
@@ -593,13 +591,15 @@ class RealtimePipeline:
                         f"FRAUD DETECTED: txn {transaction.get('transaction_id')} "
                         f"(prob: {result['fraud_probability']:.2%})"
                     )
-            
+
             elif response.status_code == 401:
                 logger.warning("401 Unauthorized, refreshing token...")
                 self._authenticate()
                 # Retry once
                 headers = self._get_auth_headers()
-                response = self.session.post(url, json=features, headers=headers, timeout=5)
+                response = self.session.post(
+                    url, json=features, headers=headers, timeout=5
+                )
                 if response.status_code == 200:
                     result = response.json()
                     transaction["predicted_fraud"] = result["is_fraud"]
@@ -607,7 +607,7 @@ class RealtimePipeline:
                 else:
                     transaction["predicted_fraud"] = None
                     self.metrics["auth_failures"] += 1
-            
+
             else:
                 logger.error(f"API error: {response.status_code}")
                 transaction["predicted_fraud"] = None
@@ -706,7 +706,7 @@ class RealtimePipeline:
                 return {
                     "status": "error",
                     "message": "API authentication failed",
-                    "elapsed_seconds": 0
+                    "elapsed_seconds": 0,
                 }
 
             # 1. Load from Kafka
@@ -861,22 +861,20 @@ def main():
     parser.add_argument("--topic", default=KAFKA_TOPIC, help="Kafka topic")
     parser.add_argument("--api-url", default=API_URL, help="API URL")
     parser.add_argument("--webapp-url", default=WEBAPP_URL, help="Web app URL")
-    
+
     # JWT Authentication arguments
     parser.add_argument(
-        "--api-username", 
-        default=os.getenv("API_USERNAME"), 
-        help="API username for JWT authentication"
+        "--api-username",
+        default=os.getenv("API_USERNAME"),
+        help="API username for JWT authentication",
     )
     parser.add_argument(
-        "--api-password", 
-        default=os.getenv("API_PASSWORD"), 
-        help="API password for JWT authentication"
+        "--api-password",
+        default=os.getenv("API_PASSWORD"),
+        help="API password for JWT authentication",
     )
     parser.add_argument(
-        "--api-token", 
-        default=os.getenv("API_TOKEN"), 
-        help="Pre-existing JWT token"
+        "--api-token", default=os.getenv("API_TOKEN"), help="Pre-existing JWT token"
     )
 
     args = parser.parse_args()

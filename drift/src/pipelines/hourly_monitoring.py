@@ -77,7 +77,7 @@ def call_api_drift_detection(
 
     # Create API client with JWT authentication
     api_client = FraudDetectionAPIClient(
-        base_url=settings.api_base_url, 
+        base_url=settings.api_base_url,
         timeout=settings.api_timeout,
         username=settings.api_username,
         password=settings.api_password,
