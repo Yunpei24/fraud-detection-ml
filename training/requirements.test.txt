@@ -1,6 +1,6 @@
 # Lightweight requirements for CI/CD testing (CPU-only, no heavy dependencies)
 # This file is used by GitHub Actions to save disk space
-
+setuptools>=70.0.0 # Python 3.12 compatibility
 # Core ML libraries
 numpy==1.26.4
 pandas==2.2.2
