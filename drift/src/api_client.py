@@ -6,6 +6,8 @@ from the drift monitoring component.
 """
 
 import json
+import os
+import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -17,25 +19,140 @@ logger = structlog.get_logger(__name__)
 
 class FraudDetectionAPIClient:
     """
-    Client for calling Fraud Detection API services.
+    Client for calling Fraud Detection API services with JWT authentication.
 
     This client is used by the drift monitoring component to call the API's
     drift detection service instead of running custom drift detection logic.
     """
 
-    def __init__(self, base_url: str = "http://localhost:8000", timeout: int = 30):
+    def __init__(
+        self, 
+        base_url: str = "http://localhost:8000", 
+        timeout: int = 30,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        auth_token: Optional[str] = None,
+    ):
         """
-        Initialize API client.
+        Initialize API client with JWT authentication.
 
         Args:
             base_url: Base URL of the fraud detection API
             timeout: Request timeout in seconds
+            username: API username for authentication
+            password: API password for authentication
+            auth_token: Pre-existing JWT token
         """
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
+        
+        # JWT Authentication
+        self.username = username or os.getenv("API_USERNAME")
+        self.password = password or os.getenv("API_PASSWORD")
+        self.auth_token = auth_token or os.getenv("API_TOKEN")
+        
+        # Token expiry tracking
+        self._token_expiry = None
+        
+        logger.info("api_client_initialized", base_url=base_url, 
+                   has_credentials=bool(self.username and self.password),
+                   has_token=bool(self.auth_token))
+        
+        # Authenticate if credentials provided
+        if not self.auth_token and self.username and self.password:
+            self._authenticate()
 
-        logger.info("api_client_initialized", base_url=base_url)
+    def _authenticate(self) -> bool:
+        """
+        Authenticate to API and obtain JWT token.
+        
+        Returns:
+            True if successful
+        """
+        if not self.username or not self.password:
+            logger.warning("no_credentials_provided")
+            return False
+
+        try:
+            url = f"{self.base_url}/auth/login"
+            
+            payload = {
+                "username": self.username,
+                "password": self.password,
+            }
+            
+            logger.info("authenticating_to_api", url=url)
+            
+            response = self.session.post(url, data=payload, timeout=10)
+            
+            if response.status_code == 200:
+                result = response.json()
+                self.auth_token = result.get("access_token")
+                expires_in = result.get("expires_in", 3600)
+                self._token_expiry = time.time() + expires_in - 300
+                
+                logger.info("authentication_successful", expires_in=expires_in)
+                return True
+            else:
+                logger.error("authentication_failed", status=response.status_code, 
+                           response=response.text)
+                return False
+                
+        except Exception as e:
+            logger.error("authentication_error", error=str(e))
+            return False
+
+    def _refresh_token_if_needed(self) -> bool:
+        """
+        Refresh JWT token if close to expiry.
+        
+        Returns:
+            True if token is valid
+        """
+        if not self.auth_token:
+            return self._authenticate()
+        
+        if self._token_expiry and time.time() >= self._token_expiry:
+            logger.info("refreshing_token")
+            
+            try:
+                url = f"{self.base_url}/auth/refresh"
+                headers = {"Authorization": f"Bearer {self.auth_token}"}
+                
+                response = self.session.post(url, headers=headers, timeout=10)
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    self.auth_token = result.get("access_token")
+                    expires_in = result.get("expires_in", 3600)
+                    self._token_expiry = time.time() + expires_in - 300
+                    
+                    logger.info("token_refreshed")
+                    return True
+                else:
+                    return self._authenticate()
+                    
+            except Exception as e:
+                logger.error("token_refresh_error", error=str(e))
+                return self._authenticate()
+        
+        return True
+
+    def _get_auth_headers(self) -> Dict[str, str]:
+        """
+        Get headers with JWT authorization.
+        
+        Returns:
+            Headers dict with Authorization
+        """
+        self._refresh_token_if_needed()
+        
+        headers = {"Content-Type": "application/json"}
+        if self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
+        
+        return headers
 
     def detect_comprehensive_drift(
         self,
@@ -49,14 +166,14 @@ class FraudDetectionAPIClient:
         Args:
             window_hours: Hours of current data to analyze
             reference_window_days: Days of reference data for comparison
-            auth_token: Optional authentication token
+            auth_token: Optional authentication token (overrides instance token)
 
         Returns:
             Drift detection results from the API
         """
         url = f"{self.base_url}/api/v1/drift/comprehensive-detect"
 
-        headers = {"Content-Type": "application/json"}
+        headers = self._get_auth_headers()
         if auth_token:
             headers["Authorization"] = f"Bearer {auth_token}"
 
@@ -73,6 +190,14 @@ class FraudDetectionAPIClient:
             response = self.session.post(
                 url, json=payload, headers=headers, timeout=self.timeout
             )
+
+            if response.status_code == 401:
+                logger.warning("unauthorized_retrying_with_fresh_auth")
+                self._authenticate()
+                headers = self._get_auth_headers()
+                response = self.session.post(
+                    url, json=payload, headers=headers, timeout=self.timeout
+                )
 
             response.raise_for_status()
             result = response.json()
@@ -107,14 +232,14 @@ class FraudDetectionAPIClient:
             window_size_hours: Size of each analysis window
             step_hours: Hours to slide window each time
             analysis_period_days: Total period to analyze
-            auth_token: Optional authentication token
+            auth_token: Optional authentication token (overrides instance token)
 
         Returns:
             Sliding window analysis results from the API
         """
         url = f"{self.base_url}/api/v1/drift/sliding-window-analysis"
 
-        headers = {"Content-Type": "application/json"}
+        headers = self._get_auth_headers()
         if auth_token:
             headers["Authorization"] = f"Bearer {auth_token}"
 
@@ -130,6 +255,14 @@ class FraudDetectionAPIClient:
             response = self.session.post(
                 url, json=payload, headers=headers, timeout=self.timeout
             )
+
+            if response.status_code == 401:
+                logger.warning("unauthorized_retrying_with_fresh_auth")
+                self._authenticate()
+                headers = self._get_auth_headers()
+                response = self.session.post(
+                    url, json=payload, headers=headers, timeout=self.timeout
+                )
 
             response.raise_for_status()
             result = response.json()
@@ -158,14 +291,14 @@ class FraudDetectionAPIClient:
 
         Args:
             analysis_results: Results from drift analysis
-            auth_token: Optional authentication token
+            auth_token: Optional authentication token (overrides instance token)
 
         Returns:
             Generated drift report from the API
         """
         url = f"{self.base_url}/api/v1/drift/generate-report"
 
-        headers = {"Content-Type": "application/json"}
+        headers = self._get_auth_headers()
         if auth_token:
             headers["Authorization"] = f"Bearer {auth_token}"
 
@@ -177,6 +310,14 @@ class FraudDetectionAPIClient:
             response = self.session.post(
                 url, json=payload, headers=headers, timeout=self.timeout
             )
+
+            if response.status_code == 401:
+                logger.warning("unauthorized_retrying_with_fresh_auth")
+                self._authenticate()
+                headers = self._get_auth_headers()
+                response = self.session.post(
+                    url, json=payload, headers=headers, timeout=self.timeout
+                )
 
             response.raise_for_status()
             result = response.json()

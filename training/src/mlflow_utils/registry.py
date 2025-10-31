@@ -15,9 +15,11 @@ except Exception:
     MLFLOW_AVAILABLE = False
 
 
-def register_model(model: Any, name: str, stage: str = "staging") -> Optional[str]:
+def register_model(name: str, stage: str = "staging") -> Optional[str]:
     """
-    Registers the current run's logged model under `name`.
+    Registers the model currently logged at the 'model' artifact path under the given name.
+    This function assumes log_model() has already been called to log the model.
+
     Returns model version string if available.
     Safe no-op without MLflow.
     """
@@ -25,12 +27,9 @@ def register_model(model: Any, name: str, stage: str = "staging") -> Optional[st
         return None
 
     try:
-        # If the model wasn't logged yet, attempt to log quickly.
-        # Caller often already called tracking.log_model(...)
-        # Here we only ensure a registration exists.
         run_id = mlflow.active_run().info.run_id  # type: ignore
         client = MlflowClient()
-        # Register whatever is logged at 'model' artifact path
+        # Register the model that was logged at 'model' artifact path
         mv = mlflow.register_model(f"runs:/{run_id}/model", name)
         # Optionally transition stage
         if stage:

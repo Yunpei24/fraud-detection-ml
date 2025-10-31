@@ -616,8 +616,11 @@ def register_best_model(
         try:
             # Register each model individually
             mlflow_name = f"fraud_detection_{model_name}"
+
+            # First log the model to MLflow, then register it
+            model_to_log = model.model if hasattr(model, "model") else model
+            log_model(model_to_log, artifact_path="model")
             register_model(
-                model=model.model if hasattr(model, "model") else model,
                 name=mlflow_name,
                 stage="Staging",
             )

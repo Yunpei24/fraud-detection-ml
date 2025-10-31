@@ -75,16 +75,19 @@ def call_api_drift_detection(
 
     settings = settings or Settings()
 
-    # Create API client
+    # Create API client with JWT authentication
     api_client = FraudDetectionAPIClient(
-        base_url=settings.api_base_url, timeout=settings.api_timeout
+        base_url=settings.api_base_url, 
+        timeout=settings.api_timeout,
+        username=settings.api_username,
+        password=settings.api_password,
+        auth_token=settings.api_auth_token,
     )
 
     # Call the API's comprehensive drift detection
     result = api_client.detect_comprehensive_drift(
         window_hours=window_hours,
         reference_window_days=reference_window_days,
-        auth_token=getattr(settings, "api_auth_token", None),
     )
 
     if "error" in result:
