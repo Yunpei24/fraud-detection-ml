@@ -3,8 +3,28 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [ develop, main ]
+    paths:
+      - 'api/**'
+      - 'data/**'
+      - 'drift/**'
+      - 'training/**'
+      - 'airflow/**'
+      - 'mlflow/**'
+      - 'common/**'
+      - 'requirements.txt'
+      - '.github/workflows/**'
   pull_request:
     branches: [ develop, main ]
+    paths:
+      - 'api/**'
+      - 'data/**'
+      - 'drift/**'
+      - 'training/**'
+      - 'airflow/**'
+      - 'mlflow/**'
+      - 'common/**'
+      - 'requirements.txt'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 env:
@@ -123,6 +143,20 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Free Disk Space (Ubuntu)
+      if: matrix.service == 'training'
+      uses: jlumbroso/free-disk-space@main
+      with:
+        # This might remove tools that are actually needed
+        tool-cache: false
+        # All of these default to true, but feel free to set to "false" if necessary
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: false
+        swap-storage: true
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
@@ -141,11 +175,35 @@ jobs:
         cd common
         pip install -e .
 
+    - name: Free up disk space (for training module)
+      if: matrix.service == 'training'
+      run: |
+        # Remove unnecessary packages to free up space
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /usr/local/share/boost
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+        sudo apt-get clean
+        df -h
+
     - name: Install service dependencies
       run: |
         cd ${{ matrix.service }}
-        pip install -r requirements.txt
-        pip install -r ../requirements.txt
+        # For training module, use lightweight test requirements
+        if [ "${{ matrix.service }}" = "training" ]; then
+          if [ -f requirements.test.txt ]; then
+            echo "Installing training dependencies with CPU-only packages..."
+            pip install -r requirements.test.txt
+          else
+            echo "requirements.test.txt not found, falling back to regular requirements.txt"
+            pip install torch==2.4.1+cpu -f https://download.pytorch.org/whl/torch_stable.html || pip install torch==2.4.1
+            pip install -r requirements.txt --no-deps
+          fi
+          pip install -r ../requirements.txt
+        else
+          pip install -r requirements.txt
+          pip install -r ../requirements.txt
+        fi
 
     - name: Run unit tests with coverage
       env:
@@ -252,37 +310,79 @@ jobs:
           - service: api
             context: .
             dockerfile: ./api/Dockerfile
+            path_filter: 'api/**'
           - service: data
             context: .
             dockerfile: ./data/Dockerfile
+            path_filter: 'data/**'
           - service: drift
             context: .
             dockerfile: ./drift/Dockerfile
+            path_filter: 'drift/**'
           - service: training
             context: .
             dockerfile: ./training/Dockerfile
+            path_filter: 'training/**'
           - service: airflow
             context: .
             dockerfile: ./airflow/Dockerfile
+            path_filter: 'airflow/**'
           - service: mlflow
             context: .
             dockerfile: ./mlflow/Dockerfile
+            path_filter: 'mlflow/**'
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Necessary to compare changes
+
+    - name: Check if service was modified
+      id: check_changes
+      run: |
+        # Get the list of modified files
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }})
+        else
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }})
+        fi
+        
+        echo "Changed files:"
+        echo "$CHANGED_FILES"
+        
+        # Check if the current service was modified
+        SERVICE_MODIFIED=false
+        if echo "$CHANGED_FILES" | grep -q "^${{ matrix.service }}/"; then
+          SERVICE_MODIFIED=true
+        fi
+
+        # Check if common/ or requirements.txt were modified (affects all services)
+        if echo "$CHANGED_FILES" | grep -qE "^common/|^requirements\.txt"; then
+          SERVICE_MODIFIED=true
+        fi
+
+        # Check if the service's Dockerfile was modified
+        if echo "$CHANGED_FILES" | grep -q "^${{ matrix.service }}/Dockerfile"; then
+          SERVICE_MODIFIED=true
+        fi
+        
+        echo "service_modified=$SERVICE_MODIFIED" >> $GITHUB_OUTPUT
+        echo "Service ${{ matrix.service }} modified: $SERVICE_MODIFIED"
 
     - name: Set up Docker Buildx
+      if: steps.check_changes.outputs.service_modified == 'true'
       uses: docker/setup-buildx-action@v3
 
     - name: Log in to Docker Hub
-      if: github.event_name != 'pull_request'
+      if: steps.check_changes.outputs.service_modified == 'true' && github.event_name != 'pull_request'
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     - name: Extract metadata
+      if: steps.check_changes.outputs.service_modified == 'true'
       id: meta
       uses: docker/metadata-action@v5
       with:
@@ -294,6 +394,7 @@ jobs:
           type=raw,value=latest,enable={{is_default_branch}}
 
     - name: Build and push Docker image
+      if: steps.check_changes.outputs.service_modified == 'true'
       id: build
       uses: docker/build-push-action@v5
       with:
@@ -306,12 +407,17 @@ jobs:
         cache-to: type=gha,mode=max
 
     - name: Generate artifact attestation
-      if: github.event_name != 'pull_request'
+      if: steps.check_changes.outputs.service_modified == 'true' && github.event_name != 'pull_request'
       uses: actions/attest-build-provenance@v1
       with:
         subject-name: ${{ env.REGISTRY }}/${{ matrix.service}}
         subject-digest: ${{ steps.build.outputs.digest }}
         push-to-registry: true
+    
+    - name: Skip message
+      if: steps.check_changes.outputs.service_modified == 'false'
+      run: |
+        echo " Skipping build for ${{ matrix.service }} - no changes detected"
 
   # ==============================================================================
   # DEPLOYMENT TO STAGING (Azure Container Instances)

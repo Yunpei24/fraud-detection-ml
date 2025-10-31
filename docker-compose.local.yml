@@ -123,7 +123,7 @@ services:
     # build:
     #   context: ./mlflow
     #   dockerfile: Dockerfile
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/mlflow:develop  # ← Use Docker Hub image
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/mlflow:develop  # Docker Hub image
     # image: hcr.io/mlflow/mlflow:v2.10.2
     container_name: fraud-mlflow
     command: >
@@ -155,7 +155,7 @@ services:
 
   api:
     # build:
-    #   context: .  # ← Contexte racine pour accéder à common/
+    #   context: .  
     #   dockerfile: ./api/Dockerfile
     # image: fraud-detection/api:local 
     image: ${DOCKERHUB_USERNAME:-yoshua24}/api:develop  # ← Use Docker Hub image
@@ -200,7 +200,7 @@ services:
 
   data:
     # build:
-    #   context: .  # ← Context root to access common/
+    #   context: .  # Context root to access common/
     #   dockerfile: ./data/Dockerfile
     image: ${DOCKERHUB_USERNAME:-yoshua24}/data:develop  # ← Use Docker Hub image
     container_name: fraud-data
@@ -240,7 +240,7 @@ services:
 
   drift:
     # build:
-    #   context: .  # ← Contexte racine pour accéder à common/
+    #   context: .  # 
     #   dockerfile: ./drift/Dockerfile
     image: ${DOCKERHUB_USERNAME:-yoshua24}/drift:develop  # ← Use Docker Hub image
     container_name: fraud-drift
@@ -279,9 +279,9 @@ services:
 
   training:
     # build:
-    #   context: .  # ← Contexte racine pour accéder à common/
+    #   context: .  
     #   dockerfile: ./training/Dockerfile
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/training:develop  # ← Use Docker Hub image
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/training:develop  # Use Docker Hub image
     container_name: fraud-training
     environment:
       - POSTGRES_HOST=postgres
@@ -323,16 +323,16 @@ services:
   # Airflow base image (build once, use twice)
   airflow-base:
     # build:
-    #   context: .  # ← Contexte racine pour accéder à common/
+    #   context: . 
     #   dockerfile: ./airflow/Dockerfile
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop  # ← Use Docker Hub image
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop
     # This service is not run, just used to build the image
     profiles:
       - build-only
 
   # Airflow DB initialization (runs once then exits)
   airflow-init:
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop  # ← Use Docker Hub image
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop 
     container_name: fraud-airflow-init
     command: >
       bash -c "
@@ -360,7 +360,7 @@ services:
     restart: "no"  # Run only once
 
   airflow-webserver:
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop  # ← Use Docker Hub image
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop 
     container_name: fraud-airflow-webserver
     command: webserver
     environment:
@@ -404,7 +404,7 @@ services:
     restart: unless-stopped
 
   airflow-scheduler:
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop  # ← Use Docker Hub image
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop 
     container_name: fraud-airflow-scheduler
     command: scheduler
     environment:
@@ -444,7 +444,7 @@ services:
     restart: unless-stopped
 
   airflow-worker:
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop  # ← Use Docker Hub image
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop
     container_name: fraud-airflow-worker
     command: celery worker
     environment:
