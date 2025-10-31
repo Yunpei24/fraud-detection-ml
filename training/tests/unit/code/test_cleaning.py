@@ -1,8 +1,7 @@
 import os
 import sys
 
-import numpy as np
-import pandas as pd
+import pytest
 from src.data.schema_validation import validate_schema  # Corrected import
 from src.data.utils import check_data_quality, fill_na  # Corrected import
 

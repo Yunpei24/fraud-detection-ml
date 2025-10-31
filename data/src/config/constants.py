@@ -43,6 +43,11 @@ KAFKA_MAX_POLL_RECORDS = int(os.getenv("KAFKA_MAX_POLL_RECORDS", "500"))
 API_URL = os.getenv("API_URL", "http://api:8000")
 API_TIMEOUT_SECONDS = int(os.getenv("API_TIMEOUT_SECONDS", "60"))
 
+# JWT Authentication (recommended)
+API_USERNAME = os.getenv("API_USERNAME")
+API_PASSWORD = os.getenv("API_PASSWORD")
+API_TOKEN = os.getenv("API_TOKEN")
+
 # Web Application endpoint (for sending fraud alerts)
 WEBAPP_URL = os.getenv("WEBAPP_URL", None)
 WEBAPP_TIMEOUT_SECONDS = int(os.getenv("WEBAPP_TIMEOUT_SECONDS", "30"))

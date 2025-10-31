@@ -20,7 +20,12 @@ class Settings:
     # API Configuration (for calling drift service)
     api_base_url: str = os.getenv("API_BASE_URL", "http://localhost:8000")
     api_timeout: int = int(os.getenv("API_TIMEOUT", "30"))
-    api_auth_token: Optional[str] = os.getenv("API_AUTH_TOKEN", None)
+    
+    # JWT Authentication
+    api_username: Optional[str] = os.getenv("API_USERNAME", None)
+    api_password: Optional[str] = os.getenv("API_PASSWORD", None)
+    api_auth_token: Optional[str] = os.getenv("API_TOKEN", None)
+    
     reference_window_days: int = int(os.getenv("REFERENCE_WINDOW_DAYS", "30"))
 
     # Core Drift Thresholds (essential)

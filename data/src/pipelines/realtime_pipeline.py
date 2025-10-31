@@ -18,9 +18,10 @@ Usage:
 Translated with DeepL.com (free version)
 """
 
+import argparse
 import json
-import logging
 import os
+import sys
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -77,59 +78,41 @@ class RealtimePipeline:
         webapp_url: Optional[str] = WEBAPP_URL,
         db_service: Optional[DatabaseService] = None,
         connect_db: bool = True,
+        api_username: Optional[str] = None,
+        api_password: Optional[str] = None,
+        api_token: Optional[str] = None,
     ):
         """
-        Initialize realtime pipeline
+        Initialize the realtime pipeline with JWT authentication.
 
         Args:
-            kafka_bootstrap_servers: Kafka broker address (default from constants.py → env vars)
-            kafka_topic: Kafka topic to consume (default from constants.py → env vars)
-            api_url: Fraud detection API URL (default from constants.py → env vars)
-            webapp_url: Web application URL for sending results (default from constants.py → env vars)
-            db_service: Database service instance (optional, creates new if None)
-                       If not provided, DatabaseService() will be created and will load
-                       connection config from settings.py (reads DB_SERVER, DB_USER, etc.)
-            connect_db: Whether to automatically connect to database on initialization (default: True)
-                       Set to False for testing to avoid database connection attempts
-
-        Configuration sources (priority order):
-        1. Explicit parameters passed to __init__
-        2. constants.py (reads from environment variables)
-        3. Hardcoded defaults in constants.py
-
-        Example:
-            # Use all defaults (from env vars or constants.py)
-            pipeline = RealtimePipeline()
-
-            # Override specific configs
-            pipeline = RealtimePipeline(
-                kafka_bootstrap_servers='localhost:29092',
-                api_url='http://localhost:8000'
-            )
-
-            # For testing (no database connection)
-            pipeline = RealtimePipeline(connect_db=False)
+            kafka_bootstrap_servers: Kafka bootstrap servers
+            kafka_topic: Kafka topic to consume from
+            api_url: Fraud detection API URL
+            webapp_url: Web application URL for alerts
+            db_service: Database service instance
+            connect_db: Whether to connect to database
+            api_username: Username for API authentication (from env: API_USERNAME)
+            api_password: Password for API authentication (from env: API_PASSWORD)
+            api_token: Pre-existing JWT token (from env: API_TOKEN)
         """
         self.kafka_bootstrap_servers = kafka_bootstrap_servers
         self.kafka_topic = kafka_topic
-        self.api_url = api_url
+        self.api_url = api_url.rstrip("/")
         self.webapp_url = webapp_url
 
-        # Database: create new service or use provided one
-        # DatabaseService will load connection from settings.py on connect()
-        # Settings reads: DB_SERVER, DB_USER, DB_PASSWORD, DB_PORT, DB_NAME
-        self.db_service = db_service or DatabaseService()
-        if not self.db_service._initialized and connect_db:
-            logger.info("Connecting to database (config from settings.py)...")
-            self.db_service.connect()
+        # JWT Authentication
+        self.api_username = api_username or os.getenv("API_USERNAME")
+        self.api_password = api_password or os.getenv("API_PASSWORD")
+        self.api_token = api_token or os.getenv("API_TOKEN")
+        
+        # Session for connection pooling
+        self.session = requests.Session()
+        
+        # Token expiry tracking
+        self._token_expiry = None
+        self._token_issued_at = 0
 
-        # Data cleaner
-        self.cleaner = DataCleaner()
-
-        # Kafka consumer
-        self.consumer: Optional[KafkaConsumer] = None
-
-        # Metrics
         self.metrics = {
             "total_consumed": 0,
             "total_cleaned": 0,
@@ -137,12 +120,156 @@ class RealtimePipeline:
             "total_fraud_detected": 0,
             "total_saved": 0,
             "errors": 0,
+            "auth_failures": 0,
         }
 
-        logger.info(f"RealtimePipeline initialized")
-        logger.info(f"  Kafka: {kafka_bootstrap_servers}")
-        logger.info(f"  Topic: {kafka_topic}")
-        logger.info(f"  API: {api_url}")
+        # Initialize database service
+        if connect_db:
+            self.db_service = db_service or DatabaseService()
+        else:
+            self.db_service = None
+
+        logger.info(
+            f"RealtimePipeline initialized: kafka={kafka_bootstrap_servers}, "
+            f"topic={kafka_topic}, api={api_url}"
+        )
+        logger.info(
+            f"Auth: {'JWT Token' if self.api_token else 'Username/Password' if self.api_username else 'None'}"
+        )
+
+        # Data cleaner
+        self.cleaner = DataCleaner()
+
+        # Kafka consumer
+        self.consumer: Optional[KafkaConsumer] = None
+
+        # Authenticate at startup if credentials provided
+        if not self.api_token and self.api_username and self.api_password:
+            logger.info("Authenticating to API at startup...")
+            self._authenticate()
+
+    def _authenticate(self) -> bool:
+        """
+        Authenticate to API and obtain JWT token
+        
+        Returns:
+            True if successful
+        """
+        if not self.api_username or not self.api_password:
+            logger.warning("No credentials provided for authentication")
+            return False
+
+        try:
+            url = f"{self.api_url}/auth/login"
+            
+            # OAuth2PasswordRequestForm format (form-data, not JSON)
+            payload = {
+                "username": self.api_username,
+                "password": self.api_password,
+            }
+            
+            logger.info(f"Authenticating: POST {url}")
+            
+            response = self.session.post(
+                url,
+                data=payload,  # data, not json (OAuth2 form)
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                self.api_token = result.get("access_token")
+                expires_in = result.get("expires_in", 3600)
+                
+                # Track expiry (refresh 5 min before)
+                self._token_expiry = time.time() + expires_in - 300
+                self._token_issued_at = time.time()
+                
+                logger.info("Authentication successful")
+                logger.info(f"Token expires in: {expires_in}s")
+                
+                user_info = result.get("user", {})
+                if user_info:
+                    logger.info(f"User: {user_info.get('username')}")
+                
+                return True
+            else:
+                logger.error(f"Authentication failed: {response.status_code}")
+                logger.error(f"Response: {response.text}")
+                self.metrics["auth_failures"] += 1
+                return False
+                
+        except Exception as e:
+            logger.error(f"Authentication error: {str(e)}", exc_info=True)
+            self.metrics["auth_failures"] += 1
+            return False
+
+    def _refresh_token_if_needed(self) -> bool:
+        """
+        Refresh JWT token if close to expiry
+        
+        Returns:
+            True if token is valid
+        """
+        # No token? Try to authenticate
+        if not self.api_token:
+            logger.warning("No token available, authenticating...")
+            return self._authenticate()
+        
+        # Check expiry
+        if self._token_expiry and time.time() >= self._token_expiry:
+            logger.info("Token expiring soon, refreshing...")
+            
+            try:
+                url = f"{self.api_url}/auth/refresh"
+                
+                headers = {
+                    "Authorization": f"Bearer {self.api_token}",
+                    "Content-Type": "application/json"
+                }
+                
+                response = self.session.post(
+                    url,
+                    headers=headers,
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    self.api_token = result.get("access_token")
+                    expires_in = result.get("expires_in", 3600)
+                    self._token_expiry = time.time() + expires_in - 300
+                    
+                    logger.info("Token refreshed successfully")
+                    return True
+                else:
+                    logger.warning(f"Token refresh failed: {response.status_code}")
+                    # Fall back to re-authentication
+                    return self._authenticate()
+                    
+            except Exception as e:
+                logger.error(f"Token refresh error: {str(e)}")
+                return self._authenticate()
+        
+        # Token still valid
+        return True
+
+    def _get_auth_headers(self) -> Dict[str, str]:
+        """
+        Get headers with JWT authorization
+        
+        Returns:
+            Headers dict with Authorization
+        """
+        # Ensure token is valid
+        self._refresh_token_if_needed()
+        
+        headers = {"Content-Type": "application/json"}
+        
+        if self.api_token:
+            headers["Authorization"] = f"Bearer {self.api_token}"
+        
+        return headers
 
     def _create_kafka_consumer(
         self, group_id: str = KAFKA_CONSUMER_GROUP
@@ -320,12 +447,13 @@ class RealtimePipeline:
 
         return df
 
-    def predict_batch(self, df: pd.DataFrame) -> pd.DataFrame:
+    def predict_batch(self, df: pd.DataFrame, max_retries: int = 3) -> pd.DataFrame:
         """
-        Make batch predictions via API
+        Make batch predictions via API with JWT authentication
 
         Args:
             df: DataFrame with cleaned transactions
+            max_retries: Number of retry attempts
 
         Returns:
             DataFrame with predictions added
@@ -336,53 +464,97 @@ class RealtimePipeline:
         features = ["Time", "amount"] + [f"V{i}" for i in range(1, 29)]
         payload = {"transactions": df[features].to_dict(orient="records")}
 
-        try:
-            # Call API batch endpoint
-            url = f"{self.api_url}/api/v1/batch-predict"
-            logger.info(f"   Calling: POST {url}")
+        url = f"{self.api_url}/api/v1/batch-predict"
+        
+        for attempt in range(max_retries):
+            try:
+                # Get authenticated headers
+                headers = self._get_auth_headers()
+                
+                logger.info(f"Calling: POST {url} (attempt {attempt + 1}/{max_retries})")
 
-            response = requests.post(
-                url,
-                json=payload,
-                timeout=API_TIMEOUT_SECONDS,
-                headers={"Content-Type": "application/json"},
-            )
-
-            if response.status_code == 200:
-                results = response.json()
-
-                # Add predictions to DataFrame
-                df["predicted_fraud"] = [r["is_fraud"] for r in results["predictions"]]
-                df["fraud_probability"] = [
-                    r["fraud_probability"] for r in results["predictions"]
-                ]
-                df["prediction_timestamp"] = datetime.utcnow().isoformat()
-
-                fraud_count = df["predicted_fraud"].sum()
-                logger.info(f"Batch prediction completed")
-                logger.info(
-                    f"   Frauds detected: {fraud_count}/{len(df)} ({fraud_count/len(df)*100:.1f}%)"
+                response = self.session.post(
+                    url,
+                    json=payload,
+                    headers=headers,
+                    timeout=API_TIMEOUT_SECONDS,
                 )
 
-                self.metrics["total_predicted"] = len(df)
-                self.metrics["total_fraud_detected"] += fraud_count
-            else:
-                logger.error(f"API error: {response.status_code} - {response.text}")
-                df["predicted_fraud"] = None
-                df["fraud_probability"] = None
-                self.metrics["errors"] += 1
+                if response.status_code == 200:
+                    # Success
+                    results = response.json()
 
-        except Exception as e:
-            logger.error(f"Prediction failed: {str(e)}", exc_info=True)
-            df["predicted_fraud"] = None
-            df["fraud_probability"] = None
-            self.metrics["errors"] += 1
+                    df["predicted_fraud"] = [r["is_fraud"] for r in results["predictions"]]
+                    df["fraud_probability"] = [
+                        r["fraud_probability"] for r in results["predictions"]
+                    ]
+                    df["prediction_timestamp"] = datetime.utcnow().isoformat()
+
+                    fraud_count = df["predicted_fraud"].sum()
+                    logger.info("Batch prediction completed")
+                    logger.info(
+                        f"Frauds: {fraud_count}/{len(df)} ({fraud_count/len(df)*100:.1f}%)"
+                    )
+
+                    self.metrics["total_predicted"] += len(df)
+                    self.metrics["total_fraud_detected"] += int(fraud_count)
+                    return df
+
+                elif response.status_code == 401:
+                    # Unauthorized - refresh and retry
+                    logger.warning("401 Unauthorized, refreshing token...")
+                    self.metrics["auth_failures"] += 1
+                    
+                    if self._authenticate():
+                        if attempt < max_retries - 1:
+                            continue
+                    raise Exception("Authentication failed")
+
+                elif response.status_code == 403:
+                    # Forbidden - insufficient permissions
+                    logger.error("403 Forbidden - insufficient permissions")
+                    logger.error(f"User: {self.api_username}")
+                    self.metrics["auth_failures"] += 1
+                    break
+
+                elif response.status_code >= 500:
+                    # Server error - retry
+                    logger.warning(f"Server error {response.status_code}, retrying...")
+                    if attempt < max_retries - 1:
+                        time.sleep(2 ** attempt)  # Exponential backoff
+                        continue
+                    raise Exception(f"Server error: {response.status_code}")
+
+                else:
+                    # Other client error
+                    logger.error(f"API error: {response.status_code}")
+                    logger.error(f"Response: {response.text}")
+                    break
+
+            except requests.exceptions.Timeout:
+                logger.warning(f"Timeout (attempt {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise
+
+            except Exception as e:
+                logger.error(f"Prediction failed: {str(e)}")
+                if attempt == max_retries - 1:
+                    break
+                time.sleep(2 ** attempt)
+
+        # All attempts failed
+        logger.error(f"All {max_retries} attempts failed")
+        df["predicted_fraud"] = None
+        df["fraud_probability"] = None
+        self.metrics["errors"] += 1
 
         return df
 
     def predict_stream(self, transaction: Dict) -> Dict:
         """
-        Make single transaction prediction via API
+        Make single transaction prediction via API with JWT authentication
 
         Args:
             transaction: Single transaction dict
@@ -395,15 +567,17 @@ class RealtimePipeline:
         for i in range(1, 29):
             features[f"V{i}"] = transaction[f"V{i}"]
 
-        try:
-            # Call API single prediction endpoint
-            url = f"{self.api_url}/api/v1/predict"
+        url = f"{self.api_url}/api/v1/predict"
 
-            response = requests.post(
+        try:
+            # Get authenticated headers
+            headers = self._get_auth_headers()
+
+            response = self.session.post(
                 url,
                 json=features,
+                headers=headers,
                 timeout=5,
-                headers={"Content-Type": "application/json"},
             )
 
             if response.status_code == 200:
@@ -416,19 +590,32 @@ class RealtimePipeline:
                 if result["is_fraud"]:
                     self.metrics["total_fraud_detected"] += 1
                     logger.info(
-                        f"FRAUD DETECTED: txn {transaction['transaction_id']} "
+                        f"FRAUD DETECTED: txn {transaction.get('transaction_id')} "
                         f"(prob: {result['fraud_probability']:.2%})"
                     )
+            
+            elif response.status_code == 401:
+                logger.warning("401 Unauthorized, refreshing token...")
+                self._authenticate()
+                # Retry once
+                headers = self._get_auth_headers()
+                response = self.session.post(url, json=features, headers=headers, timeout=5)
+                if response.status_code == 200:
+                    result = response.json()
+                    transaction["predicted_fraud"] = result["is_fraud"]
+                    transaction["fraud_probability"] = result["fraud_probability"]
+                else:
+                    transaction["predicted_fraud"] = None
+                    self.metrics["auth_failures"] += 1
+            
             else:
                 logger.error(f"API error: {response.status_code}")
                 transaction["predicted_fraud"] = None
-                transaction["fraud_probability"] = None
                 self.metrics["errors"] += 1
 
         except Exception as e:
             logger.error(f"Prediction failed: {str(e)}")
             transaction["predicted_fraud"] = None
-            transaction["fraud_probability"] = None
             self.metrics["errors"] += 1
 
         return transaction
@@ -514,6 +701,14 @@ class RealtimePipeline:
         start_time = time.time()
 
         try:
+            # Check authentication before starting
+            if not self._refresh_token_if_needed():
+                return {
+                    "status": "error",
+                    "message": "API authentication failed",
+                    "elapsed_seconds": 0
+                }
+
             # 1. Load from Kafka
             df = self.load_from_kafka_batch(count=count)
 
@@ -642,11 +837,11 @@ class RealtimePipeline:
 
 
 def main():
-    """CLI entry point"""
+    """CLI entry point with JWT authentication support"""
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Realtime Pipeline - Kafka → API → PostgreSQL"
+        description="Realtime Pipeline - Kafka → API → PostgreSQL with JWT Auth"
     )
     parser.add_argument(
         "--mode", choices=["batch", "stream"], default="batch", help="Pipeline mode"
@@ -666,15 +861,35 @@ def main():
     parser.add_argument("--topic", default=KAFKA_TOPIC, help="Kafka topic")
     parser.add_argument("--api-url", default=API_URL, help="API URL")
     parser.add_argument("--webapp-url", default=WEBAPP_URL, help="Web app URL")
+    
+    # JWT Authentication arguments
+    parser.add_argument(
+        "--api-username", 
+        default=os.getenv("API_USERNAME"), 
+        help="API username for JWT authentication"
+    )
+    parser.add_argument(
+        "--api-password", 
+        default=os.getenv("API_PASSWORD"), 
+        help="API password for JWT authentication"
+    )
+    parser.add_argument(
+        "--api-token", 
+        default=os.getenv("API_TOKEN"), 
+        help="Pre-existing JWT token"
+    )
 
     args = parser.parse_args()
 
-    # Create pipeline
+    # Create pipeline with JWT authentication
     pipeline = RealtimePipeline(
         kafka_bootstrap_servers=args.kafka,
         kafka_topic=args.topic,
         api_url=args.api_url,
         webapp_url=args.webapp_url,
+        api_username=args.api_username,
+        api_password=args.api_password,
+        api_token=args.api_token,
     )
 
     try:
