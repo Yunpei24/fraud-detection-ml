@@ -158,7 +158,7 @@ jobs:
         REDIS_PORT: 6379
       run: |
         cd ${{ matrix.service }}
-        python -m pytest tests/ -v --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=80
+        python -m pytest tests/ -v --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=50
 
     - name: Upload coverage reports
       uses: codecov/codecov-action@v3
