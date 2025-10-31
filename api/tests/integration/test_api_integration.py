@@ -76,10 +76,18 @@ def client():
 
     mock_database_service = AsyncMock()
 
+    # Mock authentication
+    mock_user = {"username": "test_analyst", "role": "analyst", "is_active": True}
+
     # Override dependencies
     app.dependency_overrides[get_prediction_service] = lambda: mock_prediction_service
     app.dependency_overrides[get_cache_service] = lambda: mock_cache_service
     app.dependency_overrides[get_database_service] = lambda: mock_database_service
+
+    # Import and override authentication
+    from src.api.routes.auth import get_current_analyst_user
+
+    app.dependency_overrides[get_current_analyst_user] = lambda: mock_user
 
     with TestClient(app) as test_client:
         yield test_client

@@ -319,6 +319,16 @@ def test_model():
     preprocessor.transform.return_value = Mock()  # Mock DataFrame
     model.preprocessor = preprocessor
 
+    # Mock traffic router
+    traffic_router = Mock()
+    traffic_router_config = Mock()
+    traffic_router_config.canary_enabled = False
+    traffic_router_config.canary_traffic_pct = 0
+    traffic_router_config.champion_traffic_pct = 100
+    traffic_router.config = traffic_router_config
+    traffic_router.should_use_canary.return_value = False
+    model.traffic_router = traffic_router
+
     return model
 
 

@@ -34,7 +34,15 @@ def client():
 
     mock_db_service.execute = AsyncMock()
 
+    # Mock authentication
+    mock_user = {"username": "test_analyst", "role": "analyst", "is_active": True}
+
     app.dependency_overrides[get_database_service] = lambda: mock_db_service
+
+    # Import and override authentication
+    from src.api.routes.auth import get_current_analyst_user
+
+    app.dependency_overrides[get_current_analyst_user] = lambda: mock_user
 
     with TestClient(app) as test_client:
         yield test_client
