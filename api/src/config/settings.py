@@ -84,9 +84,10 @@ enable_cache = os.getenv("ENABLE_CACHE", "true").lower() == "true"
 
 # Model configuration
 model_path = os.getenv(
-    "MODEL_PATH", os.getenv("AZURE_STORAGE_MOUNT_PATH", "/mnt/fraud-models")
+    "ML_MODEL_PATH",
+    os.getenv("MODEL_PATH", os.getenv("AZURE_STORAGE_MOUNT_PATH", "/mnt/fraud-models")),
 )
-model_version = os.getenv("MODEL_VERSION", "v1.0.0")
+model_version = os.getenv("ML_MODEL_VERSION", os.getenv("MODEL_VERSION", "v1.0.0"))
 xgboost_model_name = os.getenv("XGBOOST_MODEL_NAME", "xgboost_fraud_model.pkl")
 random_forest_model_name = os.getenv(
     "RANDOM_FOREST_MODEL_NAME", "random_forest_fraud_model.pkl"

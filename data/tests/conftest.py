@@ -3,8 +3,9 @@ Pytest configuration for data module tests
 """
 
 import sys
+import time
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -18,6 +19,88 @@ sys.modules["databricks.sdk.service.jobs"] = MagicMock()
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+
+@pytest.fixture
+def test_api_credentials():
+    """Test API credentials for JWT authentication"""
+    return {
+        "api_username": "test-user",
+        "api_password": "test-password",
+        "api_token": "test-token-12345",
+    }
+
+
+@pytest.fixture(autouse=True)
+def mock_jwt_authentication(monkeypatch):
+    """
+    Auto-mock JWT authentication for all tests.
+
+    This fixture automatically mocks the _authenticate method in RealtimePipeline
+    to prevent actual API authentication attempts during testing.
+    """
+    from unittest.mock import MagicMock
+
+    # Set test environment variables
+    monkeypatch.setenv("API_USERNAME", "test-user")
+    monkeypatch.setenv("API_PASSWORD", "test-password")
+    monkeypatch.setenv("API_TOKEN", "test-token-12345")
+
+    # Mock the authenticate method to always succeed without making API calls
+    def mock_authenticate(self):
+        self.api_token = "test-token-12345"
+        self._token_expiry = time.time() + 3600
+        self._token_issued_at = time.time()
+        return True
+
+    # Mock the refresh method
+    def mock_refresh_token(self):
+        return True
+
+    # Mock the get_auth_headers method
+    def mock_get_auth_headers(self):
+        return {"Authorization": f"Bearer test-token-12345"}
+
+    # Patch the methods
+    try:
+        from src.pipelines.realtime_pipeline import RealtimePipeline
+
+        monkeypatch.setattr(RealtimePipeline, "_authenticate", mock_authenticate)
+        monkeypatch.setattr(
+            RealtimePipeline, "_refresh_token_if_needed", mock_refresh_token
+        )
+        monkeypatch.setattr(
+            RealtimePipeline, "_get_auth_headers", mock_get_auth_headers
+        )
+    except ImportError:
+        pass  # Module not yet loaded
+
+    yield
+
+
+@pytest.fixture(autouse=True)
+def mock_session_requests(monkeypatch):
+    """
+    Auto-mock requests.Session for all tests.
+
+    This fixture creates a mock session that tests can configure.
+    The mock session is automatically injected into RealtimePipeline instances.
+    """
+    mock_session_instance = MagicMock()
+
+    # Default successful response
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"predictions": []}
+    mock_response.text = "OK"
+    mock_session_instance.post.return_value = mock_response
+
+    # Patch Session class to return our mock
+    with patch(
+        "src.pipelines.realtime_pipeline.requests.Session",
+        return_value=mock_session_instance,
+    ):
+        yield mock_session_instance
 
 
 @pytest.fixture

@@ -67,8 +67,9 @@ class DatabaseSettings(BaseSettings):
         """SQLAlchemy-compatible URL with connection parameters"""
         return f"{self.url}?sslmode={self.ssl_mode}&pool_size={self.pool_size}&max_overflow={self.max_overflow}"
 
-    class Config:
-        env_prefix = "DB_"
+    model_config = SettingsConfigDict(
+        env_prefix="DB_", protected_namespaces=("settings_",)
+    )
 
 
 class RedisSettings(BaseSettings):
@@ -89,8 +90,9 @@ class RedisSettings(BaseSettings):
         protocol = "rediss" if self.ssl else "redis"
         return f"{protocol}://{auth}{self.host}:{self.port}/{self.db}"
 
-    class Config:
-        env_prefix = "REDIS_"
+    model_config = SettingsConfigDict(
+        env_prefix="REDIS_", protected_namespaces=("settings_",)
+    )
 
 
 class AzureSettings(BaseSettings):
@@ -124,8 +126,9 @@ class AzureSettings(BaseSettings):
         default="fraud-transactions", description="Event Hub name"
     )
 
-    class Config:
-        env_prefix = "AZURE_"
+    model_config = SettingsConfigDict(
+        env_prefix="AZURE_", protected_namespaces=("settings_",)
+    )
 
 
 class KafkaSettings(BaseSettings):
@@ -150,8 +153,9 @@ class KafkaSettings(BaseSettings):
         """Convert comma-separated servers to list"""
         return [s.strip() for s in self.bootstrap_servers.split(",")]
 
-    class Config:
-        env_prefix = "KAFKA_"
+    model_config = SettingsConfigDict(
+        env_prefix="KAFKA_", protected_namespaces=("settings_",)
+    )
 
 
 class MonitoringSettings(BaseSettings):
@@ -162,8 +166,9 @@ class MonitoringSettings(BaseSettings):
     log_format: str = Field(default="json", description="Log format")
     enable_audit_log: bool = Field(default=True, description="Enable audit logging")
 
-    class Config:
-        env_prefix = "MONITORING_"
+    model_config = SettingsConfigDict(
+        env_prefix="MONITORING_", protected_namespaces=("settings_",)
+    )
 
 
 class SecuritySettings(BaseSettings):
@@ -174,8 +179,9 @@ class SecuritySettings(BaseSettings):
     access_token_expire_minutes: int = Field(default=30, description="Token expiration")
     api_key_header: str = Field(default="X-API-Key", description="API key header")
 
-    class Config:
-        env_prefix = "SECURITY_"
+    model_config = SettingsConfigDict(
+        env_prefix="SECURITY_", protected_namespaces=("settings_",)
+    )
 
 
 class AlertSettings(BaseSettings):
@@ -202,8 +208,9 @@ class AlertSettings(BaseSettings):
         default=30, description="Alert debounce minutes"
     )
 
-    class Config:
-        env_prefix = "ALERT_"
+    model_config = SettingsConfigDict(
+        env_prefix="ALERT_", protected_namespaces=("settings_",)
+    )
 
     @field_validator("email_recipients", mode="before")
     @classmethod
@@ -227,8 +234,9 @@ class MLflowSettings(BaseSettings):
         default="fraud-detection-ensemble", description="Model name"
     )
 
-    class Config:
-        env_prefix = "MLFLOW_"
+    model_config = SettingsConfigDict(
+        env_prefix="MLFLOW_", protected_namespaces=("settings_",)
+    )
 
 
 # Module-specific settings
@@ -276,8 +284,8 @@ class APISettings(BaseSettings):
     enable_model_reload: bool = Field(default=True, description="Enable model reload")
     enable_cache: bool = Field(default=True, description="Enable caching")
 
-    model_path: str = Field(default="/app/models", description="Model path")
-    model_version: str = Field(default="v1.0.0", description="Model version")
+    ml_model_path: str = Field(default="/app/models", description="Model path")
+    ml_model_version: str = Field(default="v1.0.0", description="Model version")
 
     # Model names
     xgboost_model_name: str = Field(
@@ -312,8 +320,9 @@ class APISettings(BaseSettings):
 
     prometheus_port: int = Field(default=9090, description="Prometheus port")
 
-    class Config:
-        env_prefix = "API_"
+    model_config = SettingsConfigDict(
+        env_prefix="API_", protected_namespaces=("settings_",)
+    )
 
     @field_validator(
         "cors_origins", "cors_allow_methods", "cors_allow_headers", mode="before"
@@ -341,8 +350,9 @@ class DataSettings(BaseSettings):
         default=True, description="Enable data validation"
     )
 
-    class Config:
-        env_prefix = "DATA_"
+    model_config = SettingsConfigDict(
+        env_prefix="DATA_", protected_namespaces=("settings_",)
+    )
 
 
 class DriftSettings(BaseSettings):
@@ -396,8 +406,9 @@ class DriftSettings(BaseSettings):
 
     prometheus_port: int = Field(default=9091, description="Prometheus port")
 
-    class Config:
-        env_prefix = "DRIFT_"
+    model_config = SettingsConfigDict(
+        env_prefix="DRIFT_", protected_namespaces=("settings_",)
+    )
 
 
 class TrainingSettings(BaseSettings):
@@ -408,7 +419,7 @@ class TrainingSettings(BaseSettings):
         default="/data/train.csv", description="Training data path"
     )
     test_data_path: str = Field(default="/data/test.csv", description="Test data path")
-    model_output_dir: str = Field(
+    ml_model_output_dir: str = Field(
         default="/models", description="Model output directory"
     )
     checkpoint_dir: str = Field(
@@ -450,8 +461,9 @@ class TrainingSettings(BaseSettings):
 
     prometheus_port: int = Field(default=9093, description="Prometheus port")
 
-    class Config:
-        env_prefix = "TRAINING_"
+    model_config = SettingsConfigDict(
+        env_prefix="TRAINING_", protected_namespaces=("settings_",)
+    )
 
     @field_validator("eval_metrics", mode="before")
     @classmethod
@@ -505,15 +517,20 @@ class AirflowSettings(BaseSettings):
         default="02_model_training", description="Training DAG ID"
     )
 
-    class Config:
-        env_prefix = "AIRFLOW_"
+    model_config = SettingsConfigDict(
+        env_prefix="AIRFLOW_", protected_namespaces=("settings_",)
+    )
 
 
 class GlobalSettings(BaseSettings):
     """Global settings for the entire fraud detection project"""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="allow"
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="allow",
+        protected_namespaces=("settings_",),
     )
 
     # Environment

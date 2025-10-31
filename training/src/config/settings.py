@@ -33,7 +33,7 @@ settings = get_settings()
 class DataPaths:
     RAW_DATA: Path = Path(settings.training.train_data_path).parent / "creditcard.csv"
     PROCESSED_DATA: Path = Path("data/processed/train.parquet")
-    MODELS_DIR: Path = Path(settings.training.model_output_dir)
+    MODELS_DIR: Path = Path(settings.training.ml_model_output_dir)
     ARTIFACTS_DIR: Path = Path("training/artifacts/")
     SCALER_PATH: Path = Path("training/artifacts/scaler.pkl")
     LOG_DIR: Path = Path("training/logs/")
