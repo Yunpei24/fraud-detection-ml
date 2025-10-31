@@ -1,0 +1,90 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  # Fraud Detection API Service
+  - job_name: 'fraud-api'
+    static_configs:
+      - targets: ['fraud-api:9090']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # Fraud Detection Data Pipeline Service
+  - job_name: 'fraud-data'
+    static_configs:
+      - targets: ['fraud-data:9091']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 5s
+
+  # Fraud Detection Drift Monitoring Service
+  - job_name: 'fraud-drift'
+    static_configs:
+      - targets: ['fraud-drift:9095']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Fraud Detection Training Service
+  - job_name: 'fraud-training'
+    static_configs:
+      - targets: ['fraud-training:9096']
+    metrics_path: '/metrics'
+    scrape_interval: 60s
+    scrape_timeout: 30s
+
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 30s
+
+  # Grafana
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Node Exporter (Infrastructure metrics)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 30s
+
+  # Redis Exporter (if using Redis)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 30s
+
+  # Airflow (if using for orchestration)
+  - job_name: 'airflow'
+    static_configs:
+      - targets: ['airflow-webserver:8080']
+    metrics_path: '/admin/metrics'
+    scrape_interval: 30s
+
+# Remote write for cross-subscription setups (optional)
+# remote_write:
+#   - url: "https://prometheus-prod.company.com/api/v1/write"
+#     remote_timeout: 30s
+#     queue_config:
+#       capacity: 10000
+#       max_samples_per_send: 1000
+
+# Remote read for cross-subscription setups (optional)
+# remote_read:
+#   - url: "https://prometheus-prod.company.com/api/v1/read"
+#     remote_timeout: 30s
