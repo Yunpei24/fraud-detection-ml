@@ -333,16 +333,24 @@ def test_model():
 
 @pytest.fixture
 def mock_traffic_router():
-    """Mock traffic router fixture."""
+    """Mock traffic router fixture with proper config object."""
+    # Create a real config object instead of Mock to avoid comparison issues
+    from types import SimpleNamespace
+
+    traffic_router_config = SimpleNamespace(
+        canary_enabled=False,
+        canary_traffic_pct=0,  # Real int for comparisons
+        champion_traffic_pct=100,  # Real int for comparisons
+        canary_model_uris={},
+        champion_model_uris={},
+        ensemble_weights={},
+    )
+
     traffic_router = Mock()
-    traffic_router_config = Mock()
-    traffic_router_config.canary_enabled = False
-    traffic_router_config.canary_traffic_pct = 0
-    traffic_router_config.champion_traffic_pct = 100
-    traffic_router_config.canary_model_uris = {}
-    traffic_router_config.champion_model_uris = {}
-    traffic_router_config.ensemble_weights = {}
     traffic_router.config = traffic_router_config
+    # Add canary_percentage attribute (real int, not Mock)
+    traffic_router.canary_percentage = 0
+    traffic_router.canary_model_path = None
     traffic_router.should_use_canary.return_value = False
     traffic_router.get_model_info.return_value = {
         "canary_enabled": False,

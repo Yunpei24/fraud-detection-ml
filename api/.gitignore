@@ -7,3 +7,5 @@ run_test.sh
 test_imports.sh
 venv_test
 pytest.ini.bak
+CORRECTIONS_SUMMARY.md
+AUTH_DB_INTEGRATION.md
