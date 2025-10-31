@@ -1,0 +1,230 @@
+groups:
+  - name: fraud_detection_alerts
+    rules:
+      # Service Health Alerts
+      - alert: FraudAPIServiceDown
+        expr: up{job="fraud-api"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: api
+        annotations:
+          summary: "Fraud Detection API service is down"
+          description: "Fraud Detection API service has been down for more than 5 minutes."
+
+      - alert: FraudDataServiceDown
+        expr: up{job="fraud-data"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: data
+        annotations:
+          summary: "Fraud Detection Data service is down"
+          description: "Fraud Detection Data service has been down for more than 5 minutes."
+
+      - alert: FraudDriftServiceDown
+        expr: up{job="fraud-drift"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: drift
+        annotations:
+          summary: "Fraud Detection Drift service is down"
+          description: "Fraud Detection Drift service has been down for more than 5 minutes."
+
+      - alert: FraudTrainingServiceDown
+        expr: up{job="fraud-training"} == 0
+        for: 10m
+        labels:
+          severity: warning
+          service: training
+        annotations:
+          summary: "Fraud Detection Training service is down"
+          description: "Fraud Detection Training service has been down for more than 10 minutes."
+
+      # API Performance Alerts
+      - alert: HighAPIErrorRate
+        expr: rate(fraud_api_errors_total[5m]) / rate(fraud_api_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "High API error rate detected"
+          description: "API error rate is {{ $value | printf \"%.2f\" }}% over the last 5 minutes."
+
+      - alert: HighAPILatency
+        expr: histogram_quantile(0.95, rate(fraud_api_request_duration_seconds_bucket[5m])) > 2.0
+        for: 5m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "High API latency detected"
+          description: "95th percentile API response time is {{ $value | printf \"%.2f\" }}s over the last 5 minutes."
+
+      - alert: APIRateLimitExceeded
+        expr: rate(fraud_api_rate_limit_exceeded_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "API rate limit frequently exceeded"
+          description: "API rate limit exceeded {{ $value | printf \"%.0f\" }} times in the last 2 minutes."
+
+      # Data Pipeline Alerts
+      - alert: DataPipelineFailure
+        expr: rate(data_pipeline_transactions_failed_total[5m]) / rate(data_pipeline_transactions_processed_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          service: data
+        annotations:
+          summary: "High data pipeline failure rate"
+          description: "Data pipeline failure rate is {{ $value | printf \"%.2f\" }}% over the last 5 minutes."
+
+      - alert: DataQualityIssues
+        expr: rate(data_pipeline_validation_errors_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: data
+        annotations:
+          summary: "Data quality validation errors detected"
+          description: "Data validation errors: {{ $value | printf \"%.0f\" }} in the last 5 minutes."
+
+      - alert: DataPipelineBacklog
+        expr: data_pipeline_queue_size > 1000
+        for: 10m
+        labels:
+          severity: warning
+          service: data
+        annotations:
+          summary: "Data pipeline backlog growing"
+          description: "Data pipeline queue size is {{ $value | printf \"%.0f\" }}, processing may be delayed."
+
+      # Drift Detection Alerts
+      - alert: ModelDriftDetected
+        expr: fraud_drift_score > 0.7
+        for: 10m
+        labels:
+          severity: warning
+          service: drift
+        annotations:
+          summary: "Model drift detected"
+          description: "Model drift score is {{ $value | printf \"%.2f\" }}, model may need retraining."
+
+      - alert: FeatureDriftDetected
+        expr: fraud_feature_drift_score > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          service: drift
+        annotations:
+          summary: "Feature drift detected"
+          description: "Feature drift score is {{ $value | printf \"%.2f\" }}, data distribution has changed significantly."
+
+      - alert: DriftDetectionFailure
+        expr: up{job="fraud-drift"} == 1 and fraud_drift_last_check_seconds > 3600
+        for: 5m
+        labels:
+          severity: warning
+          service: drift
+        annotations:
+          summary: "Drift detection not running"
+          description: "Drift detection has not run for over an hour, monitoring may be impaired."
+
+      # Model Performance Alerts
+      - alert: ModelAccuracyDrop
+        expr: fraud_model_accuracy < 0.85
+        for: 15m
+        labels:
+          severity: critical
+          service: model
+        annotations:
+          summary: "Model accuracy dropped significantly"
+          description: "Model accuracy is {{ $value | printf \"%.2f\" }}%, below acceptable threshold."
+
+      - alert: HighFalsePositiveRate
+        expr: rate(fraud_false_positives_total[5m]) / rate(fraud_predictions_total[5m]) > 0.15
+        for: 10m
+        labels:
+          severity: warning
+          service: model
+        annotations:
+          summary: "High false positive rate detected"
+          description: "False positive rate is {{ $value | printf \"%.2f\" }}% over the last 5 minutes."
+
+      # Infrastructure Alerts
+      - alert: HighMemoryUsage
+        expr: (1 - process_resident_memory_bytes / process_virtual_memory_max_bytes) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: infrastructure
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is high on {{ $labels.job }}, available memory is below 10%."
+
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_user_seconds_total[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: infrastructure
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is high on {{ $labels.job }}, over 80% utilization."
+
+      - alert: DiskSpaceLow
+        expr: (1 - node_filesystem_avail_bytes / node_filesystem_size_bytes) > 0.9
+        for: 5m
+        labels:
+          severity: critical
+          service: infrastructure
+        annotations:
+          summary: "Disk space critically low"
+          description: "Disk space usage is over 90% on {{ $labels.instance }}."
+
+      # Business Logic Alerts
+      - alert: LowPredictionVolume
+        expr: rate(fraud_predictions_total[5m]) < 1
+        for: 15m
+        labels:
+          severity: info
+          service: business
+        annotations:
+          summary: "Low prediction volume detected"
+          description: "Prediction rate is below 1 per 5 minutes, system may be underutilized."
+
+      - alert: UnusualTrafficPattern
+        expr: rate(fraud_api_requests_total[5m]) > rate(fraud_api_requests_total[1h]) * 3
+        for: 5m
+        labels:
+          severity: warning
+          service: security
+        annotations:
+          summary: "Unusual traffic pattern detected"
+          description: "Request rate has tripled compared to hourly average, possible attack or spike."
+
+      # Training Pipeline Alerts
+      - alert: TrainingPipelineStuck
+        expr: training_pipeline_last_success_timestamp < time() - 86400
+        for: 30m
+        labels:
+          severity: warning
+          service: training
+        annotations:
+          summary: "Training pipeline hasn't run successfully in 24 hours"
+          description: "Last successful training run was over 24 hours ago."
+
+      - alert: ModelRetrainingNeeded
+        expr: fraud_model_age_days > 30
+        for: 1h
+        labels:
+          severity: info
+          service: training
+        annotations:
+          summary: "Model retraining recommended"
+          description: "Current model is over 30 days old, consider retraining with fresh data."

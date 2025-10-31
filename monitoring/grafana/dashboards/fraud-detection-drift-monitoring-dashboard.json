@@ -1,0 +1,488 @@
+{
+  "id": null,
+  "title": "Drift Detection - Model Monitoring",
+  "tags": [
+    "fraud-detection",
+    "drift-detection",
+    "model-monitoring",
+    "ml-observability"
+  ],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Drift Detection Status",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "drift_detection_drift_detected",
+          "legendFormat": "{{feature_name}} - {{drift_type}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "NO DRIFT",
+                  "color": "green"
+                },
+                "1": {
+                  "text": "DRIFT DETECTED",
+                  "color": "red"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Data Drift Scores",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "drift_detection_data_drift_score",
+          "legendFormat": "{{feature_name}} ({{metric_type}})",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "yaxes": [
+        {
+          "unit": "short",
+          "format": "short"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.1
+              },
+              {
+                "color": "red",
+                "value": 0.2
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Concept Drift - Model Performance",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "model_performance_recall",
+          "legendFormat": "Recall",
+          "refId": "A"
+        },
+        {
+          "expr": "model_performance_precision",
+          "legendFormat": "Precision",
+          "refId": "B"
+        },
+        {
+          "expr": "model_performance_fpr",
+          "legendFormat": "False Positive Rate",
+          "refId": "C"
+        },
+        {
+          "expr": "model_performance_f1",
+          "legendFormat": "F1 Score",
+          "refId": "D"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "yaxes": [
+        {
+          "unit": "percentunit",
+          "format": "percent"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Target Drift - Fraud Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "fraud_rate_current",
+          "legendFormat": "Current Fraud Rate",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "yaxes": [
+        {
+          "unit": "percentunit",
+          "format": "percent"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.005
+              },
+              {
+                "color": "red",
+                "value": 0.01
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Drift Detection Pipeline Health",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "drift_detection_pipeline_last_success_timestamp - time()",
+          "legendFormat": "Last successful run",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "seconds",
+          "mappings": [
+            {
+              "options": {
+                "from": 0,
+                "to": 3600,
+                "result": {
+                  "color": "green",
+                  "text": "Recent"
+                }
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 3600,
+                "to": 86400,
+                "result": {
+                  "color": "orange",
+                  "text": "Hours ago"
+                }
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 86400,
+                "to": 999999999,
+                "result": {
+                  "color": "red",
+                  "text": "Days ago"
+                }
+              },
+              "type": "range"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Pipeline Run Duration",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "drift_detection_pipeline_duration_seconds",
+          "legendFormat": "{{pipeline_name}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 8
+      },
+      "yaxes": [
+        {
+          "unit": "seconds",
+          "format": "s"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Drift Alerts Over Time",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "increase(drift_alerts_total{severity='critical'}[1h])",
+          "legendFormat": "Critical Alerts",
+          "refId": "A"
+        },
+        {
+          "expr": "increase(drift_alerts_total{severity='warning'}[1h])",
+          "legendFormat": "Warning Alerts",
+          "refId": "B"
+        },
+        {
+          "expr": "increase(drift_alerts_total{severity='info'}[1h])",
+          "legendFormat": "Info Alerts",
+          "refId": "C"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "yaxes": [
+        {
+          "unit": "short",
+          "format": "short"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Retraining Triggers",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "increase(drift_detection_retraining_triggered_total[24h])",
+          "legendFormat": "Retraining triggers (24h)",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "No Retraining Needed",
+                  "color": "green"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Predictions Processed for Drift Analysis",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(drift_predictions_processed_total[5m])",
+          "legendFormat": "Predictions analyzed per second",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 16
+      },
+      "yaxes": [
+        {
+          "unit": "reqps",
+          "format": "short"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Drift Detection Duration",
+      "type": "histogram",
+      "targets": [
+        {
+          "expr": "drift_detection_duration_seconds",
+          "legendFormat": "{{drift_type}} detection",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "yaxes": [
+        {
+          "unit": "seconds",
+          "format": "s"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Feature Drift Heatmap",
+      "type": "table",
+      "targets": [
+        {
+          "expr": "drift_detection_data_drift_score",
+          "legendFormat": "{{feature_name}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "from": 0,
+                "to": 0.1,
+                "result": {
+                  "color": "green",
+                  "text": "Low Drift"
+                }
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 0.1,
+                "to": 0.2,
+                "result": {
+                  "color": "orange",
+                  "text": "Medium Drift"
+                }
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 0.2,
+                "to": 999,
+                "result": {
+                  "color": "red",
+                  "text": "High Drift"
+                }
+              },
+              "type": "range"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Drift Detected",
+        "datasource": "Prometheus",
+        "query": "drift_detection_drift_detected > 0",
+        "text": "Drift detected in {{feature_name}}",
+        "tags": [
+          "drift",
+          "alert"
+        ]
+      }
+    ]
+  },
+  "refresh": "5m",
+  "schemaVersion": 27,
+  "version": 0,
+  "links": []
+}
