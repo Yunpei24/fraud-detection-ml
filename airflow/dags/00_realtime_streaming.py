@@ -1,31 +1,31 @@
 """
 DAG 00: Real-time Streaming Prediction Pipeline
 
-Consomme les transactions de Kafka en streaming continu toutes les 10 secondes,
-fait des prédictions via l'API, et sauvegarde dans PostgreSQL.
+Consumes transactions from Kafka in streaming mode (100 per run),
+makes predictions via API, and saves to PostgreSQL.
 
-Schedule: Toutes les 10 secondes (streaming continu)
-Mode: Automatique
+Schedule: Every 10 seconds (continuous streaming)
+Mode: Automatic
+Execution: Runs via Docker container (no direct Python imports)
 """
 
 import logging
-import os
-import sys
-from datetime import datetime, timedelta
-
-from airflow.operators.python import PythonOperator
-from airflow.utils.dates import days_ago
-from kafka import KafkaConsumer
-from kafka.errors import KafkaError
+import pendulum
+from datetime import timedelta
 
 from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.providers.docker.operators.docker import DockerOperator
+from airflow.utils.trigger_rule import TriggerRule
+
+# Import Docker configuration
+from config import constants
 
 # Configuration
-DOCKER_NETWORK = os.getenv("DOCKER_NETWORK", "fraud-detection-network")
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "fraud-detection-transactions")
-API_URL = os.getenv("API_URL", "http://api:8000")
-WEBAPP_URL = os.getenv("WEBAPP_URL", None)
+DOCKER_IMAGE_DATA = constants.DOCKER_IMAGE_DATA
+DOCKER_NETWORK = constants.DOCKER_NETWORK
+ENV_VARS = constants.ENV_VARS
+STREAMING_BATCH_SIZE = 100
 
 logger = logging.getLogger(__name__)
 
@@ -40,187 +40,78 @@ default_args = {
 }
 
 
-def run_streaming_prediction(**context):
+def validate_streaming_config(**context):
     """
-    Execute streaming prediction pipeline
-
-    Consomme les transactions depuis Kafka, fait des prédictions,
-    et sauvegarde les résultats dans PostgreSQL
+    Validate streaming configuration before execution
     """
-    logger.info(" Starting streaming prediction pipeline")
+    logger.info(f"Validating streaming configuration")
+    logger.info(f"  Streaming batch size: {STREAMING_BATCH_SIZE}")
+    logger.info(f"  Docker image: {DOCKER_IMAGE_DATA}")
+    logger.info(f"  Docker network: {DOCKER_NETWORK}")
 
-    try:
-        # Import realtime pipeline
-        from data.src.pipelines.realtime_pipeline import RealtimePipeline
+    # Push config to XCom
+    context["task_instance"].xcom_push(key="batch_size", value=STREAMING_BATCH_SIZE)
 
-        # Create pipeline instance
-        pipeline = RealtimePipeline(
-            kafka_bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-            kafka_topic=KAFKA_TOPIC,
-            api_url=API_URL,
-            webapp_url=WEBAPP_URL,
-        )
-
-        # Execute batch (consume available messages, max 100 per run)
-        logger.info("Consuming messages from Kafka (max 100)")
-        result = pipeline.execute_batch(count=100)
-
-        if result["status"] == "success":
-            logger.info(f"Streaming pipeline completed successfully")
-            logger.info(f"   - Consumed: {result['consumed']}")
-            logger.info(f"   - Frauds detected: {result['fraud_detected']}")
-            logger.info(f"   - Saved: {result['saved']}")
-            logger.info(f"   - Duration: {result['elapsed_seconds']:.2f}s")
-
-            # Push metrics to XCom
-            context["task_instance"].xcom_push(key="consumed", value=result["consumed"])
-            context["task_instance"].xcom_push(
-                key="fraud_detected", value=result["fraud_detected"]
-            )
-            context["task_instance"].xcom_push(key="saved", value=result["saved"])
-
-            return result
-        else:
-            logger.error(f"Streaming pipeline failed: {result.get('message')}")
-            raise Exception(f"Pipeline failed: {result.get('message')}")
-
-    except Exception as e:
-        logger.error(f"Streaming prediction failed: {str(e)}", exc_info=True)
-        raise
+    return True
 
 
-def check_kafka_health(**context):
+def log_streaming_completion(**context):
     """
-    Check if Kafka is available before processing
+    Log streaming execution metrics
     """
-    logger.info("Checking Kafka health")
-
-    try:
-        # Try to create a consumer to test connection
-        consumer = KafkaConsumer(
-            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS, consumer_timeout_ms=5000
-        )
-
-        # Get topics
-        topics = consumer.topics()
-        logger.info(f"Kafka is healthy. Topics: {topics}")
-
-        consumer.close()
-        return True
-
-    except Exception as e:
-        logger.warning(f"Kafka health check failed: {str(e)}")
-        # Don't fail the DAG, just skip if Kafka is down
-        return False
-
-
-def log_pipeline_metrics(**context):
-    """
-    Log pipeline metrics for monitoring
-    """
-    ti = context["task_instance"]
-
-    consumed = ti.xcom_pull(task_ids="run_streaming_prediction", key="consumed") or 0
-    fraud_detected = (
-        ti.xcom_pull(task_ids="run_streaming_prediction", key="fraud_detected") or 0
-    )
-    saved = ti.xcom_pull(task_ids="run_streaming_prediction", key="saved") or 0
-
-    logger.info(f"Pipeline Metrics Summary:")
-    logger.info(f"   - Transactions consumed: {consumed}")
-    logger.info(
-        f"   - Frauds detected: {fraud_detected} ({fraud_detected/consumed*100:.1f}%)"
-        if consumed > 0
-        else "   - Frauds detected: 0"
-    )
-    logger.info(f"   - Transactions saved: {saved}")
-
-    # These metrics can be scraped by Prometheus
-    print(f"fraud_detection_streaming_transactions_consumed {consumed}")
-    print(f"fraud_detection_streaming_frauds_detected {fraud_detected}")
-    print(f"fraud_detection_streaming_transactions_saved {saved}")
+    logger.info("Streaming prediction pipeline completed")
+    logger.info(f"  Batch size: {STREAMING_BATCH_SIZE} transactions")
+    logger.info("  Check Docker logs for detailed metrics")
 
 
 # Define DAG
 with DAG(
     "00_realtime_streaming",
     default_args=default_args,
-    description="Real-time streaming prediction pipeline (every 10 seconds)",
-    schedule_interval="*/10 * * * * *",  # Every 10 seconds (requires Airflow 2.4+)
-    start_date=days_ago(1),
+    description="Real-time streaming prediction pipeline using Docker (every 10 seconds)",
+    schedule_interval="*/10 * * * * *",  # Every 10 seconds
+    start_date=pendulum.datetime(2025, 1, 1, tz="UTC"),
     catchup=False,
-    max_active_runs=1,  # Only one run at a time
-    tags=["streaming", "realtime", "prediction", "kafka"],
+    max_active_runs=1,
+    tags=["streaming", "realtime", "prediction", "kafka", "docker"],
+    doc_md=__doc__,
 ) as dag:
-    # Task 1: Check Kafka health
-    check_kafka = PythonOperator(
-        task_id="check_kafka_health",
-        python_callable=check_kafka_health,
+    # Task 1: Validate configuration
+    validate_config = PythonOperator(
+        task_id="validate_streaming_config",
+        python_callable=validate_streaming_config,
         provide_context=True,
     )
 
-    # Task 2: Run streaming prediction
-    run_prediction = PythonOperator(
+    # Task 2: Run streaming prediction via Docker
+    run_streaming_prediction = DockerOperator(
         task_id="run_streaming_prediction",
-        python_callable=run_streaming_prediction,
-        provide_context=True,
-        execution_timeout=timedelta(seconds=30),  # Timeout after 30s
+        image=DOCKER_IMAGE_DATA,
+        command=f"python -m src.pipelines.realtime_pipeline --mode batch --count {STREAMING_BATCH_SIZE}",
+        environment=ENV_VARS,
+        docker_url="unix://var/run/docker.sock",
+        network_mode=DOCKER_NETWORK,
+        auto_remove=True,
+        mount_tmp_dir=False,
+        trigger_rule=TriggerRule.NONE_FAILED,
+        execution_timeout=timedelta(seconds=30),
+        doc_md="""
+        Runs streaming prediction pipeline in Docker container:
+        1. Consumes up to 100 transactions from Kafka
+        2. Cleans and preprocesses data
+        3. Makes predictions via API (with JWT auth)
+        4. Saves results to PostgreSQL
+        5. Sends fraud alerts to web app
+        """,
     )
 
-    # Task 3: Log metrics
-    log_metrics = PythonOperator(
-        task_id="log_pipeline_metrics",
-        python_callable=log_pipeline_metrics,
+    # Task 3: Log completion
+    log_completion = PythonOperator(
+        task_id="log_streaming_completion",
+        python_callable=log_streaming_completion,
         provide_context=True,
+        trigger_rule=TriggerRule.ALL_DONE,
     )
 
     # Define task dependencies
-    check_kafka >> run_prediction >> log_metrics
-
-
-# Documentation
-dag.doc_md = """
-# Real-time Streaming Prediction Pipeline
-
-## Description
-This DAG consumes transactions from Kafka in a continuous stream every 10 seconds,
-makes predictions via the API, and saves the results in PostgreSQL.
-
-## Schedule
-- **Interval:** Every 10 seconds
-- **Mode:** Automatic (continuous streaming)
-- **Max active runs:** 1 (avoids overlap)
-
-## Flow
-1. **check_kafka_health** - Checks that Kafka is accessible
-2. **run_streaming_prediction** - Consumes max 100 transactions, predicts, saves
-3. **log_pipeline_metrics** - Logs metrics for Prometheus
-
-## Configuration
-- **KAFKA_BOOTSTRAP_SERVERS:** {kafka_servers}
-- **KAFKA_TOPIC:** {topic}
-- **API_URL:** {api_url}
-- **Batch size:** 100 transactions per run
-
-## Metrics
-The following metrics are exported to Prometheus:
-- `fraud_detection_streaming_transactions_consumed`
-- `fraud_detection_streaming_frauds_detected`
-- `fraud_detection_streaming_transactions_saved`
-
-## Usage
-This DAG starts automatically and runs continuously.
-To stop it, disable the DAG in the Airflow interface.
-
-To test manually:
-```bash
-docker exec fraud-airflow-scheduler airflow dags trigger 00_realtime_streaming
-```
-
-## Dependencies
-- Kafka must be started: `docker compose up -d kafka`
-- The simulator must publish messages: `python -m src.ingestion.transaction_simulator --mode stream`
-- The API must be operational: `docker compose up -d api`
-""".format(
-    kafka_servers=KAFKA_BOOTSTRAP_SERVERS, topic=KAFKA_TOPIC, api_url=API_URL
-)
+    validate_config >> run_streaming_prediction >> log_completion
