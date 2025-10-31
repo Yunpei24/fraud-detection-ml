@@ -1,0 +1,97 @@
+# Prometheus Configuration for Fraud Detection ML System
+# Scrapes metrics from all services
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'fraud-detection-production'
+    environment: 'production'
+
+# Alertmanager configuration (optional - configure if needed)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+# Scrape configurations
+scrape_configs:
+  # API Service Metrics
+  - job_name: 'fraud-api'
+    static_configs:
+      - targets: ['api:9090']
+        labels:
+          service: 'api'
+          component: 'fraud-detection'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Data Service Metrics
+  - job_name: 'fraud-data'
+    static_configs:
+      - targets: ['data:9091']
+        labels:
+          service: 'data'
+          component: 'data-ingestion'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Drift Monitoring Service Metrics
+  - job_name: 'fraud-drift'
+    static_configs:
+      - targets: ['drift:9092']
+        labels:
+          service: 'drift'
+          component: 'drift-monitoring'
+    metrics_path: '/metrics'
+    scrape_interval: 60s
+
+  # Training Service Metrics
+  - job_name: 'fraud-training'
+    static_configs:
+      - targets: ['training:9093']
+        labels:
+          service: 'training'
+          component: 'model-training'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # PostgreSQL Exporter (if using postgres_exporter)
+  # - job_name: 'postgres'
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']
+  #       labels:
+  #         service: 'postgres'
+  #         component: 'database'
+
+  # Redis Exporter (if using redis_exporter)
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+  #       labels:
+  #         service: 'redis'
+  #         component: 'cache'
+
+  # MLflow (if exposing Prometheus metrics)
+  # - job_name: 'mlflow'
+  #   static_configs:
+  #     - targets: ['mlflow:5000']
+  #       labels:
+  #         service: 'mlflow'
+  #         component: 'model-registry'
+
+  # Airflow (if using statsd_exporter or airflow metrics)
+  # - job_name: 'airflow'
+  #   static_configs:
+  #     - targets: ['airflow-webserver:8080']
+  #       labels:
+  #         service: 'airflow'
+  #         component: 'orchestration'
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+          component: 'monitoring'

@@ -1,0 +1,494 @@
+{
+  "id": null,
+  "title": "Data Pipeline - Ingestion & Processing",
+  "tags": [
+    "fraud-detection",
+    "data-pipeline",
+    "ingestion",
+    "processing"
+  ],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Pipeline Success Rate",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "(sum(increase(data_pipeline_runs_total{status='success'}[24h])) / sum(increase(data_pipeline_runs_total[24h]))) * 100",
+          "legendFormat": "Success Rate %",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "mappings": [
+            {
+              "options": {
+                "from": 95,
+                "to": 100,
+                "result": {
+                  "color": "green",
+                  "text": "Excellent"
+                }
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 80,
+                "to": 95,
+                "result": {
+                  "color": "orange",
+                  "text": "Good"
+                }
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 0,
+                "to": 80,
+                "result": {
+                  "color": "red",
+                  "text": "Poor"
+                }
+              },
+              "type": "range"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Last Pipeline Run",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "data_pipeline_last_success_timestamp - time()",
+          "legendFormat": "Seconds ago",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "seconds",
+          "mappings": [
+            {
+              "options": {
+                "from": 0,
+                "to": 3600,
+                "result": {
+                  "color": "green",
+                  "text": "Recent"
+                }
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 3600,
+                "to": 86400,
+                "result": {
+                  "color": "orange",
+                  "text": "Hours ago"
+                }
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 86400,
+                "to": 999999999,
+                "result": {
+                  "color": "red",
+                  "text": "Days ago"
+                }
+              },
+              "type": "range"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Pipeline Run Duration",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "data_pipeline_duration_seconds",
+          "legendFormat": "{{pipeline_name}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "yaxes": [
+        {
+          "unit": "seconds",
+          "format": "s"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Data Volume Processed",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(data_pipeline_transactions_ingested_total[5m])",
+          "legendFormat": "Ingested from {{source}}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(data_pipeline_transactions_processed_total[5m])",
+          "legendFormat": "Processed to {{destination}}",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(data_pipeline_transactions_rejected_total[5m])",
+          "legendFormat": "Rejected ({{reason}})",
+          "refId": "C"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "yaxes": [
+        {
+          "unit": "reqps",
+          "format": "short"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Data Quality Issues",
+      "type": "table",
+      "targets": [
+        {
+          "expr": "sum(increase(data_pipeline_validation_errors_total[1h])) by (feature_name, error_type)",
+          "legendFormat": "{{feature_name}} - {{error_type}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "No Issues",
+                  "color": "green"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Pipeline Step Performance",
+      "type": "bargauge",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(data_pipeline_step_latency_seconds_bucket[1h]))",
+          "legendFormat": "{{step_name}} (95th percentile)",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "yaxes": [
+        {
+          "unit": "seconds",
+          "format": "s"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "from": 0,
+                "to": 60,
+                "result": {
+                  "color": "green",
+                  "text": "Fast"
+                }
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 60,
+                "to": 300,
+                "result": {
+                  "color": "orange",
+                  "text": "Slow"
+                }
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 300,
+                "to": 999999,
+                "result": {
+                  "color": "red",
+                  "text": "Very Slow"
+                }
+              },
+              "type": "range"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Missing Values by Feature",
+      "type": "table",
+      "targets": [
+        {
+          "expr": "sum(increase(data_pipeline_missing_values_total[1h])) by (feature_name)",
+          "legendFormat": "{{feature_name}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "No Missing Values",
+                  "color": "green"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Pipeline Runs Over Time",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "increase(data_pipeline_runs_total{status='success'}[1h])",
+          "legendFormat": "Successful runs",
+          "refId": "A"
+        },
+        {
+          "expr": "increase(data_pipeline_runs_total{status='failed'}[1h])",
+          "legendFormat": "Failed runs",
+          "refId": "B"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "yaxes": [
+        {
+          "unit": "short",
+          "format": "short"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Data Throughput",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "rate(data_pipeline_transactions_processed_total[5m])",
+          "legendFormat": "Transactions/second",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "mappings": [
+            {
+              "options": {
+                "from": 10,
+                "to": 1000,
+                "result": {
+                  "color": "green",
+                  "text": "High Throughput"
+                }
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 1,
+                "to": 10,
+                "result": {
+                  "color": "orange",
+                  "text": "Medium Throughput"
+                }
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 0,
+                "to": 1,
+                "result": {
+                  "color": "red",
+                  "text": "Low Throughput"
+                }
+              },
+              "type": "range"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Data Rejection Rate",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "(sum(increase(data_pipeline_transactions_rejected_total[1h])) / sum(increase(data_pipeline_transactions_ingested_total[1h]))) * 100",
+          "legendFormat": "Rejection Rate %",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "mappings": [
+            {
+              "options": {
+                "from": 0,
+                "to": 1,
+                "result": {
+                  "color": "green",
+                  "text": "Very Low"
+                }
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 1,
+                "to": 5,
+                "result": {
+                  "color": "orange",
+                  "text": "Acceptable"
+                }
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 5,
+                "to": 100,
+                "result": {
+                  "color": "red",
+                  "text": "High - Investigate"
+                }
+              },
+              "type": "range"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "refresh": "1m",
+  "schemaVersion": 27,
+  "version": 0,
+  "links": []
+}

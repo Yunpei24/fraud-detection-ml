@@ -1,0 +1,554 @@
+{
+  "id": null,
+  "title": "System Overview - Service Health & Infrastructure",
+  "tags": [
+    "fraud-detection",
+    "system-overview",
+    "health",
+    "infrastructure"
+  ],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Service Health Status",
+      "type": "table",
+      "targets": [
+        {
+          "expr": "up",
+          "legendFormat": "{{job}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Service Uptime",
+      "type": "bargauge",
+      "targets": [
+        {
+          "expr": "(time() - process_start_time_seconds) / 3600",
+          "legendFormat": "{{job}} uptime (hours)",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "hours",
+          "mappings": [
+            {
+              "options": {
+                "from": 1,
+                "to": 24,
+                "result": {
+                  "color": "green",
+                  "text": "Good"
+                }
+              },
+              "type": "range"
+            },
+            {
+              "options": {
+                "from": 0,
+                "to": 1,
+                "result": {
+                  "color": "orange",
+                  "text": "Recently Started"
+                }
+              },
+              "type": "range"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "API Health Check",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "up{job='fraud-api'}",
+          "legendFormat": "API Service",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "HEALTHY",
+                  "color": "green"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Data Pipeline Health",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "up{job='fraud-data'}",
+          "legendFormat": "Data Service",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "HEALTHY",
+                  "color": "green"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Drift Detection Health",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "up{job='fraud-drift'}",
+          "legendFormat": "Drift Service",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "HEALTHY",
+                  "color": "green"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Training Service Health",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "up{job='fraud-training'}",
+          "legendFormat": "Training Service",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "HEALTHY",
+                  "color": "green"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Infrastructure Health",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "up{job='prometheus'}",
+          "legendFormat": "Prometheus",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "HEALTHY",
+                  "color": "green"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Grafana Health",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "up{job='grafana'}",
+          "legendFormat": "Grafana",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "HEALTHY",
+                  "color": "green"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Overall System Throughput",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(fraud_api_requests_total[5m])",
+          "legendFormat": "API Requests/sec",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(fraud_predictions_total[5m])",
+          "legendFormat": "Predictions/sec",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(data_pipeline_transactions_processed_total[5m])",
+          "legendFormat": "Data Processed/sec",
+          "refId": "C"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "yaxes": [
+        {
+          "unit": "reqps",
+          "format": "short"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Error Rates Across Services",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(fraud_api_errors_total[5m])",
+          "legendFormat": "API Errors/sec",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(data_pipeline_transactions_rejected_total[5m])",
+          "legendFormat": "Data Rejections/sec",
+          "refId": "B"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "yaxes": [
+        {
+          "unit": "reqps",
+          "format": "short"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.1
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "Resource Usage - Memory",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "process_resident_memory_bytes / 1024 / 1024",
+          "legendFormat": "{{job}} memory (MB)",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "yaxes": [
+        {
+          "unit": "MB",
+          "format": "decbytes"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Resource Usage - CPU",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(process_cpu_user_seconds_total[5m]) * 100",
+          "legendFormat": "{{job}} CPU %",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "yaxes": [
+        {
+          "unit": "percent",
+          "format": "percent"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Alert Summary",
+      "type": "table",
+      "targets": [
+        {
+          "expr": "ALERTS",
+          "legendFormat": "{{alertname}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "firing": {
+                  "text": "ACTIVE",
+                  "color": "red"
+                },
+                "pending": {
+                  "text": "PENDING",
+                  "color": "orange"
+                },
+                "inactive": {
+                  "text": "RESOLVED",
+                  "color": "green"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 14,
+      "title": "Service Dependencies",
+      "type": "nodeGraph",
+      "targets": [
+        {
+          "expr": "up",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      }
+    }
+  ],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Service Down",
+        "datasource": "Prometheus",
+        "query": "up == 0",
+        "text": "{{job}} service is down",
+        "tags": [
+          "alert",
+          "service-down"
+        ]
+      }
+    ]
+  },
+  "refresh": "30s",
+  "schemaVersion": 27,
+  "version": 0,
+  "links": []
+}
