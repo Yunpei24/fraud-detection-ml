@@ -52,7 +52,7 @@ ENV PYTHONUNBUFFERED=1 \
     MODEL_DIR="/app/models" \
     DATA_DIR="/app/data" \
     ARTIFACT_DIR="/app/training/artifacts" \
-    PROMETHEUS_PORT=9093
+    PROMETHEUS_PORT=9095
 
 # -----------------------------------------------------------
 # 7. Create directories for data and models
@@ -70,13 +70,13 @@ USER appuser
 # -----------------------------------------------------------
 # 8. Expose Prometheus metrics port
 # -----------------------------------------------------------
-EXPOSE 9093
+EXPOSE 9095
 
 # -----------------------------------------------------------
 # 9. Health check - verify metrics server is running
 # -----------------------------------------------------------
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:9093/metrics || exit 1
+  CMD curl -f http://localhost:9095/metrics || exit 1
 
 # -----------------------------------------------------------
 # 10. Default command (run metrics server)

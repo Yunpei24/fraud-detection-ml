@@ -34,11 +34,11 @@ RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Expose Prometheus metrics port
-EXPOSE 9092
+EXPOSE 9095
 
 # Health check - verify metrics server is running
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:9092/metrics || exit 1
+  CMD curl -f http://localhost:9095/metrics || exit 1
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

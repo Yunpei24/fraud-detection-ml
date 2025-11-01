@@ -2,13 +2,13 @@
 """
 Standalone Prometheus metrics server for drift detection monitoring.
 
-This script starts an HTTP server on port 9091 to expose metrics to Prometheus.
+This script starts an HTTP server on port 9095 to expose metrics to Prometheus.
 The server runs continuously until manually stopped.
 
 Usage:
     python metrics_server.py
 
-The metrics will be available at: http://localhost:9091/metrics
+The metrics will be available at: http://localhost:9095/metrics
 """
 
 import os
@@ -19,14 +19,20 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import structlog
-from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
-from src.monitoring.metrics import setup_prometheus_metrics
+from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
+
+# Import drift metrics to register them in the global REGISTRY
+from src.monitoring.metrics import (
+    alert_counter,
+    drift_score_gauge,
+    fraud_rate_gauge,
+    model_recall_gauge,
+)
 
 logger = structlog.get_logger(__name__)
 
 # Global flag for graceful shutdown
 running = True
-registry = CollectorRegistry()
 
 
 def signal_handler(sig, frame):
@@ -46,7 +52,8 @@ class MetricsHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", CONTENT_TYPE_LATEST)
             self.end_headers()
-            self.wfile.write(generate_latest(registry))
+            # Use global REGISTRY to include all drift metrics
+            self.wfile.write(generate_latest(REGISTRY))
         elif self.path == "/health":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -74,15 +81,14 @@ def start_custom_metrics_server(port: int) -> HTTPServer:
     Returns:
         The HTTP server instance
     """
-    # Set up Prometheus metrics in the registry
-    from prometheus_client import Gauge
-
-    health_gauge = Gauge(
-        "drift_detection_server_health",
-        "Server health status (1=healthy)",
-        registry=registry,
+    # Log registered metrics for debugging
+    logger.info(
+        "registered_drift_metrics",
+        collectors=[
+            collector.__class__.__name__
+            for collector in REGISTRY._collector_to_names.keys()
+        ],
     )
-    health_gauge.set(1)  # Mark as healthy
 
     # Start the custom HTTP server
     server = HTTPServer(("0.0.0.0", port), MetricsHandler)
@@ -159,7 +165,7 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    port = int(os.getenv("PROMETHEUS_PORT", 9091))
+    port = int(os.getenv("PROMETHEUS_PORT", 9095))
 
     logger.info("starting_drift_detection_metrics_server", port=port)
 

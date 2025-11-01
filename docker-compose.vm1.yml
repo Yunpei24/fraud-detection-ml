@@ -241,7 +241,7 @@ services:
       - ./creditcard.csv:/data/creditcard.csv:ro  # ← Dataset à la racine
       - data_artifacts:/artifacts
     ports:
-      - "9091:9091"  # Prometheus metrics - accessible depuis VM2
+      - "9091:9091"  # Prometheus metrics - accessible from VM2
     networks:
       - fraud-network
     depends_on:
