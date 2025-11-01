@@ -303,6 +303,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      attestations: write
 
     strategy:
       matrix:
