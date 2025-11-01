@@ -1,6 +1,9 @@
 # Common Package (Centralized Data Transformation Logic)
 # NOTE: fraud-detection-common is installed in Dockerfile BEFORE this requirements.txt
 
+# Build Dependencies
+setuptools>=70.0.0  # Python 3.12 compatibility
+
 # Core ML libraries
 numpy==1.26.4
 pandas==2.2.2
