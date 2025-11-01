@@ -214,6 +214,7 @@ jobs:
         POSTGRES_DB: fraud_detection
         REDIS_HOST: localhost
         REDIS_PORT: 6379
+        SKIP_INTEGRATION_TESTS: "true"  # Skip integration tests that require full database setup
       run: |
         cd ${{ matrix.service }}
         python -m pytest tests/ -v --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=50

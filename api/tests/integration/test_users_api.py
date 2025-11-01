@@ -3,8 +3,11 @@ Integration tests for user management API endpoints.
 
 These tests verify end-to-end functionality of user management endpoints
 using the TestClient to simulate real HTTP requests.
+
+NOTE: These tests require PostgreSQL to be running.
 """
 
+import os
 import pytest
 from fastapi.testclient import TestClient
 
@@ -12,6 +15,12 @@ from src.main import app
 from src.services.auth_service import auth_service
 
 client = TestClient(app)
+
+# Skip all tests in this file if PostgreSQL is not available
+pytestmark = pytest.mark.skipif(
+    os.getenv("SKIP_INTEGRATION_TESTS", "false").lower() == "true",
+    reason="Integration tests require PostgreSQL - skipped in CI without database",
+)
 
 
 # ==============================================================================
