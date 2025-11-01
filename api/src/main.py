@@ -10,12 +10,14 @@ from fastapi.responses import JSONResponse
 from .api.routes import (
     admin_router,
     audit_router,
+    auth_router,
     drift_router,
     explain_router,
     health_router,
     metrics_router,
     predict_router,
     transaction_router,
+    users_router,
 )
 from .config import constants, get_logger, settings
 from .monitoring.prometheus import (
@@ -165,6 +167,8 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 
 app.include_router(health_router)
+app.include_router(auth_router)  # Authentication endpoints
+app.include_router(users_router)  # User management endpoints (admin only)
 app.include_router(predict_router)
 app.include_router(metrics_router)
 app.include_router(admin_router)

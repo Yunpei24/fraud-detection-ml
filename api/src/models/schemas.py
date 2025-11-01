@@ -179,6 +179,232 @@ class UserResponse(BaseModel):
     )
 
 
+# ==============================================================================
+# USER MANAGEMENT SCHEMAS (Admin Endpoints)
+# ==============================================================================
+
+
+class UserCreateRequest(BaseModel):
+    """Request schema for creating a new user (Admin only)."""
+
+    username: str = Field(..., min_length=3, max_length=50, pattern="^[a-zA-Z0-9_-]+$")
+    email: str = Field(..., max_length=255)
+    password: str = Field(..., min_length=8, max_length=128)
+    first_name: Optional[str] = Field(default=None, max_length=100)
+    last_name: Optional[str] = Field(default=None, max_length=100)
+    role: str = Field(default="analyst", pattern="^(admin|analyst|viewer)$")
+    department: Optional[str] = Field(default=None, max_length=100)
+    is_active: bool = Field(default=True)
+    is_verified: bool = Field(default=False)
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "username": "john_analyst",
+                "email": "john.doe@company.com",
+                "password": "SecurePass123!",
+                "first_name": "John",
+                "last_name": "Doe",
+                "role": "analyst",
+                "department": "Fraud Detection",
+                "is_active": True,
+                "is_verified": False,
+            }
+        }
+    )
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v):
+        """Basic email validation."""
+        if "@" not in v or "." not in v.split("@")[-1]:
+            raise ValueError("Invalid email format")
+        return v.lower()
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, v):
+        """Validate username format."""
+        if not v.replace("_", "").replace("-", "").isalnum():
+            raise ValueError(
+                "Username can only contain letters, numbers, underscores and hyphens"
+            )
+        return v.lower()
+
+
+class UserUpdateRequest(BaseModel):
+    """Request schema for updating an existing user (Admin only)."""
+
+    email: Optional[str] = Field(default=None, max_length=255)
+    first_name: Optional[str] = Field(default=None, max_length=100)
+    last_name: Optional[str] = Field(default=None, max_length=100)
+    role: Optional[str] = Field(default=None, pattern="^(admin|analyst|viewer)$")
+    department: Optional[str] = Field(default=None, max_length=100)
+    is_active: Optional[bool] = None
+    is_verified: Optional[bool] = None
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "email": "john.doe@newcompany.com",
+                "first_name": "John",
+                "last_name": "Doe",
+                "role": "analyst",
+                "department": "Risk Management",
+                "is_active": True,
+                "is_verified": True,
+            }
+        }
+    )
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v):
+        """Basic email validation."""
+        if v is not None:
+            if "@" not in v or "." not in v.split("@")[-1]:
+                raise ValueError("Invalid email format")
+            return v.lower()
+        return v
+
+
+class UserPasswordResetRequest(BaseModel):
+    """Request schema for resetting user password (Admin only)."""
+
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"new_password": "NewSecurePass456!"}}
+    )
+
+
+class UserRoleUpdateRequest(BaseModel):
+    """Request schema for updating user role (Admin only)."""
+
+    role: str = Field(..., pattern="^(admin|analyst|viewer)$")
+
+    model_config = ConfigDict(json_schema_extra={"example": {"role": "admin"}})
+
+
+class UserActivationRequest(BaseModel):
+    """Request schema for activating/deactivating a user (Admin only)."""
+
+    is_active: bool
+
+    model_config = ConfigDict(json_schema_extra={"example": {"is_active": True}})
+
+
+class UserDetailResponse(BaseModel):
+    """Detailed response schema for user information (Admin view)."""
+
+    id: int
+    username: str
+    email: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    role: str
+    department: Optional[str] = None
+    is_active: bool
+    is_verified: bool
+    created_at: str
+    last_login: Optional[str] = None
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": 123,
+                "username": "john_analyst",
+                "email": "john.doe@company.com",
+                "first_name": "John",
+                "last_name": "Doe",
+                "role": "analyst",
+                "department": "Fraud Detection",
+                "is_active": True,
+                "is_verified": True,
+                "created_at": "2025-01-15T10:30:00Z",
+                "last_login": "2025-01-20T14:25:00Z",
+            }
+        }
+    )
+
+
+class UserListResponse(BaseModel):
+    """Response schema for listing users (Admin only)."""
+
+    users: List[UserDetailResponse]
+    total_count: int
+    limit: int
+    offset: int
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "users": [
+                    {
+                        "id": 1,
+                        "username": "admin",
+                        "email": "admin@company.com",
+                        "first_name": "Admin",
+                        "last_name": "User",
+                        "role": "admin",
+                        "department": "IT",
+                        "is_active": True,
+                        "is_verified": True,
+                        "created_at": "2025-01-01T00:00:00Z",
+                        "last_login": "2025-01-20T09:15:00Z",
+                    },
+                    {
+                        "id": 2,
+                        "username": "john_analyst",
+                        "email": "john@company.com",
+                        "first_name": "John",
+                        "last_name": "Doe",
+                        "role": "analyst",
+                        "department": "Fraud Detection",
+                        "is_active": True,
+                        "is_verified": True,
+                        "created_at": "2025-01-10T00:00:00Z",
+                        "last_login": "2025-01-19T16:30:00Z",
+                    },
+                ],
+                "total_count": 2,
+                "limit": 50,
+                "offset": 0,
+            }
+        }
+    )
+
+
+class UserOperationResponse(BaseModel):
+    """Response schema for user operations (create, update, delete)."""
+
+    success: bool
+    message: str
+    user: Optional[UserDetailResponse] = None
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "success": True,
+                "message": "User created successfully",
+                "user": {
+                    "id": 123,
+                    "username": "john_analyst",
+                    "email": "john@company.com",
+                    "first_name": "John",
+                    "last_name": "Doe",
+                    "role": "analyst",
+                    "department": "Fraud Detection",
+                    "is_active": True,
+                    "is_verified": False,
+                    "created_at": "2025-01-20T10:30:00Z",
+                    "last_login": None,
+                },
+            }
+        }
+    )
+
+
 class ModelVersionResponse(BaseModel):
     """Response schema for model version info."""
 
