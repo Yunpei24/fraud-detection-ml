@@ -21,7 +21,7 @@ RUN pip install --user --no-cache-dir /opt/airflow/common
 # Copy requirements
 COPY airflow/requirements.txt /requirements.txt
 
-# Install Python dependencies (sans -e ../common qui est déjà installé)
+# Install Python dependencies
 RUN pip install --no-cache-dir -r /requirements.txt
 
 # Create necessary directories
