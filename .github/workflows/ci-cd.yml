@@ -303,6 +303,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      attestations: write
 
     strategy:
       matrix:
@@ -342,30 +343,41 @@ jobs:
     - name: Check if service was modified
       id: check_changes
       run: |
-        # Get the list of modified files
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
-          CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }})
-        else
-          CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }})
-        fi
-        
-        echo "Changed files:"
-        echo "$CHANGED_FILES"
-        
-        # Check if the current service was modified
+        # Build all services if:
+        # 1. Push to main branch
+        # 2. Pull request (for testing)
+        # 3. CI/CD workflow file was modified
         SERVICE_MODIFIED=false
-        if echo "$CHANGED_FILES" | grep -q "^${{ matrix.service }}/"; then
+        
+        # Check if this is a push to main or a pull request
+        if [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.event_name }}" = "pull_request" ]; then
+          echo "Building all services (main branch or pull request)"
           SERVICE_MODIFIED=true
-        fi
-
-        # Check if common/ or requirements.txt were modified (affects all services)
-        if echo "$CHANGED_FILES" | grep -qE "^common/|^requirements\.txt"; then
-          SERVICE_MODIFIED=true
-        fi
-
-        # Check if the service's Dockerfile was modified
-        if echo "$CHANGED_FILES" | grep -q "^${{ matrix.service }}/Dockerfile"; then
-          SERVICE_MODIFIED=true
+        else
+          # Get the list of modified files
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }})
+          else
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }})
+          fi
+          
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          
+          # Check if CI/CD workflow was modified (build all services)
+          if echo "$CHANGED_FILES" | grep -q "^\.github/workflows/ci-cd\.yml"; then
+            echo "CI/CD workflow modified - building all services"
+            SERVICE_MODIFIED=true
+          # Check if the current service was modified
+          elif echo "$CHANGED_FILES" | grep -q "^${{ matrix.service }}/"; then
+            SERVICE_MODIFIED=true
+          # Check if common/ or requirements.txt were modified (affects all services)
+          elif echo "$CHANGED_FILES" | grep -qE "^common/|^requirements\.txt"; then
+            SERVICE_MODIFIED=true
+          # Check if the service's Dockerfile was modified
+          elif echo "$CHANGED_FILES" | grep -q "^${{ matrix.service }}/Dockerfile"; then
+            SERVICE_MODIFIED=true
+          fi
         fi
         
         echo "service_modified=$SERVICE_MODIFIED" >> $GITHUB_OUTPUT
@@ -391,7 +403,7 @@ jobs:
         tags: |
           type=ref,event=branch
           type=ref,event=pr
-          type=sha,prefix={{branch}}-
+          type=sha
           type=raw,value=latest,enable={{is_default_branch}}
 
     - name: Build and push Docker image
@@ -413,7 +425,7 @@ jobs:
       with:
         subject-name: ${{ env.REGISTRY }}/${{ matrix.service}}
         subject-digest: ${{ steps.build.outputs.digest }}
-        push-to-registry: true
+        push-to-registry: false
     
     - name: Skip message
       if: steps.check_changes.outputs.service_modified == 'false'
