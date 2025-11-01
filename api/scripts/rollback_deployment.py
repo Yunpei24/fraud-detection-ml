@@ -46,12 +46,12 @@ class DeploymentRollback:
         mlflow.set_tracking_uri(mlflow_uri)
         self.client = MlflowClient()
 
-    def rollback(self) -> bool:
+    def rollback(self) -> dict:
         """
         Rollback deployment to champion model.
 
         Returns:
-            True if rollback successful
+            Dictionary with success status and details
         """
         logger.info(" Rolling back to champion model...")
 
@@ -82,11 +82,16 @@ class DeploymentRollback:
             # In production, this would log to monitoring system
 
             logger.info(" Rollback completed successfully")
-            return True
+
+            return {
+                "success": True,
+                "champion_models": config.get("champion_models", []),
+                "traffic_percentage": 100,
+            }
 
         except Exception as e:
             logger.error(f" Rollback failed: {e}")
-            return False
+            return {"success": False, "error": str(e)}
 
 
 def main():
@@ -103,13 +108,13 @@ def main():
 
     # Rollback
     rollback = DeploymentRollback(args.mlflow_uri)
-    success = rollback.rollback()
+    result = rollback.rollback()
 
-    if success:
+    if result.get("success"):
         logger.info(" Rollback completed successfully")
         sys.exit(0)
     else:
-        logger.error(" Rollback failed")
+        logger.error(f" Rollback failed: {result.get('error', 'Unknown error')}")
         sys.exit(1)
 
 

@@ -11,6 +11,7 @@ from .api.routes import (
     admin_router,
     audit_router,
     auth_router,
+    deployment_router,
     drift_router,
     explain_router,
     health_router,
@@ -169,6 +170,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 app.include_router(health_router)
 app.include_router(auth_router)  # Authentication endpoints
 app.include_router(users_router)  # User management endpoints (admin only)
+app.include_router(deployment_router)  # Deployment management endpoints (admin only)
 app.include_router(predict_router)
 app.include_router(metrics_router)
 app.include_router(admin_router)

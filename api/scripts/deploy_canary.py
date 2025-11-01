@@ -52,7 +52,7 @@ class CanaryDeployer:
         self,
         model_uris: List[str],
         traffic_pct: int,
-    ) -> bool:
+    ) -> dict:
         """
         Deploy ensemble as canary with specified traffic.
 
@@ -61,7 +61,7 @@ class CanaryDeployer:
             traffic_pct: Traffic percentage for canary (1-100)
 
         Returns:
-            True if deployment successful
+            Dictionary with success status and details
         """
         logger.info(f" Deploying ensemble canary with {traffic_pct}% traffic")
         logger.info(f"   Models: {model_uris}")
@@ -165,11 +165,17 @@ class CanaryDeployer:
             logger.info(
                 f" Ensemble canary deployment complete: {traffic_pct}% traffic to challenger ensemble"
             )
-            return True
+
+            return {
+                "success": True,
+                "models_loaded": len(loaded_models),
+                "traffic_percentage": traffic_pct,
+                "model_uris": model_uris,
+            }
 
         except Exception as e:
             logger.error(f" Ensemble canary deployment failed: {e}")
-            return False
+            return {"success": False, "error": str(e)}
 
 
 def main():
@@ -200,16 +206,18 @@ def main():
 
     # Deploy
     deployer = CanaryDeployer(args.mlflow_uri)
-    success = deployer.deploy_canary(
+    result = deployer.deploy_canary(
         model_uris=args.model_uris,
         traffic_pct=args.traffic,
     )
 
-    if success:
+    if result.get("success"):
         logger.info(f" Canary {args.traffic}% deployed successfully")
         sys.exit(0)
     else:
-        logger.error(f" Canary {args.traffic}% deployment failed")
+        logger.error(
+            f" Canary {args.traffic}% deployment failed: {result.get('error', 'Unknown error')}"
+        )
         sys.exit(1)
 
 
