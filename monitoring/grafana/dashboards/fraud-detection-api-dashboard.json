@@ -1,0 +1,384 @@
+{
+  "id": null,
+  "title": "Fraud Detection API - Performance & Health",
+  "tags": [
+    "fraud-detection",
+    "api",
+    "performance",
+    "health"
+  ],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "API Request Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(fraud_api_requests_total[5m])",
+          "legendFormat": "{{method}} {{endpoint}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "yaxes": [
+        {
+          "unit": "reqps",
+          "format": "short"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "API Response Time (95th percentile)",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(fraud_api_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "{{method}} {{endpoint}} - 95th percentile",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(fraud_api_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "{{method}} {{endpoint}} - 50th percentile",
+          "refId": "B"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "yaxes": [
+        {
+          "unit": "seconds",
+          "format": "s"
+        },
+        {
+          "unit": "short",
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "HTTP Status Codes",
+      "type": "bargauge",
+      "targets": [
+        {
+          "expr": "sum(increase(fraud_api_requests_total[1h])) by (status_code)",
+          "legendFormat": "Status {{status_code}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "200": {
+                  "text": "200 OK",
+                  "color": "green"
+                },
+                "400": {
+                  "text": "400 Bad Request",
+                  "color": "orange"
+                },
+                "404": {
+                  "text": "404 Not Found",
+                  "color": "orange"
+                },
+                "500": {
+                  "text": "500 Internal Error",
+                  "color": "red"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "API Errors by Type",
+      "type": "piechart",
+      "targets": [
+        {
+          "expr": "sum(increase(fraud_api_errors_total[1h])) by (error_type)",
+          "legendFormat": "{{error_type}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 8
+      }
+    },
+    {
+      "id": 5,
+      "title": "Active Connections",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "fraud_active_connections",
+          "legendFormat": "Active HTTP connections",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 8
+      }
+    },
+    {
+      "id": 6,
+      "title": "Prediction Performance",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(fraud_predictions_total[5m])",
+          "legendFormat": "Predictions per second",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(fraud_prediction_latency_seconds_bucket[5m]))",
+          "legendFormat": "Prediction latency (95th percentile)",
+          "refId": "B"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "yaxes": [
+        {
+          "unit": "reqps",
+          "format": "short"
+        },
+        {
+          "unit": "seconds",
+          "format": "s"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Fraud Detection Results",
+      "type": "bargauge",
+      "targets": [
+        {
+          "expr": "sum(increase(fraud_predictions_total[1h])) by (prediction_label)",
+          "legendFormat": "{{prediction_label}} predictions",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "fraud": {
+                  "text": "Fraud Detected",
+                  "color": "red"
+                },
+                "legitimate": {
+                  "text": "Legitimate",
+                  "color": "green"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Prediction Confidence Distribution",
+      "type": "histogram",
+      "targets": [
+        {
+          "expr": "fraud_prediction_confidence",
+          "legendFormat": "{{prediction_label}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      }
+    },
+    {
+      "id": 9,
+      "title": "Model Health Status",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "fraud_model_health",
+          "legendFormat": "Model Health",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "UNHEALTHY",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "HEALTHY",
+                  "color": "green"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Cache Performance",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(fraud_cache_hits_total[5m])",
+          "legendFormat": "Cache hits",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(fraud_cache_misses_total[5m])",
+          "legendFormat": "Cache misses",
+          "refId": "B"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 24
+      }
+    },
+    {
+      "id": 11,
+      "title": "System Resources",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "fraud_memory_usage_bytes / 1024 / 1024",
+          "legendFormat": "Memory Usage (MB)",
+          "refId": "A"
+        },
+        {
+          "expr": "fraud_cpu_usage_percent",
+          "legendFormat": "CPU Usage (%)",
+          "refId": "B"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "yaxes": [
+        {
+          "unit": "MB",
+          "format": "decbytes"
+        },
+        {
+          "unit": "percent",
+          "format": "percent"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Database Performance",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(fraud_db_queries_total[5m])",
+          "legendFormat": "{{operation}} on {{table}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(fraud_db_query_duration_seconds_bucket[5m]))",
+          "legendFormat": "Query latency (95th percentile)",
+          "refId": "B"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "yaxes": [
+        {
+          "unit": "reqps",
+          "format": "short"
+        },
+        {
+          "unit": "seconds",
+          "format": "s"
+        }
+      ]
+    }
+  ],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "refresh": "30s",
+  "schemaVersion": 27,
+  "version": 0,
+  "links": []
+}

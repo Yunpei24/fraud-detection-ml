@@ -1,0 +1,170 @@
+# Prometheus Configuration for VM2 (Monitoring Server)
+# Collecte the metrics from VM1 via HTTP
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'fraud-detection-production'
+    environment: 'production'
+    datacenter: 'vm2-monitoring'
+
+# IMPORTANT: Replace <VM1_IP> with the IP address of VM1
+# Example: 10.0.1.4 ou vm1.frauddetection.com
+
+# IMPORTANT: Replace <VM1_IP> with our VM1's actual IP address
+# Example: 10.0.1.4 or vm1.frauddetection.com
+
+scrape_configs:
+  # Data Service Metrics (on VM1)
+  - job_name: 'fraud-data'
+    static_configs:
+      - targets: ['<VM1_IP>:9091']  # ← REPLACE <VM1_IP> with VM1's IP
+        labels:
+          service: 'data'
+          component: 'data-ingestion'
+          instance: 'vm1-data'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Drift Monitoring Service Metrics (on VM1)
+  - job_name: 'fraud-drift'
+    static_configs:
+      - targets: ['<VM1_IP>:9095']  # ← REPLACE <VM1_IP> with VM1's IP (corrected port)
+        labels:
+          service: 'drift'
+          component: 'drift-monitoring'
+          instance: 'vm1-drift'
+    metrics_path: '/metrics'
+    scrape_interval: 60s
+    scrape_timeout: 10s
+
+  # Training Service Metrics (on VM1)
+  - job_name: 'fraud-training'
+    static_configs:
+      - targets: ['<VM1_IP>:9096']  # ← REPLACE <VM1_IP> with VM1's IP (corrected port)
+        labels:
+          service: 'training'
+          component: 'model-training'
+          instance: 'vm1-training'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # API Service Metrics (on Azure Web App)
+  - job_name: 'fraud-api'
+    static_configs:
+      - targets: ['<AZURE_WEBAPP_URL>:80']  # ← REPLACE with Azure Web App URL (no https://)
+        labels:
+          service: 'api'
+          component: 'fraud-detection'
+          instance: 'azure-webapp-api'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+    # If API requires authentication, uncomment and configure:
+    # basic_auth:
+    #   username: 'prometheus'
+    #   password: 'your-password'
+
+  # PostgreSQL Exporter (optional - if installed on VM1)
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['<VM1_IP>:5432']  # PostgreSQL port
+        labels:
+          service: 'postgres'
+          component: 'database'
+          instance: 'vm1-postgres'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Redis Exporter (optional - if installed on VM1)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['<VM1_IP>:9121']  # Redis exporter port
+        labels:
+          service: 'redis'
+          component: 'cache'
+          instance: 'vm1-redis'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Airflow Metrics (on VM1)
+  - job_name: 'airflow'
+    static_configs:
+      - targets: ['<VM1_IP>:8080']  # Airflow webserver port
+        labels:
+          service: 'airflow'
+          component: 'orchestration'
+          instance: 'vm1-airflow'
+    metrics_path: '/admin/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # MLflow (optional - if Prometheus metrics exposed)
+  - job_name: 'mlflow'
+    static_configs:
+      - targets: ['<VM1_IP>:5000']  # MLflow port
+        labels:
+          service: 'mlflow'
+          component: 'model-registry'
+          instance: 'vm1-mlflow'
+    scrape_interval: 60s
+    scrape_timeout: 30s
+
+  # Node Exporter (Infrastructure metrics from VM1)
+  - job_name: 'node-vm1'
+    static_configs:
+      - targets: ['<VM1_IP>:9100']  # Node exporter port
+        labels:
+          service: 'node'
+          component: 'infrastructure'
+          instance: 'vm1-node'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Node Exporter (Infrastructure metrics from VM2 - local)
+  - job_name: 'node-vm2'
+    static_configs:
+      - targets: ['localhost:9100']  # Local node exporter
+        labels:
+          service: 'node'
+          component: 'infrastructure'
+          instance: 'vm2-node'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Grafana (local on VM2)
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['localhost:3000']
+        labels:
+          service: 'grafana'
+          component: 'visualization'
+          instance: 'vm2-grafana'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Prometheus self-monitoring (VM2)
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+          component: 'monitoring'
+          instance: 'vm2-prometheus'
+
+# ==============================================================================
+# ALERTING RULES - INTEGRATED
+# ==============================================================================
+
+rule_files:
+  - '/etc/prometheus/alert_rules.yml'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']

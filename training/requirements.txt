@@ -1,0 +1,55 @@
+# Common Package (Centralized Data Transformation Logic)
+# NOTE: fraud-detection-common is installed in Dockerfile BEFORE this requirements.txt
+
+# Build Dependencies
+setuptools>=70.0.0  # Python 3.12 compatibility
+
+# Core ML libraries
+numpy==1.26.4
+pandas==2.2.2
+scikit-learn==1.5.2
+imbalanced-learn==0.12.4  # SMOTE for imbalanced data
+xgboost==2.1.1
+lightgbm==4.5.0
+
+# Deep Learning
+torch==2.4.1
+
+# Visualization
+matplotlib==3.9.2
+seaborn==0.13.2
+plotly==5.18.0
+
+# MLflow and Experiment Tracking
+mlflow==2.10.2
+
+# Database
+sqlalchemy==2.0.23  # PostgreSQL ORM
+psycopg2-binary==2.9.9  # PostgreSQL driver
+
+# Data Versioning
+dvc[azure]==3.55.2
+
+# Model Explainability
+shap==0.44.0
+
+# Utilities
+scipy==1.11.4
+pyyaml==6.0.2
+joblib==1.3.2
+
+# Jupyter
+jupyter==1.0.0
+ipykernel==6.29.5
+
+# Testing
+pytest==8.3.3
+
+# Data formats
+fastparquet==2024.5.0
+
+# Monitoring
+prometheus-client==0.20.0
+
+# Logging
+structlog==24.1.0

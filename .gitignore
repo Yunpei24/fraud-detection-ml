@@ -205,3 +205,21 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+DOCKER_COMPOSE_READINESS_ANALYSIS.md
+
+# Local variables
+nb_venv
+load_creditcard_data.ipynb
+Guide
+README_DOCKER_COMPOSE.md
+.benchmarks
+tests/integration
+tests/e2e
+tests/airflow
+creditcard.csv
+verify-dockerhub-setup.sh
+DOCKERHUB_SETUP.md
+GITHUB_SECRETS_SETUP.md
+DOCKERHUB_SETUP1.md
+JWT_AUTH_SETUP.md
+PYDANTIC_V2_MIGRATION.md

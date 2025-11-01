@@ -1,0 +1,47 @@
+# Lightweight requirements for CI/CD testing (CPU-only, no heavy dependencies)
+# This file is used by GitHub Actions to save disk space
+setuptools>=70.0.0 # Python 3.12 compatibility
+# Core ML libraries
+numpy==1.26.4
+pandas==2.2.2
+scikit-learn==1.5.2
+imbalanced-learn==0.12.4  # SMOTE for imbalanced data
+xgboost==2.1.1
+lightgbm==4.5.0
+
+# Deep Learning (CPU-only versions - much lighter!)
+# PyTorch CPU: ~200MB vs ~2GB for full version
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.4.1+cpu
+
+# Visualization (minimal)
+matplotlib==3.9.2
+seaborn==0.13.2
+
+# MLflow and Experiment Tracking
+mlflow==2.10.2
+
+# Database
+sqlalchemy==2.0.23  # PostgreSQL ORM
+psycopg2-binary==2.9.9  # PostgreSQL driver
+
+# Model Explainability
+shap==0.44.0
+
+# Utilities
+scipy==1.11.4
+pyyaml==6.0.2
+joblib==1.3.2
+
+# Testing
+pytest==8.3.3
+
+# Data formats
+fastparquet==2024.5.0
+
+# Monitoring
+prometheus-client==0.20.0
+
+# Logging
+structlog==24.1.0
