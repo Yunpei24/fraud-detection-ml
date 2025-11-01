@@ -5,6 +5,7 @@ API routes package.
 from .admin import router as admin_router
 from .audit import router as audit_router
 from .auth import router as auth_router
+from .deployment import router as deployment_router
 from .drift import router as drift_router
 from .explain import router as explain_router
 from .health import router as health_router
@@ -24,4 +25,5 @@ __all__ = [
     "transaction_router",
     "auth_router",
     "users_router",
+    "deployment_router",
 ]

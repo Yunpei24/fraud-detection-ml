@@ -54,7 +54,7 @@ class ProductionPromoter:
         mlflow.set_tracking_uri(mlflow_uri)
         self.client = MlflowClient()
 
-    def promote_to_production(self, model_uris: List[str]) -> bool:
+    def promote_to_production(self, model_uris: List[str]) -> dict:
         """
         Promote ensemble from Staging to Production.
 
@@ -62,7 +62,7 @@ class ProductionPromoter:
             model_uris: List of MLflow model URIs for the ensemble in Staging
 
         Returns:
-            True if promotion successful
+            Dictionary with success status and details
         """
         logger.info(" Promoting ensemble to Production...")
         logger.info(f"   Models: {model_uris}")
@@ -86,7 +86,10 @@ class ProductionPromoter:
 
                 if not staging_versions:
                     logger.error(f"No {model_name} in Staging stage")
-                    return False
+                    return {
+                        "success": False,
+                        "error": f"No {model_name} in Staging stage",
+                    }
 
                 staging_version = staging_versions[0]
                 logger.info(f"  Found Staging version: {staging_version.version}")
@@ -173,14 +176,18 @@ class ProductionPromoter:
             for model_name, version in promoted_versions.items():
                 logger.info(f"   {model_name}: v{version} → Production")
 
-            return True
+            return {
+                "success": True,
+                "models_promoted": len(promoted_versions),
+                "production_versions": promoted_versions,
+            }
 
         except Exception as e:
             logger.error(f" Ensemble production promotion failed: {e}")
             import traceback
 
             traceback.print_exc()
-            return False
+            return {"success": False, "error": str(e)}
 
 
 def main():
@@ -204,13 +211,15 @@ def main():
 
     # Promote
     promoter = ProductionPromoter(args.mlflow_uri)
-    success = promoter.promote_to_production(model_uris=args.model_uris)
+    result = promoter.promote_to_production(model_uris=args.model_uris)
 
-    if success:
+    if result.get("success"):
         logger.info("Ensemble promoted to Production successfully")
         sys.exit(0)
     else:
-        logger.error("Ensemble production promotion failed")
+        logger.error(
+            f"Ensemble production promotion failed: {result.get('error', 'Unknown error')}"
+        )
         sys.exit(1)
 
 

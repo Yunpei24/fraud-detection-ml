@@ -38,88 +38,106 @@ running = True
 
 # Training metrics
 TRAINING_DURATION = Histogram(
-    "training_duration_seconds", "Time spent training a model", ["model_name", "stage"]
+    "fraud_training_duration_seconds",
+    "Time spent training a model",
+    ["model_name", "stage"],
 )
 
 TRAINING_RUNS_TOTAL = Counter(
-    "training_runs_total", "Total number of training runs", ["model_name", "status"]
+    "fraud_training_runs_total",
+    "Total number of training runs",
+    ["model_name", "status"],
 )
 
 # Model performance metrics
 MODEL_ACCURACY = Gauge(
-    "model_accuracy", "Model accuracy on test set", ["model_name", "model_version"]
+    "fraud_model_accuracy",
+    "Model accuracy on test set",
+    ["model_name", "model_version"],
 )
 
 MODEL_PRECISION = Gauge(
-    "model_precision", "Model precision on test set", ["model_name", "model_version"]
+    "fraud_model_precision",
+    "Model precision on test set",
+    ["model_name", "model_version"],
 )
 
 MODEL_RECALL = Gauge(
-    "model_recall", "Model recall on test set", ["model_name", "model_version"]
+    "fraud_model_recall", "Model recall on test set", ["model_name", "model_version"]
 )
 
 MODEL_F1_SCORE = Gauge(
-    "model_f1_score", "Model F1 score on test set", ["model_name", "model_version"]
+    "fraud_model_f1_score",
+    "Model F1 score on test set",
+    ["model_name", "model_version"],
 )
 
 MODEL_AUC_ROC = Gauge(
-    "model_auc_roc", "Model AUC-ROC score", ["model_name", "model_version"]
+    "fraud_model_auc_roc", "Model AUC-ROC score", ["model_name", "model_version"]
 )
 
 # Hyperparameter tuning metrics
 HYPERPARAMETER_TRIALS_TOTAL = Counter(
-    "hyperparameter_trials_total",
+    "fraud_hyperparameter_trials_total",
     "Total number of hyperparameter tuning trials",
     ["model_name"],
 )
 
 HYPERPARAMETER_BEST_SCORE = Gauge(
-    "hyperparameter_best_score",
+    "fraud_hyperparameter_best_score",
     "Best score achieved during hyperparameter tuning",
     ["model_name", "metric"],
 )
 
 # Data processing metrics
 DATA_LOADING_DURATION = Histogram(
-    "data_loading_duration_seconds", "Time spent loading data", ["data_source"]
+    "fraud_data_loading_duration_seconds", "Time spent loading data", ["data_source"]
 )
 
 FEATURE_ENGINEERING_DURATION = Histogram(
-    "feature_engineering_duration_seconds",
+    "fraud_feature_engineering_duration_seconds",
     "Time spent on feature engineering",
     ["stage"],
 )
 
 DATA_SAMPLES_PROCESSED = Counter(
-    "data_samples_processed_total", "Total number of data samples processed", ["split"]
+    "fraud_data_samples_processed_total",
+    "Total number of data samples processed",
+    ["split"],
 )
 
 # System metrics
 TRAINING_MEMORY_USAGE_MB = Gauge(
-    "training_memory_usage_mb", "Memory usage during training in MB", ["model_name"]
+    "fraud_training_memory_usage_mb",
+    "Memory usage during training in MB",
+    ["model_name"],
 )
 
 TRAINING_CPU_PERCENT = Gauge(
-    "training_cpu_percent", "CPU usage percentage during training", ["model_name"]
+    "fraud_training_cpu_percent", "CPU usage percentage during training", ["model_name"]
 )
 
 # MLflow integration
 MLFLOW_EXPERIMENTS_TOTAL = Counter(
-    "mlflow_experiments_total", "Total number of MLflow experiments created"
+    "fraud_mlflow_experiments_total", "Total number of MLflow experiments created"
 )
 
 MLFLOW_RUNS_TOTAL = Counter(
-    "mlflow_runs_total", "Total number of MLflow runs", ["experiment_name", "status"]
+    "fraud_mlflow_runs_total",
+    "Total number of MLflow runs",
+    ["experiment_name", "status"],
 )
 
 MLFLOW_MODELS_REGISTERED = Counter(
-    "mlflow_models_registered_total",
+    "fraud_mlflow_models_registered_total",
     "Total number of models registered in MLflow",
     ["model_name"],
 )
 
 # Training info
-TRAINING_INFO = Info("training_info", "General information about training environment")
+TRAINING_INFO = Info(
+    "fraud_training_info", "General information about training environment"
+)
 
 # Set training environment info
 TRAINING_INFO.info(
@@ -140,12 +158,12 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-def setup_prometheus_metrics(port: int = 9093) -> None:
+def setup_prometheus_metrics(port: int = 9095) -> None:
     """
     Start Prometheus HTTP server to expose metrics.
 
     Args:
-        port: Port number to expose metrics on (default: 9093)
+        port: Port number to expose metrics on (default: 9095)
     """
     try:
         start_http_server(port)
@@ -173,7 +191,7 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    port = int(os.getenv("PROMETHEUS_PORT", 9093))
+    port = int(os.getenv("PROMETHEUS_PORT", 9095))
 
     logger.info(
         "starting_training_metrics_server",
@@ -188,23 +206,23 @@ def main():
             "metrics_server_started_successfully",
             endpoint=f"http://localhost:{port}/metrics",
             metrics_exposed=[
-                "training_duration_seconds",
-                "training_runs_total",
-                "model_accuracy",
-                "model_precision",
-                "model_recall",
-                "model_f1_score",
-                "model_auc_roc",
-                "hyperparameter_trials_total",
-                "hyperparameter_best_score",
-                "data_loading_duration_seconds",
-                "feature_engineering_duration_seconds",
-                "data_samples_processed_total",
-                "training_memory_usage_mb",
-                "training_cpu_percent",
-                "mlflow_experiments_total",
-                "mlflow_runs_total",
-                "mlflow_models_registered_total",
+                "fraud_training_duration_seconds",
+                "fraud_training_runs_total",
+                "fraud_model_accuracy",
+                "fraud_model_precision",
+                "fraud_model_recall",
+                "fraud_model_f1_score",
+                "fraud_model_auc_roc",
+                "fraud_hyperparameter_trials_total",
+                "fraud_hyperparameter_best_score",
+                "fraud_data_loading_duration_seconds",
+                "fraud_feature_engineering_duration_seconds",
+                "fraud_data_samples_processed_total",
+                "fraud_training_memory_usage_mb",
+                "fraud_training_cpu_percent",
+                "fraud_mlflow_experiments_total",
+                "fraud_mlflow_runs_total",
+                "fraud_mlflow_models_registered_total",
             ],
         )
 
