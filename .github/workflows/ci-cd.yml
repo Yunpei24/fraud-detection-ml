@@ -170,11 +170,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pip-${{ matrix.service }}-
 
-    - name: Install common package
-      run: |
-        cd common
-        pip install -e .
-
     - name: Free up disk space (for training module)
       if: matrix.service == 'training'
       run: |
@@ -204,6 +199,11 @@ jobs:
           pip install -r requirements.txt
           pip install -r ../requirements.txt
         fi
+
+    - name: Install common package
+      run: |
+        cd common
+        pip install -e .
 
     - name: Run unit tests with coverage
       env:
