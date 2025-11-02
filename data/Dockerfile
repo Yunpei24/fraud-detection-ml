@@ -36,6 +36,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy Python packages from builder stage
 COPY --from=builder /root/.local /root/.local
 
+# IMPORTANT: Copy centralized config from project root
+# This contains settings.py with Pydantic v2 that is used by data/src/config/settings.py
+COPY config/ /app/config/
+
 # Copy application code
 COPY data/ .
 

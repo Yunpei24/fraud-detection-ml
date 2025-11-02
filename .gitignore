@@ -225,3 +225,5 @@ JWT_AUTH_SETUP.md
 PYDANTIC_V2_MIGRATION.md
 MONITORING_CORRECTIONS_REPORT.md
 schema.sql
+config/settings.py.backup
+common/venv_common

@@ -40,8 +40,14 @@ COPY training/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # -----------------------------------------------------------
-# 5. Copy the entire training codebase into the container
+# 5. Copy centralized config and training codebase
 # -----------------------------------------------------------
+
+# IMPORTANT: Copy centralized config from project root
+# This contains settings.py with Pydantic v2 that is used by training/src/config/settings.py
+COPY config/ /app/config/
+
+# Copy the entire training codebase into the container
 COPY training/ .
 
 # -----------------------------------------------------------
