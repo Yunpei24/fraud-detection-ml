@@ -134,7 +134,7 @@ services:
     # build:
     #   context: ./mlflow
     #   dockerfile: Dockerfile
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/mlflow:develop
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/mlflow:latest
     container_name: fraud-mlflow
     command: >
       mlflow server
@@ -166,7 +166,7 @@ services:
   # API service is deployed on Azure Web App - commented out for VM1 deployment
   # If deploying API via Docker Compose, use:
   # api:
-  #   image: ${DOCKERHUB_USERNAME:-yoshua24}/api:develop
+  #   image: ${DOCKERHUB_USERNAME:-yoshua24}/api:latest
   #   container_name: fraud-api
   # api:
   #   build:
@@ -217,7 +217,7 @@ services:
     # build:
     #   context: .  # ← Context root to access common/
     #   dockerfile: ./data/Dockerfile
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/data:develop
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/data:latest
     container_name: fraud-data
     environment:
       - POSTGRES_HOST=postgres
@@ -261,7 +261,7 @@ services:
     # build:
     #   context: .  # ← Contexte racine pour accéder à common/
     #   dockerfile: ./drift/Dockerfile
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/drift:develop
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/drift:latest
     container_name: fraud-drift
     environment:
       - POSTGRES_HOST=postgres
@@ -306,7 +306,7 @@ services:
     # build:
     #   context: .  # ← Context root to access common/
     #   dockerfile: ./training/Dockerfile
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/training:develop
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/training:latest
     container_name: fraud-training
     environment:
       - POSTGRES_HOST=postgres
@@ -357,7 +357,7 @@ services:
     # build:
     #   context: .  # Root context to access common/
     #   dockerfile: ./airflow/Dockerfile
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:latest
     profiles:
       - build-only  # Never starts, just used for building
     networks:
@@ -365,7 +365,7 @@ services:
 
   # Airflow init service - initialize database and create admin user
   airflow-init:
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:latest
     container_name: fraud-airflow-init
     command: >
       bash -c "
@@ -400,7 +400,7 @@ services:
     restart: "no"  # Run once only
 
   airflow-webserver:
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop  # Reuses built image
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:latest  # Reuses built image
     container_name: fraud-airflow-webserver
     command: webserver
     environment:
@@ -444,7 +444,7 @@ services:
     restart: unless-stopped
 
   airflow-scheduler:
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop  # Reuses built image
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:latest  # Reuses built image
     container_name: fraud-airflow-scheduler
     command: scheduler
     environment:
