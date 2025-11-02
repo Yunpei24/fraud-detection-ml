@@ -2,6 +2,7 @@
 Authentication service for JWT token management.
 """
 
+import hashlib
 import os
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
@@ -24,13 +25,38 @@ class AuthService:
         self.algorithm = settings.auth.algorithm
         self.access_token_expire_minutes = settings.auth.access_token_expire_minutes
 
+    def _normalize_password(self, password: str) -> bytes:
+        """
+        Normalize password to ensure it fits bcrypt's 72-byte limit.
+        Uses SHA256 to hash long passwords before bcrypt.
+
+        Args:
+            password: Plain text password
+
+        Returns:
+            Normalized password bytes (always <= 72 bytes)
+        """
+        # Convert to bytes
+        password_bytes = password.encode("utf-8")
+
+        # If password is longer than 72 bytes, pre-hash with SHA256
+        if len(password_bytes) > 72:
+            logger.debug(
+                f"Password exceeds 72 bytes ({len(password_bytes)} bytes), applying SHA256 pre-hash"
+            )
+            return hashlib.sha256(password_bytes).hexdigest().encode("utf-8")
+
+        return password_bytes
+
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Verify a password against its hash."""
-        return self.pwd_context.verify(plain_password, hashed_password)
+        normalized_password = self._normalize_password(plain_password)
+        return self.pwd_context.verify(normalized_password, hashed_password)
 
     def get_password_hash(self, password: str) -> str:
         """Hash a password."""
-        return self.pwd_context.hash(password)
+        normalized_password = self._normalize_password(password)
+        return self.pwd_context.hash(normalized_password)
 
     def create_access_token(
         self, data: Dict[str, Any], expires_delta: Optional[timedelta] = None

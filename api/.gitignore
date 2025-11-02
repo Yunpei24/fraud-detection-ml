@@ -9,3 +9,5 @@ venv_test
 pytest.ini.bak
 CORRECTIONS_SUMMARY.md
 AUTH_DB_INTEGRATION.md
+generate_hash_direct.py
+SWAGGER_AUTH_GUIDE.md
