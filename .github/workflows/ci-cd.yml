@@ -389,7 +389,7 @@ jobs:
         echo "service_modified=$SERVICE_MODIFIED" >> $GITHUB_OUTPUT
         echo "Service ${{ matrix.service }} modified: $SERVICE_MODIFIED"
 
-    # Setup QEMU for multi-architecture builds
+    # Setup QEMU for multi-architectures builds
     - name: Set up QEMU
       if: steps.check_changes.outputs.service_modified == 'true'
       uses: docker/setup-qemu-action@v3
