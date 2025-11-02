@@ -18,6 +18,20 @@ log_info() {
     echo -e "${GREEN}✓${NC} $1"
 }
 
+# Prompted safe prune to free disk space before local builds
+pre_build_prune() {
+    echo ""
+    read -p "Do you want to run a safe Docker prune to free space before building? (y/N): " prune_choice
+    if [[ "$prune_choice" =~ ^[Yy]$ ]]; then
+        log_warn "Running docker system prune and builder prune (non-interactive). This will remove unused images/containers/networks."
+        docker system prune -af || true
+        docker builder prune -af --filter until=24h || true
+        log_info "Prune finished"
+    else
+        log_info "Skipping prune"
+    fi
+}
+
 log_warn() {
     echo -e "${YELLOW}⚠${NC} $1"
 }
@@ -75,14 +89,16 @@ read -p "Choice (1-8): " choice
 case $choice in
     1)
         log_info "Building all images..."
+        pre_build_prune
         docker-compose -f docker-compose.local.yml build --no-cache
         log_info "Build completed ✅"
         ;;
     2)
         echo "Available services: api, data, drift, training, airflow-webserver, airflow-scheduler, prometheus, grafana, postgres, redis, mlflow"
         read -p "Service name: " service
-        log_info "Building $service..."
-        docker-compose -f docker-compose.local.yml build --no-cache $service
+    log_info "Building $service..."
+    pre_build_prune
+    docker-compose -f docker-compose.local.yml build --no-cache $service
         log_info "Build completed ✅"
         ;;
     3)
@@ -133,6 +149,7 @@ case $choice in
         
         # Build
         log_info "Step 1/5: Building images..."
+        pre_build_prune
         docker-compose -f docker-compose.local.yml build
         
         # Start

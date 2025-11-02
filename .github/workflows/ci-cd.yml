@@ -340,6 +340,12 @@ jobs:
       with:
         fetch-depth: 0  # Necessary to compare changes
 
+    - name: Free up Docker space on runner
+      run: |
+        echo "Pruning docker system and builder to free space..."
+        docker system prune -af || true
+        docker builder prune -af --filter until=24h || true
+
     - name: Check if service was modified
       id: check_changes
       run: |

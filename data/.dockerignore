@@ -1,3 +1,28 @@
+# Local .dockerignore for the data service
+# Exclude datasets, virtualenv and large local artifacts from build context
+venv/
+venv_*/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+notebooks/
+.ipynb_checkpoints/
+.env
+.env.*
+.git
+.gitignore
+.DS_Store
+node_modules/
+build/
+dist/
+*.egg-info/
+*.dist-info/
+creditcard.csv
+data_raw/
+tmp/
+*.log
 # Python
 __pycache__
 *.pyc
