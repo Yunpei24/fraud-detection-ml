@@ -377,7 +377,7 @@ services:
       - DOCKER_NETWORK=fraud-detection-ml_fraud-network
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@localhost.com}
-      - ENVIRONMENT=local  # Use local Docker images
+      - ENVIRONMENT=development  # Use development environment
     volumes:
       - ./config:/opt/airflow/config:ro  # Mount centralized config
       - ./airflow/dags:/opt/airflow/dags
@@ -419,7 +419,7 @@ services:
       - DOCKER_NETWORK=fraud-detection-ml_fraud-network
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@localhost.com}
-      - ENVIRONMENT=local  # Use local Docker images
+      - ENVIRONMENT=development  # Use development environment
     volumes:
       - ./config:/opt/airflow/config:ro  # Mount centralized config
       - ./airflow/dags:/opt/airflow/dags
@@ -459,7 +459,7 @@ services:
       - DOCKER_NETWORK=fraud-detection-ml_fraud-network
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@localhost.com}
-      - ENVIRONMENT=local  # Use local Docker images
+      - ENVIRONMENT=development  # Use development environment
       # Celery worker specific settings
       - AIRFLOW__CELERY__WORKER_CONCURRENCY=2
       - AIRFLOW__CELERY__WORKER_PREFETCH_MULTIPLIER=1
