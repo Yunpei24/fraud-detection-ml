@@ -146,15 +146,63 @@ configure_deployment() {
     echo -e "${CYAN}Please provide the following information:${NC}"
     echo ""
     
+    # Deployment Type
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}  Deployment Architecture${NC}"
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "Are VM1 and VM2 in the same Azure VNet (same subscription)?"
+    echo "  - Same VNet: VMs can communicate via private IPs (more secure)"
+    echo "  - Different Accounts: Must use public IPs for communication"
+    echo ""
+    read -p "Same VNet? (y/n): " SAME_VNET
+    
+    if [[ "$SAME_VNET" =~ ^[Yy]$ ]]; then
+        DEPLOYMENT_TYPE="same-vnet"
+        log_success "Deployment mode: SAME VNET (using private IPs)"
+    else
+        DEPLOYMENT_TYPE="cross-account"
+        log_warning "Deployment mode: CROSS-ACCOUNT (using public IPs)"
+        log_warning "⚠️  Metrics ports will be exposed on public internet"
+        log_warning "⚠️  NSG rules will restrict access to VM2 IP only"
+    fi
+    
+    echo ""
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}  VM Configuration${NC}"
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
     # VM1 Configuration
     read -p "VM1 Public IP: " VM1_PUBLIC_IP
-    read -p "VM1 Private IP (or press Enter to use public IP): " VM1_PRIVATE_IP
-    VM1_PRIVATE_IP=${VM1_PRIVATE_IP:-$VM1_PUBLIC_IP}
+    
+    if [ "$DEPLOYMENT_TYPE" = "same-vnet" ]; then
+        read -p "VM1 Private IP: " VM1_PRIVATE_IP
+        VM1_METRICS_IP="$VM1_PRIVATE_IP"
+        log_info "Prometheus will scrape VM1 via private IP: $VM1_PRIVATE_IP"
+    else
+        VM1_PRIVATE_IP="$VM1_PUBLIC_IP"
+        VM1_METRICS_IP="$VM1_PUBLIC_IP"
+        log_warning "Prometheus will scrape VM1 via public IP: $VM1_PUBLIC_IP"
+        log_warning "Make sure to configure NSG rules on VM1!"
+    fi
+    
+    echo ""
     
     # VM2 Configuration
     read -p "VM2 Public IP: " VM2_PUBLIC_IP
-    read -p "VM2 Private IP (or press Enter to use public IP): " VM2_PRIVATE_IP
-    VM2_PRIVATE_IP=${VM2_PRIVATE_IP:-$VM2_PUBLIC_IP}
+    
+    if [ "$DEPLOYMENT_TYPE" = "same-vnet" ]; then
+        read -p "VM2 Private IP: " VM2_PRIVATE_IP
+    else
+        VM2_PRIVATE_IP="$VM2_PUBLIC_IP"
+    fi
+    
+    echo ""
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}  Azure Services${NC}"
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
     
     # Azure Web App
     read -p "Azure Web App URL (without https://): " AZURE_WEBAPP_URL
@@ -182,10 +230,37 @@ configure_deployment() {
     echo ""
     log_success "Configuration complete"
     
+    # Display deployment summary
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  Deployment Summary${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "Deployment Type: $DEPLOYMENT_TYPE"
+    echo "VM1 Public IP:   $VM1_PUBLIC_IP"
+    echo "VM1 Private IP:  $VM1_PRIVATE_IP"
+    echo "VM1 Metrics IP:  $VM1_METRICS_IP"
+    echo "VM2 Public IP:   $VM2_PUBLIC_IP"
+    echo "VM2 Private IP:  $VM2_PRIVATE_IP"
+    echo "Azure Web App:   https://$AZURE_WEBAPP_URL"
+    echo "Alert Email:     $ALERT_EMAIL"
+    
+    if [ "$DEPLOYMENT_TYPE" = "cross-account" ]; then
+        echo ""
+        echo -e "${RED}⚠️  CROSS-ACCOUNT DEPLOYMENT WARNINGS:${NC}"
+        echo "  • Metrics ports (9091, 9095, 9096) will be exposed publicly on VM1"
+        echo "  • NSG rules will restrict access to VM2 IP: $VM2_PUBLIC_IP"
+        echo "  • Data transfer between VMs will be charged as egress traffic"
+        echo "  • Consider adding Basic Auth for additional security"
+    fi
+    echo ""
+    
     # Save configuration to file
     cat > /tmp/deployment-config.env << EOF
+DEPLOYMENT_TYPE=$DEPLOYMENT_TYPE
 VM1_PUBLIC_IP=$VM1_PUBLIC_IP
 VM1_PRIVATE_IP=$VM1_PRIVATE_IP
+VM1_METRICS_IP=$VM1_METRICS_IP
 VM2_PUBLIC_IP=$VM2_PUBLIC_IP
 VM2_PRIVATE_IP=$VM2_PRIVATE_IP
 AZURE_WEBAPP_URL=$AZURE_WEBAPP_URL
@@ -328,7 +403,7 @@ echo "🔹 Moving .env file..."
 mv ~/.env .env
 
 echo "🔹 Configuring Prometheus targets..."
-sed -i "s/<VM1_IP>/$VM1_PRIVATE_IP/g" monitoring/prometheus.vm2.yml
+sed -i "s/<VM1_IP>/$VM1_METRICS_IP/g" monitoring/prometheus.vm2.yml
 sed -i "s/<AZURE_WEBAPP_URL>/$AZURE_WEBAPP_URL/g" monitoring/prometheus.vm2.yml
 
 echo "🔹 Verifying configuration..."
@@ -366,13 +441,13 @@ validate_deployment() {
     # Test VM1 metrics endpoints
     log_info "Testing VM1 metrics endpoints..."
     
-    test_endpoint "Data Service (9091)" "http://$VM1_PRIVATE_IP:9091/metrics"
+    test_endpoint "Data Service (9091)" "http://$VM1_METRICS_IP:9091/metrics"
     [ $? -ne 0 ] && validation_failed=1
     
-    test_endpoint "Drift Service (9095)" "http://$VM1_PRIVATE_IP:9095/metrics"
+    test_endpoint "Drift Service (9095)" "http://$VM1_METRICS_IP:9095/metrics"
     [ $? -ne 0 ] && validation_failed=1
     
-    test_endpoint "Training Service (9096)" "http://$VM1_PRIVATE_IP:9096/metrics"
+    test_endpoint "Training Service (9096)" "http://$VM1_METRICS_IP:9096/metrics"
     [ $? -ne 0 ] && validation_failed=1
     
     # Test VM2 monitoring stack
@@ -547,6 +622,7 @@ OPTIONS:
     --validate      Validate existing deployment
     --rollback      Rollback deployment
     --credentials   Display credentials
+    --nsg-rules     Display NSG configuration commands (for cross-account)
     --help          Show this help message
 
 EXAMPLES:
@@ -559,10 +635,154 @@ EXAMPLES:
     # Validate deployment
     bash scripts/deploy-production.sh --validate
 
+    # Display NSG rules for cross-account setup
+    bash scripts/deploy-production.sh --nsg-rules
+
     # Display credentials
     bash scripts/deploy-production.sh --credentials
 
 EOF
+}
+
+# Display NSG configuration for cross-account
+show_nsg_rules() {
+    log_step "NSG CONFIGURATION FOR CROSS-ACCOUNT DEPLOYMENT"
+    
+    load_configuration
+    
+    if [ "$DEPLOYMENT_TYPE" != "cross-account" ]; then
+        log_warning "This deployment is configured for same-vnet mode."
+        log_info "NSG rules for inter-VM communication are handled by default VNet rules."
+        return
+    fi
+    
+    cat << EOF
+
+${YELLOW}╔═══════════════════════════════════════════════════════════════╗
+║         AZURE NSG RULES - CROSS-ACCOUNT DEPLOYMENT           ║
+╚═══════════════════════════════════════════════════════════════╝${NC}
+
+${RED}⚠️  IMPORTANT: VM1 and VM2 are in different Azure accounts/subscriptions.${NC}
+${RED}⚠️  You MUST configure NSG rules to allow communication via public IPs.${NC}
+
+${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+${CYAN}  STEP 1: Configure NSG on VM1 (Allow Prometheus from VM2)${NC}
+${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+
+${GREEN}# Login to Azure Account #1 (where VM1 is located)${NC}
+az login
+az account set --subscription "<VM1_SUBSCRIPTION_ID>"
+
+${GREEN}# Create rule to allow Prometheus scraping from VM2${NC}
+az network nsg rule create \\
+  --resource-group <VM1_RESOURCE_GROUP> \\
+  --nsg-name <VM1_NSG_NAME> \\
+  --name Allow-Prometheus-From-VM2 \\
+  --priority 200 \\
+  --source-address-prefixes "$VM2_PUBLIC_IP/32" \\
+  --destination-port-ranges 9091 9095 9096 \\
+  --protocol Tcp \\
+  --access Allow \\
+  --direction Inbound \\
+  --description "Allow Prometheus scraping from VM2 (different account)"
+
+${GREEN}# Verify the rule${NC}
+az network nsg rule list \\
+  --resource-group <VM1_RESOURCE_GROUP> \\
+  --nsg-name <VM1_NSG_NAME> \\
+  --query "[?name=='Allow-Prometheus-From-VM2']" \\
+  --output table
+
+${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+${CYAN}  STEP 2: Configure NSG on VM2 (Allow Grafana Access)${NC}
+${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+
+${GREEN}# Login to Azure Account #2 (where VM2 is located)${NC}
+az login
+az account set --subscription "<VM2_SUBSCRIPTION_ID>"
+
+${GREEN}# Allow Grafana access from Internet${NC}
+az network nsg rule create \\
+  --resource-group <VM2_RESOURCE_GROUP> \\
+  --nsg-name <VM2_NSG_NAME> \\
+  --name Allow-Grafana-Public \\
+  --priority 300 \\
+  --source-address-prefixes "Internet" \\
+  --destination-port-ranges 3000 \\
+  --protocol Tcp \\
+  --access Allow \\
+  --direction Inbound \\
+  --description "Allow Grafana web access"
+
+${GREEN}# (OPTIONAL) Restrict Prometheus to admin IP only${NC}
+az network nsg rule create \\
+  --resource-group <VM2_RESOURCE_GROUP> \\
+  --nsg-name <VM2_NSG_NAME> \\
+  --name Allow-Prometheus-Admin \\
+  --priority 400 \\
+  --source-address-prefixes "<YOUR_ADMIN_IP>/32" \\
+  --destination-port-ranges 9090 \\
+  --protocol Tcp \\
+  --access Allow \\
+  --direction Inbound \\
+  --description "Allow Prometheus access for admin only"
+
+${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+${CYAN}  STEP 3: Verify Docker Services Listen on 0.0.0.0${NC}
+${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+
+${GREEN}# On VM1, check that services bind to 0.0.0.0 (not 127.0.0.1)${NC}
+ssh azureuser@$VM1_PUBLIC_IP
+
+# Inside VM1
+docker exec fraud-data-service netstat -tlnp | grep 9091
+docker exec fraud-drift-service netstat -tlnp | grep 9095
+docker exec fraud-training-service netstat -tlnp | grep 9096
+
+# Expected output: 0.0.0.0:9091, 0.0.0.0:9095, 0.0.0.0:9096
+
+${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+${CYAN}  STEP 4: Test Connectivity${NC}
+${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+
+${GREEN}# From VM2, test access to VM1 metrics${NC}
+ssh azureuser@$VM2_PUBLIC_IP
+
+# Inside VM2
+curl -v http://$VM1_PUBLIC_IP:9091/metrics | head -20
+curl -v http://$VM1_PUBLIC_IP:9095/metrics | head -20
+curl -v http://$VM1_PUBLIC_IP:9096/metrics | head -20
+
+# Expected: HTTP 200 OK with metrics
+
+${GREEN}# Check Prometheus targets${NC}
+curl http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {job: .labels.job, health: .health}'
+
+${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+${CYAN}  Configuration Summary${NC}
+${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+
+VM1 Public IP:  $VM1_PUBLIC_IP
+VM2 Public IP:  $VM2_PUBLIC_IP
+
+NSG Rules Required:
+  ✅ VM1: Allow $VM2_PUBLIC_IP → ports 9091, 9095, 9096
+  ✅ VM2: Allow Internet → port 3000 (Grafana)
+  ✅ (Optional) VM2: Allow <YOUR_IP> → port 9090 (Prometheus)
+
+Prometheus Configuration:
+  • Uses VM1 public IP: $VM1_PUBLIC_IP
+  • File: monitoring/prometheus.vm2.yml
+
+${YELLOW}⚠️  Security Recommendations:${NC}
+  • Metrics ports are exposed publicly (restricted by NSG)
+  • Consider adding Basic Auth for extra security
+  • Monitor egress traffic costs (cross-account = charged)
+  • Use Azure Monitor to track unauthorized access attempts
+
+EOF
+
+    log_info "For detailed security setup, see: Guide/CROSS_ACCOUNT_DEPLOYMENT.md"
 }
 
 # Main function
@@ -577,6 +797,7 @@ main() {
     local do_validate=0
     local do_rollback=0
     local do_credentials=0
+    local do_nsg_rules=0
     
     if [ $# -eq 0 ]; then
         show_usage
@@ -606,6 +827,9 @@ main() {
                 ;;
             --credentials)
                 do_credentials=1
+                ;;
+            --nsg-rules)
+                do_nsg_rules=1
                 ;;
             --help)
                 show_usage
@@ -638,9 +862,31 @@ main() {
         exit 0
     fi
     
+    if [ $do_nsg_rules -eq 1 ]; then
+        show_nsg_rules
+        exit 0
+    fi
+    
     if [ $do_vm1 -eq 1 ] || [ $do_vm2 -eq 1 ]; then
         check_prerequisites
         load_configuration
+        
+        # Show NSG warning for cross-account deployments
+        if [ "$DEPLOYMENT_TYPE" = "cross-account" ]; then
+            echo ""
+            log_warning "═══════════════════════════════════════════════════════════════"
+            log_warning "  CROSS-ACCOUNT DEPLOYMENT DETECTED"
+            log_warning "═══════════════════════════════════════════════════════════════"
+            log_warning "Before proceeding, ensure NSG rules are configured!"
+            log_warning "Run: bash scripts/deploy-production.sh --nsg-rules"
+            echo ""
+            read -p "Have you configured the NSG rules? (yes/no): " nsg_confirmed
+            if [ "$nsg_confirmed" != "yes" ]; then
+                log_error "Please configure NSG rules first."
+                log_info "Run: bash scripts/deploy-production.sh --nsg-rules"
+                exit 1
+            fi
+        fi
         
         if [ $do_vm1 -eq 1 ]; then
             deploy_vm1
@@ -651,6 +897,19 @@ main() {
         fi
         
         display_credentials
+        
+        # Show post-deployment NSG reminder for cross-account
+        if [ "$DEPLOYMENT_TYPE" = "cross-account" ]; then
+            echo ""
+            log_warning "═══════════════════════════════════════════════════════════════"
+            log_warning "  POST-DEPLOYMENT VERIFICATION"
+            log_warning "═══════════════════════════════════════════════════════════════"
+            log_info "Test connectivity from VM2 to VM1:"
+            log_info "  ssh azureuser@$VM2_PUBLIC_IP"
+            log_info "  curl http://$VM1_PUBLIC_IP:9091/metrics"
+            log_info "  curl http://$VM1_PUBLIC_IP:9095/metrics"
+            log_info "  curl http://$VM1_PUBLIC_IP:9096/metrics"
+        fi
     fi
     
     if [ $do_validate -eq 1 ]; then
@@ -666,6 +925,10 @@ main() {
     echo "  2. Access Grafana: http://$VM2_PUBLIC_IP:3000"
     echo "  3. Access Airflow: http://$VM1_PUBLIC_IP:8080"
     echo "  4. Check credentials: bash scripts/deploy-production.sh --credentials"
+    
+    if [ "$DEPLOYMENT_TYPE" = "cross-account" ]; then
+        echo "  5. Verify NSG rules: bash scripts/deploy-production.sh --nsg-rules"
+    fi
     echo ""
 }
 
