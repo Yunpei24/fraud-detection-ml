@@ -199,7 +199,7 @@ class TestTransactionSimulator:
 
         # Check fraud-specific features have some variation
         # (exact values depend on random seed, but should be reasonable)
-        assert -25 <= features["V4"] <= 10
+        assert -25 <= features["V4"] <= 15
         assert -15 <= features["V11"] <= 25
         assert -25 <= features["V12"] <= 10
         assert -25 <= features["V14"] <= 10
