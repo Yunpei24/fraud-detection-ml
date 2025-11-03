@@ -406,6 +406,44 @@ class PredictionService:
         """
         return self.model.health_check()
 
+    def get_available_models(self) -> List[str]:
+        """
+        Get list of models that are actually loaded and available.
+
+        Returns:
+            List of available model types
+        """
+        available_models = []
+
+        # Check which individual models are loaded in the ensemble
+        if (
+            hasattr(self.model, "xgboost_model")
+            and self.model.xgboost_model is not None
+        ):
+            available_models.append("xgboost")
+
+        if (
+            hasattr(self.model, "random_forest_model")
+            and self.model.random_forest_model is not None
+        ):
+            available_models.append("random_forest")
+
+        if hasattr(self.model, "nn_model") and self.model.nn_model is not None:
+            available_models.append("neural_network")
+
+        if (
+            hasattr(self.model, "isolation_forest_model")
+            and self.model.isolation_forest_model is not None
+        ):
+            available_models.append("isolation_forest")
+
+        # If at least one model is loaded, ensemble is available
+        if available_models:
+            available_models.append("ensemble")
+
+        self.logger.info(f"Available models: {available_models}")
+        return available_models
+
     async def explain_prediction_shap(
         self,
         transaction_id: str,
