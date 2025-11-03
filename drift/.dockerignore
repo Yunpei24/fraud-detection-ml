@@ -90,3 +90,4 @@ data/processed/
 .DS_Store
 Thumbs.db
 *.tmp
+test_api_client_auth.py

@@ -280,11 +280,14 @@ services:
       - PROMETHEUS_PORT=9095
       - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
       - ENVIRONMENT=${ENVIRONMENT:-production}
-      # 🚨 NEW: Airflow integration for retraining trigger
+      # NEW: Airflow integration for retraining trigger
       - AIRFLOW_API_URL=http://airflow-webserver:8080/api/v1
       - AIRFLOW_USERNAME=${AIRFLOW_USERNAME:-airflow}
       - AIRFLOW_PASSWORD=${AIRFLOW_PASSWORD:-airflow}
       - RETRAINING_COOLDOWN_HOURS=48
+      - API_URL=http://api:8000
+      - API_USERNAME=${API_USERNAME_DRIFT:-admin}
+      - API_PASSWORD=${API_PASSWORD_DRIFT:-admin123}
     ports:
       - "9095:9095"  # Prometheus metrics - accessible depuis VM2
     networks:

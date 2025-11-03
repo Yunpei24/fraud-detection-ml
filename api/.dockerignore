@@ -75,3 +75,10 @@ dist/
 
 # Documentation
 docs/_build/
+.env.example
+.env.docker
+AZURE_WEBAPP_CONFIG.md
+EVIDENTLY_MIGRATION_PLAN.md
+pytest.ini
+SHAP_EXPLAINERS_CONFIG.md
+USER_MANAGEMENT_API.md

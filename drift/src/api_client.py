@@ -85,9 +85,11 @@ class FraudDetectionAPIClient:
                 "password": self.password,
             }
 
-            logger.info("authenticating_to_api", url=url)
+            headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-            response = self.session.post(url, data=payload, timeout=10)
+            logger.info("authenticating_to_api", url=url, username=self.username)
+
+            response = self.session.post(url, data=payload, headers=headers, timeout=10)
 
             if response.status_code == 200:
                 result = response.json()

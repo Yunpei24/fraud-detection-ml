@@ -74,3 +74,4 @@ temp/
 *.tmp
 
 docs/
+test_api_client_auth.py

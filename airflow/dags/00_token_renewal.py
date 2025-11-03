@@ -56,7 +56,7 @@ def renew_admin_token(**context):
         api_url = Variable.get("API_URL", default_var=None)
 
         if not api_url:
-            logger.error("❌ API_URL variable not found")
+            logger.error(" API_URL variable not found")
             logger.error("   Run setup_api_connection.py first")
             raise ValueError("API_URL not configured")
 
@@ -65,11 +65,11 @@ def renew_admin_token(**context):
         admin_password = Variable.get("API_ADMIN_PASSWORD", default_var=None)
 
         if not admin_username or not admin_password:
-            logger.error("❌ Admin credentials not found in Airflow Variables")
+            logger.error(" Admin credentials not found in Airflow Variables")
             logger.error("   Run setup_api_connection.py with --auto-renew flag")
             raise ValueError("Admin credentials not configured")
 
-        logger.info(f"🔐 Renewing admin token from {api_url}...")
+        logger.info(f" Renewing admin token from {api_url}...")
         logger.info(f"   Username: {admin_username}")
 
         # Call login endpoint
@@ -88,7 +88,7 @@ def renew_admin_token(**context):
                 # Update token in Airflow Variables
                 Variable.set("API_ADMIN_TOKEN", new_token)
 
-                logger.info("✅ Admin token renewed successfully")
+                logger.info(" Admin token renewed successfully")
                 logger.info(f"   New token: {new_token[:20]}...{new_token[-10:]}")
                 logger.info(f"   Expires in: {data.get('expires_in', 'N/A')} seconds")
 
@@ -109,15 +109,15 @@ def renew_admin_token(**context):
                     "expires_in": data.get("expires_in"),
                 }
             else:
-                logger.error("❌ No access_token in response")
+                logger.error(" No access_token in response")
                 raise ValueError("No access_token in API response")
         else:
-            logger.error(f"❌ Token renewal failed: {response.status_code}")
+            logger.error(f" Token renewal failed: {response.status_code}")
             logger.error(f"   Response: {response.text}")
             raise ValueError(f"API returned status {response.status_code}")
 
     except Exception as e:
-        logger.error(f"❌ Token renewal failed: {e}")
+        logger.error(f" Token renewal failed: {e}")
         raise
 
 
@@ -142,7 +142,7 @@ def verify_new_token(**context):
         )
 
         if response.status_code == 200:
-            logger.info("✅ New token verified successfully")
+            logger.info(" New token verified successfully")
             logger.info(f"   API is accessible with new token")
 
             return {
@@ -151,11 +151,11 @@ def verify_new_token(**context):
                 "api_status": "accessible",
             }
         else:
-            logger.error(f"❌ Token verification failed: {response.status_code}")
+            logger.error(f" Token verification failed: {response.status_code}")
             raise ValueError(f"API returned status {response.status_code}")
 
     except Exception as e:
-        logger.error(f"❌ Token verification failed: {e}")
+        logger.error(f" Token verification failed: {e}")
         raise
 
 
