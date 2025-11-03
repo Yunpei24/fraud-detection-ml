@@ -7,17 +7,20 @@ import os
 from pathlib import Path
 
 # Database settings
-database_url = os.getenv("POSTGRES_HOST", "localhost")
+# Default to 'postgres' for local Docker development
+# In Azure, set POSTGRES_HOST to: your-server.postgres.database.azure.com
+# In VM deployment, set POSTGRES_HOST to VM's IP address
+database_host = os.getenv("POSTGRES_HOST", "postgres")
 database_port = int(os.getenv("POSTGRES_PORT", "5432"))
 database_name = os.getenv("POSTGRES_DB", "fraud_detection")
-database_user = os.getenv("POSTGRES_USER", "postgres")
-database_password = os.getenv("POSTGRES_PASSWORD", "postgres")
+database_user = os.getenv("POSTGRES_USER", "fraud_user")
+database_password = os.getenv("POSTGRES_PASSWORD", "fraud_pass_dev_2024")
 
 # Construct database URL
-database_url = f"postgresql://{database_user}:{database_password}@{database_url}:{database_port}/{database_name}"
+database_url = f"postgresql://{database_user}:{database_password}@{database_host}:{database_port}/{database_name}"
 
 # Redis settings
-redis_host = os.getenv("REDIS_HOST", "localhost")
+redis_host = os.getenv("REDIS_HOST", "redis")  # Changed to 'redis' for Docker
 redis_port = int(os.getenv("REDIS_PORT", "6379"))
 redis_password = os.getenv("REDIS_PASSWORD", "")
 redis_url = (

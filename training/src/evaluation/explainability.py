@@ -23,8 +23,30 @@ def generate_shap_values(model, X_sample: np.ndarray):
     explainer = None
     try:
         if _is_tree_model(model):
-            explainer = shap.TreeExplainer(model)
-            shap_values = explainer.shap_values(X_sample)
+            # For XGBoost, use model_output="raw" to avoid encoding issues
+            # This helps with SHAP's internal serialization
+            if _is_xgboost_model(model):
+                try:
+                    explainer = shap.TreeExplainer(model, model_output="raw")
+                    shap_values = explainer.shap_values(X_sample)
+                except (UnicodeDecodeError, ValueError) as e:
+                    # Fallback: use feature_perturbation="interventional"
+                    # which doesn't rely on internal model serialization
+                    import warnings
+
+                    warnings.warn(
+                        f"XGBoost TreeExplainer failed ({e}), using KernelExplainer fallback"
+                    )
+                    background = (
+                        shap.sample(X_sample, 100)
+                        if X_sample.shape[0] > 100
+                        else X_sample
+                    )
+                    explainer = shap.KernelExplainer(model.predict_proba, background)
+                    shap_values = explainer.shap_values(X_sample)
+            else:
+                explainer = shap.TreeExplainer(model)
+                shap_values = explainer.shap_values(X_sample)
         elif _is_linear_model(model):
             explainer = shap.LinearExplainer(
                 model, X_sample, feature_perturbation="interventional"
@@ -116,6 +138,13 @@ def _is_tree_model(model) -> bool:
         k in name
         for k in ["xgb", "xgboost", "forest", "gbm", "gradientboost", "lightgbm"]
     )
+
+
+def _is_xgboost_model(model) -> bool:
+    """Check if model is XGBoost specifically"""
+    name = model.__class__.__name__.lower()
+    module = model.__class__.__module__.lower()
+    return "xgb" in name or "xgboost" in name or "xgboost" in module
 
 
 def _is_linear_model(model) -> bool:

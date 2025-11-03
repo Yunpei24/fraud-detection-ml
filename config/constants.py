@@ -64,10 +64,10 @@ elif (
     }
 else:  # test or staging
     DOCKER_IMAGES = {
-        "TRAINING": "fraud-detection/airflow:local",
-        "API": "fraud-detection/airflow:local",
-        "DATA": "fraud-detection/airflow:local",
-        "DRIFT": "fraud-detection/airflow:local",
+        "TRAINING": "fraud-detection/training:local",
+        "API": "fraud-detection/api:local",
+        "DATA": "fraud-detection/data:local",
+        "DRIFT": "fraud-detection/drift:local",
     }
 
 ENV_VARS = {
@@ -78,6 +78,9 @@ ENV_VARS = {
     "DOCKER_IMAGE_API": DOCKER_IMAGES["API"],
     "DOCKER_IMAGE_DATA": DOCKER_IMAGES["DATA"],
     "DOCKER_IMAGE_DRIFT": DOCKER_IMAGES["DRIFT"],
+    # Python configuration
+    "PYTHONPATH": "/app",
+    "PYTHONUNBUFFERED": "1",
     # PostgreSQL configuration
     "POSTGRES_HOST": "postgres",
     "POSTGRES_PORT": "5432",

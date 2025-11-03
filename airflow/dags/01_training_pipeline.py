@@ -163,6 +163,7 @@ with DAG(
         network_mode=DOCKER_NETWORK,
         auto_remove=True,
         mount_tmp_dir=False,
+        working_dir="/app",  # Specify working directory explicitly
         mounts=[
             {
                 "target": "/app/data/raw/creditcard.csv",
