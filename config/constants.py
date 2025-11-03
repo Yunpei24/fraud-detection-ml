@@ -50,15 +50,17 @@ if ENVIRONMENT == "production":
     DOCKER_IMAGES = {
         "TRAINING": f"{DOCKERHUB_USERNAME}/training:latest",
         "API": f"{DOCKERHUB_USERNAME}/api:latest",
+        "DATA": f"{DOCKERHUB_USERNAME}/data:latest",
         "DRIFT": f"{DOCKERHUB_USERNAME}/drift:latest",
         "DATA_QUALITY": f"{DOCKERHUB_USERNAME}/data-quality:latest",
     }
 else:  # local development
     DOCKER_IMAGES = {
-        "TRAINING": "fraud-detection/training:local",
-        "API": "fraud-detection/api:local",
-        "DRIFT": "fraud-detection/drift:local",
-        "DATA_QUALITY": "fraud-detection/data-quality:local",
+        "TRAINING": "fraud-detection/training:develop",
+        "API": "fraud-detection/api:develop",
+        "DATA": "fraud-detection/data:develop",
+        "DRIFT": "fraud-detection/drift:develop",
+        "DATA_QUALITY": "fraud-detection/data-quality:develop",
     }
 
 ENV_VARS = {
@@ -67,6 +69,7 @@ ENV_VARS = {
     "DOCKER_COMPOSE_PROJECT": "fraud-detection-ml",
     "DOCKER_IMAGE_TRAINING": DOCKER_IMAGES["TRAINING"],
     "DOCKER_IMAGE_API": DOCKER_IMAGES["API"],
+    "DOCKER_IMAGE_DATA": DOCKER_IMAGES["DATA"],
     "DOCKER_IMAGE_DRIFT": DOCKER_IMAGES["DRIFT"],
     "DOCKER_IMAGE_DATA_QUALITY": DOCKER_IMAGES["DATA_QUALITY"],
     # PostgreSQL configuration
@@ -219,6 +222,7 @@ DOCKER_NETWORK = ENV_VARS["DOCKER_NETWORK"]
 # Docker images (environment-aware)
 DOCKER_IMAGE_TRAINING = ENV_VARS["DOCKER_IMAGE_TRAINING"]
 DOCKER_IMAGE_API = ENV_VARS["DOCKER_IMAGE_API"]
+DOCKER_IMAGE_DATA = ENV_VARS["DOCKER_IMAGE_DATA"]
 DOCKER_IMAGE_DRIFT = ENV_VARS["DOCKER_IMAGE_DRIFT"]
 DOCKER_IMAGE_DATA_QUALITY = ENV_VARS["DOCKER_IMAGE_DATA_QUALITY"]
 

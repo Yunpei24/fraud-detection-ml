@@ -27,26 +27,21 @@ class AuthService:
 
     def _normalize_password(self, password: str) -> bytes:
         """
-        Normalize password to ensure it fits bcrypt's 72-byte limit.
-        Uses SHA256 to hash long passwords before bcrypt.
+        Normalize password using SHA256 to ensure it fits bcrypt's 72-byte limit.
+        Always uses SHA256 for consistency, regardless of password length.
 
         Args:
             password: Plain text password
 
         Returns:
-            Normalized password bytes (always <= 72 bytes)
+            SHA256 hash as bytes (always 64 bytes, well under bcrypt's 72-byte limit)
         """
-        # Convert to bytes
+        # Always use SHA256 pre-hash for consistency
         password_bytes = password.encode("utf-8")
+        sha256_hash = hashlib.sha256(password_bytes).hexdigest()
 
-        # If password is longer than 72 bytes, pre-hash with SHA256
-        if len(password_bytes) > 72:
-            logger.debug(
-                f"Password exceeds 72 bytes ({len(password_bytes)} bytes), applying SHA256 pre-hash"
-            )
-            return hashlib.sha256(password_bytes).hexdigest().encode("utf-8")
-
-        return password_bytes
+        # Convert hex string to bytes (64 bytes, safe for bcrypt)
+        return sha256_hash.encode("utf-8")
 
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Verify a password against its hash."""
