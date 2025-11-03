@@ -136,6 +136,9 @@ class RealtimePipeline:
         logger.info(
             f"Auth: {'JWT Token' if self.api_token else 'Username/Password' if self.api_username else 'None'}"
         )
+        logger.info(
+            f"Webapp URL: {self.webapp_url if self.webapp_url else 'Not configured (fraud alerts disabled)'}"
+        )
 
         # Data cleaner
         self.cleaner = DataCleaner()
@@ -776,7 +779,7 @@ class RealtimePipeline:
         Args:
             interval_seconds: Process batch every N seconds
         """
-        logger.info(f"🌊 Starting STREAM pipeline (interval: {interval_seconds}s)")
+        logger.info(f"Starting STREAM pipeline (interval: {interval_seconds}s)")
 
         buffer = []
         last_process_time = [
@@ -878,6 +881,21 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Log configuration for debugging
+    logger.info("=" * 80)
+    logger.info("REALTIME PIPELINE CONFIGURATION")
+    logger.info("=" * 80)
+    logger.info(f"Mode: {args.mode}")
+    logger.info(f"Count: {args.count}")
+    logger.info(f"Kafka: {args.kafka}")
+    logger.info(f"Topic: {args.topic}")
+    logger.info(f"API URL: {args.api_url}")
+    logger.info(f"Webapp URL: {args.webapp_url}")
+    logger.info(f"API Username: {args.api_username}")
+    logger.info(f"API Password: {'***' if args.api_password else 'Not set'}")
+    logger.info(f"API Token: {'***' if args.api_token else 'Not set'}")
+    logger.info("=" * 80)
 
     # Create pipeline with JWT authentication
     pipeline = RealtimePipeline(

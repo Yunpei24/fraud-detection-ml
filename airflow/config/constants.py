@@ -93,6 +93,22 @@ ENV_VARS = {
     # Model registry
     "MODEL_REGISTRY_PATH": "/app/models",
     "MODEL_ARTIFACT_PATH": "s3://fraud-models",
+    # Kafka configuration
+    "KAFKA_BOOTSTRAP_SERVERS": os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
+    "KAFKA_TOPIC": os.getenv("KAFKA_TOPIC", "fraud-detection-transactions"),
+    "KAFKA_CONSUMER_GROUP": os.getenv("KAFKA_CONSUMER_GROUP", "fraud-detection-batch"),
+    "KAFKA_AUTO_OFFSET_RESET": os.getenv("KAFKA_AUTO_OFFSET_RESET", "earliest"),
+    "KAFKA_TIMEOUT_MS": os.getenv("KAFKA_TIMEOUT_MS", "60000"),
+    "KAFKA_MAX_POLL_RECORDS": os.getenv("KAFKA_MAX_POLL_RECORDS", "500"),
+    # API configuration
+    "API_URL": os.getenv("API_URL", "http://api:8000"),
+    "API_TIMEOUT_SECONDS": os.getenv("API_TIMEOUT_SECONDS", "60"),
+    # JWT Authentication (from environment or Airflow Variables)
+    "API_USERNAME": os.getenv("API_USERNAME", "admin"),
+    "API_PASSWORD": os.getenv("API_PASSWORD", "admin123"),
+    # Web Application for fraud alerts
+    "WEBAPP_URL": os.getenv("WEBAPP_URL", "http://localhost:3001"),
+    "WEBAPP_TIMEOUT_SECONDS": os.getenv("WEBAPP_TIMEOUT_SECONDS", "30"),
 }
 
 
