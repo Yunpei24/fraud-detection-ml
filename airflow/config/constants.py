@@ -53,12 +53,21 @@ if ENVIRONMENT == "production":
         "DATA": f"{DOCKERHUB_USERNAME}/data:latest",
         "DRIFT": f"{DOCKERHUB_USERNAME}/drift:latest",
     }
-else:  # local development (using Docker Hub images with develop tag)
+elif (
+    ENVIRONMENT == "development"
+):  # local development (using Docker Hub images with develop tag)
     DOCKER_IMAGES = {
         "TRAINING": f"{DOCKERHUB_USERNAME}/training:develop",
         "API": f"{DOCKERHUB_USERNAME}/api:develop",
         "DATA": f"{DOCKERHUB_USERNAME}/data:develop",
         "DRIFT": f"{DOCKERHUB_USERNAME}/drift:develop",
+    }
+else:  # test or staging
+    DOCKER_IMAGES = {
+        "TRAINING": "fraud-detection/airflow:local",
+        "API": "fraud-detection/airflow:local",
+        "DATA": "fraud-detection/airflow:local",
+        "DRIFT": "fraud-detection/airflow:local",
     }
 
 ENV_VARS = {

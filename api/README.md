@@ -99,7 +99,30 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
   }
   ```
 
-### Admin (requires API key)
+### Explainability (requires JWT analyst/admin role)
+
+- `POST /api/v1/explain/shap` - Generate SHAP explanation for a prediction
+  ```json
+  {
+    "transaction_id": "TXN-001",
+    "features": [0.5, 0.3, 0.8, ...],
+    "model_type": "xgboost",
+    "metadata": {}
+  }
+  ```
+
+- `GET /api/v1/explain/feature-importance/{model_type}` - Get global feature importance
+  ```bash
+  # Example for XGBoost
+  GET /api/v1/explain/feature-importance/xgboost
+  ```
+
+- `GET /api/v1/explain/models` - Get list of available models for explanation
+  ```bash
+  # Returns: ["xgboost", "random_forest", "neural_network", "isolation_forest", "ensemble"]
+  ```
+
+### Admin (requires admin token)
 
 - `POST /admin/reload-model` - Reload ML models
 - `GET /admin/model-version` - Get current model version
@@ -252,6 +275,292 @@ curl -X POST http://localhost:8000/admin/reload-model \
 # Or restart the container
 docker restart fraud-api
 ```
+
+## Model Explainability
+
+The API provides SHAP-based explanations to understand model predictions and feature importance.
+
+### Authentication
+
+All explainability endpoints require JWT authentication with **analyst** or **admin** role:
+
+```bash
+# Login to get JWT token
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "analyst", "password": "password"}'
+
+# Returns: {"access_token": "eyJhbGc...", "token_type": "bearer"}
+```
+
+### Get Available Models
+
+Check which models are currently loaded and available for explanation:
+
+```bash
+curl -X GET http://localhost:8000/api/v1/explain/models \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# Response:
+["xgboost", "random_forest", "neural_network", "isolation_forest", "ensemble"]
+```
+
+**Note:** The endpoint dynamically returns only models that are actually loaded. If a model file is missing or failed to load, it won't appear in the list.
+
+### SHAP Explanation
+
+Generate SHAP values to understand which features contributed most to a prediction:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/explain/shap \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "transaction_id": "TXN-12345",
+    "features": [0.5, 0.3, 0.8, -1.2, 0.0, ...],
+    "model_type": "xgboost",
+    "metadata": {"customer_id": "CUST-001"}
+  }'
+
+# Response:
+{
+  "transaction_id": "TXN-12345",
+  "model_type": "xgboost",
+  "prediction": {
+    "fraud_probability": 0.85,
+    "is_fraud": true,
+    "confidence": 0.85
+  },
+  "shap_values": {
+    "feature_10": 0.45,
+    "feature_5": -0.23,
+    "feature_18": 0.31,
+    ...
+  },
+  "top_features": [
+    {"feature": "feature_10", "contribution": 0.45, "direction": "fraud"},
+    {"feature": "feature_18", "contribution": 0.31, "direction": "fraud"},
+    {"feature": "feature_5", "contribution": -0.23, "direction": "legitimate"}
+  ],
+  "base_value": 0.12,
+  "processing_time": 0.156,
+  "timestamp": 1699012345.678
+}
+```
+
+**Parameters:**
+- `transaction_id` (required): Unique identifier for the transaction
+- `features` (required): Array of 30 feature values
+- `model_type` (optional): Model to explain - one of: `xgboost`, `random_forest`, `neural_network`, `isolation_forest`, `ensemble` (default: `ensemble`)
+- `metadata` (optional): Additional metadata for logging
+
+**Response Fields:**
+- `shap_values`: Dictionary of all features with their SHAP contributions
+- `top_features`: Top 10 most influential features sorted by absolute contribution
+- `base_value`: Base prediction value (expected value)
+- `contribution direction`: "fraud" (positive) or "legitimate" (negative)
+
+### Feature Importance
+
+Get global feature importance for a specific model (aggregated across all predictions):
+
+```bash
+# XGBoost feature importance
+curl -X GET http://localhost:8000/api/v1/explain/feature-importance/xgboost \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# Response:
+{
+  "model_type": "xgboost",
+  "feature_importances": {
+    "feature_10": 0.234,
+    "feature_18": 0.156,
+    "feature_5": 0.123,
+    ...
+  },
+  "top_features": [
+    {"feature": "feature_10", "importance": 0.234},
+    {"feature": "feature_18", "importance": 0.156},
+    {"feature": "feature_5", "importance": 0.123}
+  ],
+  "method": "gain",
+  "total_features": 30,
+  "processing_time": 0.023,
+  "timestamp": 1699012345.678
+}
+```
+
+**Supported Models:**
+- `xgboost` - Tree-based feature importance (gain)
+- `random_forest` - Gini importance
+- `neural_network` - Gradient-based importance
+- `isolation_forest` - Anomaly score contribution
+
+### Example Workflow
+
+```python
+import requests
+
+BASE_URL = "http://localhost:8000"
+
+# 1. Login to get JWT token
+login_response = requests.post(
+    f"{BASE_URL}/api/v1/auth/login",
+    json={"username": "analyst", "password": "password"}
+)
+token = login_response.json()["access_token"]
+headers = {"Authorization": f"Bearer {token}"}
+
+# 2. Check available models
+models = requests.get(f"{BASE_URL}/api/v1/explain/models", headers=headers).json()
+print(f"Available models: {models}")
+# Output: ['xgboost', 'random_forest', 'neural_network', 'isolation_forest', 'ensemble']
+
+# 3. Get SHAP explanation for a prediction
+explanation = requests.post(
+    f"{BASE_URL}/api/v1/explain/shap",
+    headers=headers,
+    json={
+        "transaction_id": "TXN-12345",
+        "features": [0.5, 0.3, 0.8, ...],  # 30 features
+        "model_type": "xgboost"
+    }
+).json()
+
+print(f"Fraud probability: {explanation['prediction']['fraud_probability']}")
+print(f"Top contributing features: {explanation['top_features'][:3]}")
+
+# 4. Get global feature importance
+importance = requests.get(
+    f"{BASE_URL}/api/v1/explain/feature-importance/xgboost",
+    headers=headers
+).json()
+
+print(f"Most important features globally: {importance['top_features'][:5]}")
+```
+
+### Error Handling
+
+**400 Bad Request - Invalid model type:**
+```json
+{
+  "detail": {
+    "error_code": "E801",
+    "message": "Invalid model type. Must be one of: ['xgboost', 'neural_network', 'isolation_forest']",
+    "details": {
+      "provided": "invalid_model",
+      "valid_types": ["xgboost", "neural_network", "isolation_forest"]
+    }
+  }
+}
+```
+
+**401 Unauthorized - Missing or invalid JWT:**
+```json
+{
+  "detail": "Could not validate credentials"
+}
+```
+
+**403 Forbidden - Insufficient permissions:**
+```json
+{
+  "detail": "Insufficient permissions. Analyst or admin role required."
+}
+```
+
+**500 Internal Server Error - Explanation failed:**
+```json
+{
+  "detail": {
+    "error_code": "E800",
+    "message": "SHAP explanation generation failed",
+    "details": {
+      "error": "Model not loaded or prediction failed"
+    }
+  }
+}
+```
+
+### Swagger UI
+
+Test explainability endpoints interactively at:
+```
+http://localhost:8000/docs#/explainability
+```
+
+**Steps:**
+1. Click "Authorize" button (🔒)
+2. Login via `/api/v1/auth/login` to get JWT token
+3. Paste token in "bearerAuth" field
+4. Try `/api/v1/explain/models` endpoint
+5. Use SHAP and feature importance endpoints
+
+### Use Cases
+
+**1. Fraud Investigation:**
+```bash
+# Understand why a transaction was flagged as fraud
+curl -X POST http://localhost:8000/api/v1/explain/shap \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "transaction_id": "TXN-SUSPICIOUS-001",
+    "features": [...],
+    "model_type": "ensemble"
+  }'
+
+# Top features show: high transaction amount, unusual time, new merchant
+```
+
+**2. Model Debugging:**
+```bash
+# Compare feature importance across models
+for model in xgboost random_forest neural_network; do
+  curl -X GET http://localhost:8000/api/v1/explain/feature-importance/$model \
+    -H "Authorization: Bearer $TOKEN"
+done
+
+# Identify if models agree on important features
+```
+
+**3. Model Selection:**
+```bash
+# Check which models are available before requesting explanations
+models=$(curl -X GET http://localhost:8000/api/v1/explain/models \
+  -H "Authorization: Bearer $TOKEN")
+
+# Use first available model
+model_type=$(echo $models | jq -r '.[0]')
+```
+
+**4. Compliance & Auditing:**
+```bash
+# Generate explanation for audit trail
+curl -X POST http://localhost:8000/api/v1/explain/shap \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "transaction_id": "TXN-AUDIT-001",
+    "features": [...],
+    "model_type": "xgboost",
+    "metadata": {
+      "auditor": "John Doe",
+      "audit_id": "AUDIT-2024-001",
+      "reason": "Customer complaint investigation"
+    }
+  }'
+
+# Save response to audit log
+```
+
+### Performance Considerations
+
+- **SHAP calculations** can take 100-500ms depending on model complexity
+- **Feature importance** is cached and returns in <50ms
+- Use **ensemble** model type for fastest explanations (aggregates pre-computed SHAP values)
+- For high-volume scenarios, consider:
+  - Batching explanation requests
+  - Caching explanations for similar transactions
+  - Using feature importance instead of SHAP for faster responses
 
 ## Troubleshooting
 
@@ -417,3 +726,6 @@ See LICENSE file.
 
 Fraud Detection Team
 
+1. Joshua Juste NIKIEMA
+2. Olalekan Taofeek OLALUWOYE
+3. Soulaimana Toihir DJALOUD
