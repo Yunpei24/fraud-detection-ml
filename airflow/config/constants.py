@@ -43,7 +43,7 @@ TABLE_NAMES = {
 ENVIRONMENT = os.getenv(
     "ENVIRONMENT", "development"
 )  # 'development', 'staging', 'production', or 'test'
-DOCKERHUB_USERNAME = os.getenv("DOCKERHUB_USERNAME", "yoshua24")
+DOCKERHUB_USERNAME = os.getenv("DOCKERHUB_USERNAME", "josh24")
 
 # Docker images based on environment
 if ENVIRONMENT == "production":
@@ -52,15 +52,13 @@ if ENVIRONMENT == "production":
         "API": f"{DOCKERHUB_USERNAME}/api:latest",
         "DATA": f"{DOCKERHUB_USERNAME}/data:latest",
         "DRIFT": f"{DOCKERHUB_USERNAME}/drift:latest",
-        "DATA_QUALITY": f"{DOCKERHUB_USERNAME}/data-quality:latest",
     }
-else:  # local development
+else:  # local development (using Docker Hub images with develop tag)
     DOCKER_IMAGES = {
-        "TRAINING": "fraud-detection/training:develop",
-        "API": "fraud-detection/api:develop",
-        "DATA": "fraud-detection/data:develop",
-        "DRIFT": "fraud-detection/drift:develop",
-        "DATA_QUALITY": "fraud-detection/data-quality:develop",
+        "TRAINING": f"{DOCKERHUB_USERNAME}/training:develop",
+        "API": f"{DOCKERHUB_USERNAME}/api:develop",
+        "DATA": f"{DOCKERHUB_USERNAME}/data:develop",
+        "DRIFT": f"{DOCKERHUB_USERNAME}/drift:develop",
     }
 
 ENV_VARS = {
@@ -71,7 +69,6 @@ ENV_VARS = {
     "DOCKER_IMAGE_API": DOCKER_IMAGES["API"],
     "DOCKER_IMAGE_DATA": DOCKER_IMAGES["DATA"],
     "DOCKER_IMAGE_DRIFT": DOCKER_IMAGES["DRIFT"],
-    "DOCKER_IMAGE_DATA_QUALITY": DOCKER_IMAGES["DATA_QUALITY"],
     # PostgreSQL configuration
     "POSTGRES_HOST": "postgres",
     "POSTGRES_PORT": "5432",
@@ -240,7 +237,6 @@ DOCKER_IMAGE_TRAINING = ENV_VARS["DOCKER_IMAGE_TRAINING"]
 DOCKER_IMAGE_API = ENV_VARS["DOCKER_IMAGE_API"]
 DOCKER_IMAGE_DATA = ENV_VARS["DOCKER_IMAGE_DATA"]
 DOCKER_IMAGE_DRIFT = ENV_VARS["DOCKER_IMAGE_DRIFT"]
-DOCKER_IMAGE_DATA_QUALITY = ENV_VARS["DOCKER_IMAGE_DATA_QUALITY"]
 
 # Environment info
 CURRENT_ENVIRONMENT = ENVIRONMENT

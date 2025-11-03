@@ -154,11 +154,11 @@ services:
   # ==============================================================================
 
   api:
-    build:
-      context: .  
-      dockerfile: ./api/Dockerfile
-    image: fraud-detection/api:local 
-    # image: ${DOCKERHUB_USERNAME:-yoshua24}/api:develop  # ← Use Docker Hub image
+    # build:
+    #   context: .  
+    #   dockerfile: ./api/Dockerfile
+    # image: fraud-detection/api:local 
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/api:develop  # ← Use Docker Hub image
     container_name: fraud-api
     environment:
       - POSTGRES_HOST=postgres
