@@ -227,3 +227,5 @@ MONITORING_CORRECTIONS_REPORT.md
 schema.sql
 config/settings.py.backup
 common/venv_common
+scripts/setup-azure.sh
+BROKEN_DAG_ERROR_EXPLAINED.md
