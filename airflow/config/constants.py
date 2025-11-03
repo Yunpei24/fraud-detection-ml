@@ -40,7 +40,9 @@ TABLE_NAMES = {
 # Environment detection for Docker images
 # Set ENVIRONMENT=production to use Docker Hub
 # Set ENVIRONMENT=development (default) to use local Docker images
-ENVIRONMENT = os.getenv("ENVIRONMENT", "development")  # 'development', 'staging', 'production', or 'test'
+ENVIRONMENT = os.getenv(
+    "ENVIRONMENT", "development"
+)  # 'development', 'staging', 'production', or 'test'
 DOCKERHUB_USERNAME = os.getenv("DOCKERHUB_USERNAME", "yoshua24")
 
 # Docker images based on environment
