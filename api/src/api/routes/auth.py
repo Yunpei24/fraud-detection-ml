@@ -140,7 +140,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         access_token=access_token,
         token_type="bearer",
         expires_in=auth_service.access_token_expire_minutes * 60,
-        user=UserResponse(**user),
+        user=user,  # Pass dict directly, not UserResponse
     )
 
 

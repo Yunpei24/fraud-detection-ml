@@ -2,13 +2,12 @@
 Authentication service for JWT token management.
 """
 
+import bcrypt
 import hashlib
-import os
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from ..config import get_logger, settings
 from .user_database_service import user_db_service
@@ -20,7 +19,7 @@ class AuthService:
     """Service for handling JWT authentication."""
 
     def __init__(self):
-        self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        # Use bcrypt directly instead of passlib to avoid 72-byte limit issues
         self.secret_key = settings.auth.secret_key
         self.algorithm = settings.auth.algorithm
         self.access_token_expire_minutes = settings.auth.access_token_expire_minutes
@@ -44,14 +43,22 @@ class AuthService:
         return sha256_hash.encode("utf-8")
 
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
-        """Verify a password against its hash."""
-        normalized_password = self._normalize_password(plain_password)
-        return self.pwd_context.verify(normalized_password, hashed_password)
+        """Verify a password against its hash using bcrypt directly."""
+        try:
+            normalized_password = self._normalize_password(plain_password)
+            # bcrypt.checkpw expects bytes for both password and hash
+            return bcrypt.checkpw(normalized_password, hashed_password.encode("utf-8"))
+        except Exception as e:
+            logger.error(f"Password verification failed: {e}")
+            return False
 
     def get_password_hash(self, password: str) -> str:
-        """Hash a password."""
+        """Hash a password using bcrypt directly."""
         normalized_password = self._normalize_password(password)
-        return self.pwd_context.hash(normalized_password)
+        # Generate salt and hash
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(normalized_password, salt)
+        return hashed.decode("utf-8")
 
     def create_access_token(
         self, data: Dict[str, Any], expires_delta: Optional[timedelta] = None
