@@ -79,7 +79,7 @@ class Environment(str):
     DEVELOPMENT = "development"
     STAGING = "staging"
     PRODUCTION = "production"
-    TEST = "test"
+    LOCAL = "local"
 
 
 class DatabaseSettings(BaseSettings):
@@ -610,7 +610,7 @@ class GlobalSettings(BaseSettings):
             Environment.DEVELOPMENT,
             Environment.STAGING,
             Environment.PRODUCTION,
-            Environment.TEST,
+            Environment.LOCAL,
         ]
         if v.lower() not in valid_envs:
             raise ValueError(f"Environment must be one of {valid_envs}")
