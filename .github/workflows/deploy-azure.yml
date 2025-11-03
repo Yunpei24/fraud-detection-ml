@@ -1,7 +1,7 @@
 name: Deploy API to Azure Web App
 
 on:
-  # Déploiement automatique sur push vers main
+  # Automatic deployment on push to main
   push:
     branches:
       - main
@@ -10,7 +10,7 @@ on:
       - 'common/**'
       - '.github/workflows/deploy-azure.yml'
   
-  # Déploiement automatique après merge d'une PR vers main
+  # Automatic deployment after PR merge to main
   pull_request:
     branches:
       - main
@@ -19,7 +19,7 @@ on:
       - 'api/**'
       - 'common/**'
   
-  # Déploiement manuel (optionnel)
+  # Manual deployment (optional)
   workflow_dispatch:
     inputs:
       environment:
@@ -37,71 +37,21 @@ env:
   PYTHON_VERSION: '3.10'
 
 jobs:
-  # Job 1: Build et push de l'image Docker
-  build:
-    name: Build Docker Image
+  # Deploy to Azure Web App using the image built by ci-cd.yml
+  deploy:
+    name: Deploy to Azure Web App
     runs-on: ubuntu-latest
-    # Exécute seulement si PR merged ou push direct sur main
+    # Only execute if PR merged or direct push to main
     if: |
       github.event_name == 'push' || 
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      
-      - name: Extract metadata (tags, labels)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.DOCKER_IMAGE }}
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-      
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./api/Dockerfile
-          push: true
-          tags: |
-            ${{ env.DOCKER_IMAGE }}:latest
-            ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
-            ${{ env.DOCKER_IMAGE }}:main-${{ github.run_number }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache
-          cache-to: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache,mode=max
-          build-args: |
-            BUILDKIT_INLINE_CACHE=1
-      
-      - name: Image digest
-        run: |
-          echo "Image pushed: ${{ env.DOCKER_IMAGE }}:${{ github.sha }}"
-          echo "Image size: $(docker images ${{ env.DOCKER_IMAGE }}:${{ github.sha }} --format '{{.Size}}')"
-
-  # Job 2: Deploy vers Azure Web App
-  deploy:
-    name: Deploy to Azure Web App
-    runs-on: ubuntu-latest
-    needs: build
     environment:
       name: production
       url: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net
     
     steps:
-      - name: Checkout code (for health check script)
+      - name: Checkout code
         uses: actions/checkout@v4
       
       - name: Login to Azure
@@ -114,7 +64,7 @@ jobs:
           az webapp config container set \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --docker-custom-image-name ${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
+            --docker-custom-image-name ${{ env.DOCKER_IMAGE }}:latest \
             --docker-registry-server-url https://index.docker.io
       
       - name: Configure Web App Settings
@@ -132,19 +82,19 @@ jobs:
       
       - name: Restart Web App
         run: |
-          echo " Restarting Azure Web App..."
+          echo "🔄 Restarting Azure Web App..."
           az webapp restart \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
       
       - name: Wait for deployment
         run: |
-          echo " Waiting 60 seconds for container to start..."
+          echo "⏳ Waiting 60 seconds for container to start..."
           sleep 60
       
       - name: Health Check
         run: |
-          echo " Checking API health..."
+          echo "🏥 Checking API health..."
           max_attempts=10
           attempt=0
           
@@ -157,22 +107,22 @@ jobs:
               || echo "000")
             
             if [ "$response" = "200" ]; then
-              echo " Health check passed!"
+              echo "✅ Health check passed!"
               curl -s https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health | jq '.'
               exit 0
             fi
             
-            echo " Health check failed (HTTP $response). Retrying in 10s..."
+            echo "❌ Health check failed (HTTP $response). Retrying in 10s..."
             sleep 10
           done
           
-          echo " Health check failed after $max_attempts attempts"
+          echo "❌ Health check failed after $max_attempts attempts"
           exit 1
       
       - name: Get deployment logs (on failure)
         if: failure()
         run: |
-          echo " Fetching container logs..."
+          echo "📋 Fetching container logs..."
           az webapp log tail \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
@@ -182,7 +132,7 @@ jobs:
         if: always()
         run: az logout
 
-  # Job 3: Post-deployment tests (optionnel)
+  # Post-deployment tests
   test:
     name: Post-Deployment Tests
     runs-on: ubuntu-latest
@@ -204,7 +154,7 @@ jobs:
       
       - name: Test API endpoints
         run: |
-          echo " Testing API endpoints..."
+          echo "🧪 Testing API endpoints..."
           
           # Test 1: Health endpoint
           echo "Test 1: Health check"
@@ -218,11 +168,11 @@ jobs:
           echo "Test 3: Metrics"
           curl -f https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/metrics || exit 1
           
-          echo " All endpoint tests passed!"
+          echo "✅ All endpoint tests passed!"
       
       - name: Notify deployment success
         run: |
-          echo " Deployment successful!"
+          echo "🎉 Deployment successful!"
           echo "API URL: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
           echo "Docs: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/docs"
           echo "SHA: ${{ github.sha }}"
