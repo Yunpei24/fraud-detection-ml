@@ -66,9 +66,12 @@ ENV PYTHONUNBUFFERED=1 \
 RUN mkdir -p $MODEL_DIR $DATA_DIR $ARTIFACT_DIR $DATA_DIR/raw
 
 # -----------------------------------------------------------
-# 7.5. Create non-root user for security
+# 7.5. Create non-root user for security + MLflow directory
 # -----------------------------------------------------------
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+# Create MLflow directory for volume mounting (will be accessible by appuser)
+RUN mkdir -p /mlflow/artifacts && \
+    useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app /mlflow
 
 # Switch to non-root user
 USER appuser

@@ -49,11 +49,11 @@ from src.features.selection import select_k_best_mutual_info
 from src.mlflow_utils.experiment import setup_experiment, start_run
 from src.mlflow_utils.registry import register_model
 from src.mlflow_utils.tracking import log_artifact, log_metrics, log_model, log_params
+
+# Models
 from src.models.isolation_forest import IsolationForestModel
 from src.models.neural_network import NeuralNetworkModel
 from src.models.random_forest import RandomForestModel
-
-# Models
 from src.models.xgboost_model import XGBoostModel
 
 logger = get_logger(__name__)
@@ -514,7 +514,7 @@ def evaluate_models(
         logger.info("   Generating SHAP explanations...")
         try:
             # Use a small sample for SHAP (faster computation)
-            sample_size = min(100, Xte.shape[0])
+            sample_size = min(50, Xte.shape[0])
             sample_indices = np.random.choice(
                 Xte.shape[0], size=sample_size, replace=False
             )
