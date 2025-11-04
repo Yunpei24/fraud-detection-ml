@@ -155,11 +155,19 @@ def load_traffic_config() -> Dict[str, Any]:
     config_path = get_traffic_config_path()
 
     if not config_path.exists():
-        # Default configuration: 100% champion
+        # Default configuration: 100% champion, canary disabled
         return {
-            "canary_percentage": 0,
-            "champion_models": [],
-            "challenger_models": [],
+            "canary_enabled": False,
+            "canary_traffic_pct": 0,
+            "champion_traffic_pct": 100,
+            "canary_model_uris": [],
+            "champion_model_uris": [],
+            "ensemble_weights": {
+                "xgboost": 0.50,
+                "random_forest": 0.30,
+                "neural_network": 0.15,
+                "isolation_forest": 0.05,
+            },
             "last_update": datetime.utcnow().isoformat(),
         }
 

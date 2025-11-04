@@ -145,10 +145,20 @@ class CanaryDeployer:
             azure_mount_path = os.getenv(
                 "AZURE_STORAGE_MOUNT_PATH", "/mnt/fraud-models"
             )
+
+            # New config structure matching TrafficRoutingConfig
             config = {
-                "canary_percentage": traffic_pct,
-                "canary_model_path": f"{azure_mount_path}/canary",
-                "champion_model_path": f"{azure_mount_path}/champion",
+                "canary_enabled": traffic_pct > 0,
+                "canary_traffic_pct": traffic_pct,
+                "champion_traffic_pct": 100 - traffic_pct,
+                "canary_model_uris": [f"{azure_mount_path}/canary"],
+                "champion_model_uris": [f"{azure_mount_path}/champion"],
+                "ensemble_weights": {
+                    "xgboost": 0.50,
+                    "random_forest": 0.30,
+                    "neural_network": 0.15,
+                    "isolation_forest": 0.05,
+                },
             }
 
             with open(config_file, "w") as f:

@@ -2,6 +2,7 @@
 FastAPI dependencies for dependency injection.
 """
 
+from pathlib import Path
 from typing import Any, Optional
 
 import redis
@@ -27,19 +28,43 @@ _database_service_instance: Optional[DatabaseService] = None
 _drift_service_instance: Optional[EvidentlyDriftService] = None
 _traffic_router_instance: Optional[TrafficRouter] = None
 
+# Timestamp tracking for auto-reload
+_last_model_check_time: float = 0.0
+_traffic_config_last_check_time: float = 0.0
+
 
 def get_traffic_router() -> Any:
     """
     Get or create the traffic router instance.
+    Auto-reloads configuration if traffic_routing.json is modified.
 
     Returns:
         Traffic router instance
     """
-    global _traffic_router_instance
+    global _traffic_router_instance, _traffic_config_last_check_time
 
-    if _traffic_router_instance is None:
-        logger.info("Initializing traffic router")
+    # Path to traffic routing config
+    config_path = Path(settings.traffic_routing_config)
+
+    # Check if config file exists and get its modification time
+    current_mtime = 0.0
+    if config_path.exists():
+        current_mtime = config_path.stat().st_mtime
+
+    # Reload if file was modified or if router not initialized
+    if (
+        _traffic_router_instance is None
+        or current_mtime > _traffic_config_last_check_time
+    ):
+        if _traffic_router_instance is not None:
+            logger.info(
+                f"Traffic routing config file modified, reloading... (mtime: {current_mtime})"
+            )
+        else:
+            logger.info("Initializing traffic router")
+
         _traffic_router_instance = TrafficRouter()
+        _traffic_config_last_check_time = current_mtime
 
     return _traffic_router_instance
 
@@ -47,18 +72,36 @@ def get_traffic_router() -> Any:
 def get_model(traffic_router: Any = Depends(get_traffic_router)) -> Any:
     """
     Get or create the ensemble model instance.
+    Auto-reloads models if .pkl files are modified.
 
     Returns:
         Ensemble model instance
     """
-    global _model_instance
+    global _model_instance, _last_model_check_time, _prediction_service_instance
 
-    if _model_instance is None:
-        logger.info("Initializing ensemble model")
-        # Use champion model path if traffic routing is configured, otherwise use default
-        model_path = traffic_router.champion_model_path or settings.model_path
+    # Determine model path (champion or default)
+    model_path = traffic_router.champion_model_path or settings.model_path
+    model_dir = Path(model_path)
+
+    # Find the most recent modification time of all .pkl files
+    current_mtime = 0.0
+    if model_dir.exists():
+        pkl_files = list(model_dir.glob("*.pkl"))
+        if pkl_files:
+            current_mtime = max(f.stat().st_mtime for f in pkl_files)
+
+    # Reload if models were modified or if model not initialized
+    if _model_instance is None or current_mtime > _last_model_check_time:
+        if _model_instance is not None:
+            logger.info(f"Model files modified, reloading... (mtime: {current_mtime})")
+            # Reset prediction service to use new model
+            _prediction_service_instance = None
+        else:
+            logger.info("Initializing ensemble model")
+
         _model_instance = EnsembleModel(models_path=model_path)
         _model_instance.load_models()
+        _last_model_check_time = current_mtime
 
     return _model_instance
 

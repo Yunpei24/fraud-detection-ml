@@ -170,7 +170,6 @@ with DAG(
     tags=["maintenance", "authentication", "security"],
     max_active_runs=1,
 ) as dag:
-
     # Task documentation
     dag.doc_md = __doc__
 

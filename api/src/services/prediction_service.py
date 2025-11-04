@@ -134,6 +134,25 @@ class TrafficRouter:
             "ensemble_weights": self.config.ensemble_weights,
         }
 
+    @property
+    def canary_percentage(self) -> int:
+        """Get canary traffic percentage."""
+        return self.config.canary_traffic_pct if self.config.canary_enabled else 0
+
+    @property
+    def canary_model_path(self) -> Optional[str]:
+        """Get canary model path from URIs."""
+        if self.config.canary_model_uris and len(self.config.canary_model_uris) > 0:
+            return self.config.canary_model_uris[0]
+        return None
+
+    @property
+    def champion_model_path(self) -> Optional[str]:
+        """Get champion model path from URIs."""
+        if self.config.champion_model_uris and len(self.config.champion_model_uris) > 0:
+            return self.config.champion_model_uris[0]
+        return settings.model_path  # Default to settings if not configured
+
 
 class PredictionService:
     """Service for making fraud predictions."""

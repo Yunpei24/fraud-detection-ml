@@ -7,6 +7,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from ...api.dependencies import get_prediction_service
 from ...api.routes.auth import get_current_analyst_user
 from ...config import get_logger
 from ...models import (
@@ -33,7 +34,8 @@ router = APIRouter(prefix="/api/v1/explain", tags=["explainability"])
     dependencies=[Depends(get_current_analyst_user)],
 )
 async def get_shap_explanation(
-    request: ExplanationRequest, prediction_service: PredictionService = Depends()
+    request: ExplanationRequest,
+    prediction_service: PredictionService = Depends(get_prediction_service),
 ):
     """
     Generate SHAP explanation for a transaction.
@@ -104,7 +106,8 @@ async def get_shap_explanation(
     dependencies=[Depends(get_current_analyst_user)],
 )
 async def get_feature_importance(
-    model_type: str, prediction_service: PredictionService = Depends()
+    model_type: str,
+    prediction_service: PredictionService = Depends(get_prediction_service),
 ):
     """
     Get global feature importance for a model.
@@ -167,7 +170,9 @@ async def get_feature_importance(
     description="Get list of models available for explanation",
     dependencies=[Depends(get_current_analyst_user)],
 )
-async def get_available_models(prediction_service: PredictionService = Depends()):
+async def get_available_models(
+    prediction_service: PredictionService = Depends(get_prediction_service),
+):
     """
     Get list of models available for explanation.
 

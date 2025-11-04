@@ -245,7 +245,6 @@ with DAG(
     tags=["deployment", "canary", "production", "mlflow", "http-api"],
     doc_md=__doc__,
 ) as dag:
-
     # Task 1: Compare Champion vs Challenger Ensembles
     # This still uses DockerOperator as it runs the training pipeline locally
     compare_models = DockerOperator(

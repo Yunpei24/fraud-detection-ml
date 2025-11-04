@@ -433,45 +433,70 @@ def evaluate_models(
             f"   {name}: auc={metrics.get('auc', 0):.4f}, recall={metrics.get('recall', 0):.4f}, precision={metrics.get('precision', 0):.4f}"
         )
 
-    # Generate plots
-    logger.info("   Generating evaluation plots...")
-    try:
-        plots = []
-        for name, data in plots_data.items():
+    # Generate plots (parallelized for speed)
+    logger.info("   Generating evaluation plots (parallel)...")
+
+    def generate_plots_for_model(name: str, data: dict, model: Any) -> list:
+        """Generate all plots for a single model."""
+        model_plots = []
+        try:
             # ROC curve
             fig_roc = plot_roc_auc(
                 data["y_true"], data["y_score"], title=f"ROC Curve - {name}"
             )
-            plots.append((f"{name}_roc.png", fig_roc))
+            model_plots.append((f"{name}_roc.png", fig_roc))
 
             # Precision-Recall curve
             fig_pr = plot_precision_recall_curve_plot(
                 data["y_true"], data["y_score"], title=f"Precision-Recall - {name}"
             )
-            plots.append((f"{name}_pr.png", fig_pr))
+            model_plots.append((f"{name}_pr.png", fig_pr))
 
             # Confusion matrix
             fig_cm = plot_confusion_matrix_plot(
                 data["y_true"], data["y_pred"], title=f"Confusion Matrix - {name}"
             )
-            plots.append((f"{name}_cm.png", fig_cm))
+            model_plots.append((f"{name}_cm.png", fig_cm))
 
             # Feature importance (if available)
-            if hasattr(models[name], "get_feature_importance"):
+            if hasattr(model, "get_feature_importance"):
                 try:
                     fig_fi = plot_feature_importance(
-                        (
-                            models[name].model
-                            if hasattr(models[name], "model")
-                            else models[name]
-                        ),
+                        model.model if hasattr(model, "model") else model,
                         feature_names,
                         title=f"Feature Importance - {name}",
                     )
-                    plots.append((f"{name}_importance.png", fig_fi))
+                    model_plots.append((f"{name}_importance.png", fig_fi))
                 except Exception as e:
                     logger.warning(
                         f"    Feature importance plot failed for {name}: {e}"
+                    )
+
+            logger.info(f"   Generated {len(model_plots)} plots for {name}")
+        except Exception as e:
+            logger.warning(f"    Plot generation failed for {name}: {e}")
+
+        return model_plots
+
+    try:
+        plots = []
+        # Parallelize plot generation across models (max 4 workers for 4 models)
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {
+                executor.submit(
+                    generate_plots_for_model, name, data, models[name]
+                ): name
+                for name, data in plots_data.items()
+            }
+
+            for future in as_completed(futures):
+                model_name = futures[future]
+                try:
+                    model_plots = future.result()
+                    plots.extend(model_plots)
+                except Exception as e:
+                    logger.warning(
+                        f"    Failed to generate plots for {model_name}: {e}"
                     )
 
         # Log all plots to MLflow
@@ -489,7 +514,7 @@ def evaluate_models(
         logger.info("   Generating SHAP explanations...")
         try:
             # Use a small sample for SHAP (faster computation)
-            sample_size = min(1000, Xte.shape[0])
+            sample_size = min(100, Xte.shape[0])
             sample_indices = np.random.choice(
                 Xte.shape[0], size=sample_size, replace=False
             )
