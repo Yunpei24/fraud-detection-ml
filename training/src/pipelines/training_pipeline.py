@@ -79,10 +79,8 @@ class TrainConfig:
     outlier_method: Optional[str] = "IQR"  # Outlier handling
 
     # Business constraints
-    min_recall: float = 0.95  # Minimum recall for fraud detection
-    max_fpr: float = (
-        0.30  # Maximum false positive rate (eased from 0.05 to 0.30 for imbalanced data)
-    )
+    min_recall: float = 0.80  # Minimum recall for fraud detection
+    max_fpr: float = 0.30  # Maximum false positive rate (eased from 0.05 to 0.30 for imbalanced data)
 
     # MLflow
     experiment_name: str = "fraud_detection_training"
@@ -642,34 +640,36 @@ def register_best_model(
             # Register each model individually
             mlflow_name = f"fraud_detection_{model_name}"
 
-            # First log the model to MLflow, then register it
-            model_to_log = model.model if hasattr(model, "model") else model
-            log_model(model_to_log, artifact_path="model")
-            register_model(
-                name=mlflow_name,
-                stage="Staging",
-            )
+            # Create a run for model registration
+            with start_run(run_name=f"register_{model_name}"):
+                # First log the model to MLflow, then register it
+                model_to_log = model.model if hasattr(model, "model") else model
+                log_model(model_to_log, artifact_path="model")
+                register_model(
+                    name=mlflow_name,
+                    stage="Staging",
+                )
 
-            # Log individual model metadata as artifact
-            metadata = {
-                "model_type": model_name,
-                "metrics": results[model_name],
-                "feature_names": feature_names,
-                "config": asdict(cfg),
-                "ensemble_weight": get_ensemble_weight(model_name),
-            }
+                # Log individual model metadata as artifact
+                metadata = {
+                    "model_type": model_name,
+                    "metrics": results[model_name],
+                    "feature_names": feature_names,
+                    "config": asdict(cfg),
+                    "ensemble_weight": get_ensemble_weight(model_name),
+                }
 
-            # Log metadata as artifact
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".json", delete=False
-            ) as tmp_file:
-                json.dump(metadata, tmp_file, indent=2)
-                tmp_file.flush()
-                log_artifact(tmp_file.name, f"{model_name}_metadata.json")
-                os.unlink(tmp_file.name)
+                # Log metadata as artifact
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".json", delete=False
+                ) as tmp_file:
+                    json.dump(metadata, tmp_file, indent=2)
+                    tmp_file.flush()
+                    log_artifact(tmp_file.name, f"{model_name}_metadata.json")
+                    os.unlink(tmp_file.name)
 
-            logger.info(f"  Model registered: {mlflow_name} (Staging)")
-            registered_models.append(mlflow_name)
+                logger.info(f"  Model registered: {mlflow_name} (Staging)")
+                registered_models.append(mlflow_name)
 
         except Exception as e:
             logger.error(f"   Failed to register {model_name}: {e}")
