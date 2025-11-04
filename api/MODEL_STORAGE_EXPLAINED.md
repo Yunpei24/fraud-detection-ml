@@ -1,23 +1,15 @@
-# 📦 Où sont stockés les modèles ML ?
-
-**Date :** 4 novembre 2025  
-**Container :** `fraud-api`
-
+# 📦 Where are ML Models Stored?
+**Date:** November 4, 2025
+**Container:** `fraud-api`
 ---
-
-## 🎯 Résumé de la situation actuelle
-
-### ✅ **Configuration :**
-- **Chemin configuré :** `/mnt/fraud-models/champion/`
-- **État actuel :** ❌ Aucun modèle réel n'existe
-- **Fallback activé :** ✅ L'API utilise des **modèles mock** (factices)
-
+## 🎯 Current Situation Summary
+### ✅ **Configuration:**
+- **Configured Path:** `/mnt/fraud-models/champion/`
+- **Current State:** ❌ No real models exist
+- **Fallback Activated:** ✅ The API uses **mock models** (dummy models)
 ---
-
-## 📂 Structure de stockage des modèles
-
-### **1. Configuration du chemin dans l'API**
-
+## 📂 Model Storage Structure
+### **1. Path Configuration in the API**
 ```python
 # api/src/config/settings.py
 model_path = os.getenv(
@@ -25,27 +17,21 @@ model_path = os.getenv(
     os.getenv("MODEL_PATH", os.getenv("AZURE_STORAGE_MOUNT_PATH", "/mnt/fraud-models")),
 )
 ```
-
-**Priorité de résolution :**
-1. `ML_MODEL_PATH` (variable d'environnement)
-2. `MODEL_PATH` (variable d'environnement)
-3. `AZURE_STORAGE_MOUNT_PATH` (variable d'environnement)
-4. `/mnt/fraud-models` (défaut)
-
-### **2. Chemin actuel dans le container**
-
+**Resolution Priority:**
+1. `ML_MODEL_PATH` (environment variable)
+2. `MODEL_PATH` (environment variable)
+3. `AZURE_STORAGE_MOUNT_PATH` (environment variable)
+4. `/mnt/fraud-models` (default)
+### **2. Current Path in the Container**
 ```bash
 $ docker exec fraud-api python -c "from src.config.settings import settings; print(settings.model_path)"
 /mnt/fraud-models
 ```
-
-### **3. Répertoire complet avec traffic routing**
-
-Le système utilise un système de **champion/canary** :
-
+### **3. Complete Directory with Traffic Routing**
+The system uses a **champion/canary** approach:
 ```
 /mnt/fraud-models/
-├── champion/              # Modèles de production (100% du trafic)
+├── champion/              # Production models (100% traffic)
 │   ├── xgboost_fraud_model.pkl
 │   ├── random_forest_fraud_model.pkl
 │   ├── nn_fraud_model.pth
@@ -55,65 +41,50 @@ Le système utilise un système de **champion/canary** :
 │   ├── shap_explainer_nn.pkl
 │   └── shap_explainer_iforest.pkl
 │
-└── canary/               # Modèles en test (0-25% du trafic)
+└── canary/                # Test models (0-25% traffic)
     ├── xgboost_fraud_model.pkl
     ├── random_forest_fraud_model.pkl
     ├── nn_fraud_model.pth
     └── isolation_forest_model.pkl
 ```
-
 ---
-
-## 🔍 État actuel dans le container
-
-### **Vérification manuelle :**
-
+## 🔍 Current State in the Container
+### **Manual Verification:**
 ```bash
-# 1. Vérifier si le répertoire existe
+# 1. Check if the directory exists
 $ docker exec fraud-api ls -lah /mnt/fraud-models/
 ls: cannot access '/mnt/fraud-models/': No such file or directory
 ```
-
-**❌ Le répertoire n'existe pas !**
-
-### **Logs du container :**
-
+**❌ The directory does not exist!**
+### **Container Logs:**
 ```json
 {
-  "level": "WARNING",
-  "message": "Isolation Forest not found at /mnt/fraud-models/champion/isolation_forest_model.pkl, using mock"
+    "level": "WARNING",
+    "message": "Isolation Forest not found at /mnt/fraud-models/champion/isolation_forest_model.pkl, using mock"
 }
 {
-  "level": "WARNING",
-  "message": "SHAP explainer (XGBoost) not found at /mnt/fraud-models/champion/shap_explainer_xgb.pkl"
+    "level": "WARNING",
+    "message": "SHAP explainer (XGBoost) not found at /mnt/fraud-models/champion/shap_explainer_xgb.pkl"
 }
 {
-  "level": "INFO",
-  "message": "All models loaded successfully"
+    "level": "INFO",
+    "message": "All models loaded successfully"
 }
 {
-  "level": "INFO",
-  "message": "Available models: ['xgboost', 'random_forest', 'neural_network', 'isolation_forest', 'ensemble']"
+    "level": "INFO",
+    "message": "Available models: ['xgboost', 'random_forest', 'neural_network', 'isolation_forest', 'ensemble']"
 }
 ```
-
-**✅ L'API fonctionne avec des modèles mock (factices) !**
-
+**✅ The API is running with mock models (dummy models)!**
 ---
-
-## 🤖 Système de modèles Mock
-
-L'API a un mécanisme de fallback qui crée des **modèles factices** quand les vrais modèles n'existent pas :
-
-### **Code de fallback :**
-
+## 🤖 Mock Models System
+The API has a fallback mechanism that creates **dummy models** when real models don't exist:
+### **Fallback Code:**
 ```python
 # api/src/models/ml_models/ensemble.py
-
 def load_models(self) -> None:
     """Load all models from disk."""
-    
-    # Essayer de charger XGBoost
+    # Try to load XGBoost
     xgboost_path = os.path.join(self.models_path, settings.xgboost_model_name)
     if os.path.exists(xgboost_path):
         with open(xgboost_path, "rb") as f:
@@ -121,234 +92,183 @@ def load_models(self) -> None:
         logger.info("✅ XGBoost model loaded")
     else:
         logger.warning(f"XGBoost model not found at {xgboost_path}, using mock")
-        self.xgboost_model = self._create_mock_model("xgboost")  # ← Mock !
+        self.xgboost_model = self._create_mock_model("xgboost")  # ← Mock!
 ```
-
-### **Modèles mock actuellement actifs :**
-
-| Modèle | Fichier attendu | État | Type utilisé |
-|--------|----------------|------|--------------|
-| XGBoost | `xgboost_fraud_model.pkl` | ❌ Non trouvé | 🤖 Mock |
-| Random Forest | `random_forest_fraud_model.pkl` | ❌ Non trouvé | 🤖 Mock |
-| Neural Network | `nn_fraud_model.pth` | ❌ Non trouvé | 🤖 Mock |
-| Isolation Forest | `isolation_forest_model.pkl` | ❌ Non trouvé | 🤖 Mock |
-| SHAP Explainers | `shap_explainer_*.pkl` | ❌ Non trouvés | ❌ Désactivés |
-
+### **Currently Active Mock Models:**
+| Model | Expected File | Status | Type Used |
+|-------|--------------|--------|-----------|
+| XGBoost | `xgboost_fraud_model.pkl` | ❌ Not Found | 🤖 Mock |
+| Random Forest | `random_forest_fraud_model.pkl` | ❌ Not Found | 🤖 Mock |
+| Neural Network | `nn_fraud_model.pth` | ❌ Not Found | 🤖 Mock |
+| Isolation Forest | `isolation_forest_model.pkl` | ❌ Not Found | 🤖 Mock |
+| SHAP Explainers | `shap_explainer_*.pkl` | ❌ Not Found | ❌ Disabled |
 ---
-
-## 📍 Où sont créés les vrais modèles ?
-
-### **1. Container de training (`fraud-training`)**
-
-Les modèles sont créés par le **DAG Airflow `01_training_pipeline`** :
-
+## 📍 Where are Real Models Created?
+### **1. Training Container (`fraud-training`)**
+Models are created by the **Airflow DAG `01_training_pipeline`**:
 ```bash
-# Dans le container training
-/app/models/              # Modèles sauvegardés localement
-/mlflow/artifacts/        # Modèles enregistrés dans MLflow
+# Inside the training container
+/app/models/           # Models saved locally
+/mlflow/artifacts/     # Models registered in MLflow
 ```
-
-**Commande pour vérifier :**
+**Command to verify:**
 ```bash
 docker exec fraud-training ls -lah /app/models/
 ```
-
 ### **2. MLflow Model Registry**
-
-Les modèles entraînés sont **enregistrés dans MLflow** :
-
-- **URL MLflow :** http://localhost:5001
-- **Registry path :** `/mlflow/artifacts/`
-- **Stages :** None → Staging → Production
-
-**Voir les modèles dans MLflow :**
+Trained models are **registered in MLflow**:
+- **MLflow URL:** http://localhost:5001
+- **Registry path:** `/mlflow/artifacts/`
+- **Stages:** None → Staging → Production
+**View models in MLflow:**
 ```bash
 curl http://localhost:5001/api/2.0/mlflow/registered-models/list | jq .
 ```
-
-### **3. Azure File Share (Production uniquement)**
-
-En production sur Azure, les modèles sont stockés dans **Azure File Share** :
-
-- **Storage Account :** `joshfraudstorageaccount`
-- **File Share :** `fraud-models`
-- **Mount point :** `/mnt/fraud-models`
-
+### **3. Azure File Share (Production Only)**
+In production on Azure, models are stored in **Azure File Share**:
+- **Storage Account:** `joshfraudstorageaccount`
+- **File Share:** `fraud-models`
+- **Mount point:** `/mnt/fraud-models`
 ---
-
-## 🔄 Comment les modèles arrivent dans l'API ?
-
-### **Flow complet :**
-
+## 🔄 How do Models Get to the API?
+### **Complete Flow:**
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    TRAINING → API DEPLOYMENT                     │
+│              TRAINING → API DEPLOYMENT                          │
 └─────────────────────────────────────────────────────────────────┘
 
-ÉTAPE 1 : ENTRAÎNEMENT
+STEP 1: TRAINING
 ├─ Airflow DAG 01_training_pipeline
 ├─ Container fraud-training
-├─ Entraîne XGBoost, RF, NN, Isolation Forest
-├─ Sauvegarde dans /app/models/
-└─ Enregistre dans MLflow Registry → Stage: None
+├─ Trains XGBoost, RF, NN, Isolation Forest
+├─ Saves to /app/models/
+└─ Registers in MLflow Registry → Stage: None
 
-ÉTAPE 2 : PROMOTION STAGING
+STEP 2: STAGING PROMOTION
 ├─ Airflow DAG 05_model_deployment_canary_http
-├─ Promeut models: None → Staging dans MLflow
+├─ Promotes models: None → Staging in MLflow
 ├─ Script deploy_canary.py
-│  ├─ Télécharge models depuis MLflow
-│  ├─ Sauvegarde dans /mnt/fraud-models/canary/
-│  └─ Met à jour traffic_routing.json (5% canary)
-└─ API auto-reload détecte les nouveaux fichiers
+│   ├─ Downloads models from MLflow
+│   ├─ Saves to /mnt/fraud-models/canary/
+│   └─ Updates traffic_routing.json (5% canary)
+└─ API auto-reload detects new files
 
-ÉTAPE 3 : CANARY 25%
+STEP 3: CANARY 25%
 ├─ Airflow DAG 05_model_deployment_canary_http
-├─ Met à jour traffic_routing.json (25% canary)
-└─ API auto-reload détecte le changement
+├─ Updates traffic_routing.json (25% canary)
+└─ API auto-reload detects the change
 
-ÉTAPE 4 : PROMOTION PRODUCTION
+STEP 4: PRODUCTION PROMOTION
 ├─ Airflow DAG 05_model_deployment_canary_http
-├─ Promeut models: Staging → Production dans MLflow
+├─ Promotes models: Staging → Production in MLflow
 ├─ Script promote_to_production.py
-│  ├─ Copie /mnt/fraud-models/canary/ → /mnt/fraud-models/champion/
-│  └─ Met à jour traffic_routing.json (canary disabled)
-└─ API auto-reload détecte les nouveaux fichiers
+│   ├─ Copies /mnt/fraud-models/canary/ → /mnt/fraud-models/champion/
+│   └─ Updates traffic_routing.json (canary disabled)
+└─ API auto-reload detects new files
 ```
-
 ---
-
-## 🛠️ Comment créer les modèles manuellement ?
-
-### **Méthode 1 : Déclencher le DAG de training**
-
+## 🛠️ How to Create Models Manually?
+### **Method 1: Trigger the Training DAG**
 ```bash
-# 1. Aller dans Airflow UI
+# 1. Go to Airflow UI
 http://localhost:8080
 
-# 2. Trouver le DAG "01_training_pipeline"
-
-# 3. Cliquer sur "Trigger DAG"
-
-# 4. Attendre la fin de l'entraînement (~30-60 minutes)
-
-# 5. Vérifier les modèles dans MLflow
+# 2. Find the DAG "01_training_pipeline"
+# 3. Click "Trigger DAG"
+# 4. Wait for training to complete (~30-60 minutes)
+# 5. Verify models in MLflow
 http://localhost:5001
 ```
-
-### **Méthode 2 : Entraînement manuel dans le container**
-
+### **Method 2: Manual Training in Container**
 ```bash
-# 1. Entrer dans le container training
+# 1. Enter the training container
 docker exec -it fraud-training bash
 
-# 2. Lancer le script de training
+# 2. Run the training script
 python -m src.pipelines.training_pipeline
 
-# 3. Vérifier les modèles créés
+# 3. Verify created models
 ls -lah /app/models/
 
-# 4. Copier vers l'API (temporaire pour dev)
+# 4. Copy to API (temporary for dev)
 docker cp fraud-training:/app/models/xgboost_fraud_model.pkl /tmp/
 docker exec fraud-api mkdir -p /mnt/fraud-models/champion
 docker cp /tmp/xgboost_fraud_model.pkl fraud-api:/mnt/fraud-models/champion/
 ```
-
-### **Méthode 3 : Utiliser des modèles de test**
-
-Pour le développement local, vous pouvez créer des modèles simples :
-
+### **Method 3: Use Test Models**
+For local development, you can create simple models:
 ```python
-# Dans le container API
+# Inside the API container
 docker exec -it fraud-api python
 
 >>> import pickle
 >>> from sklearn.ensemble import RandomForestClassifier
 >>> import os
->>> 
->>> # Créer le répertoire
+>>>
+>>> # Create the directory
 >>> os.makedirs("/mnt/fraud-models/champion", exist_ok=True)
->>> 
->>> # Créer un modèle simple
+>>>
+>>> # Create a simple model
 >>> model = RandomForestClassifier(n_estimators=10)
->>> 
->>> # Sauvegarder
+>>>
+>>> # Save
 >>> with open("/mnt/fraud-models/champion/xgboost_fraud_model.pkl", "wb") as f:
 ...     pickle.dump(model, f)
->>> 
->>> print("✅ Modèle de test créé !")
+>>>
+>>> print("✅ Test model created!")
 ```
-
 ---
-
-## 🔍 Commandes de diagnostic
-
-### **1. Vérifier le chemin configuré**
-
+## 🔍 Diagnostic Commands
+### **1. Check Configured Path**
 ```bash
 docker exec fraud-api python -c "from src.config.settings import settings; print('Model Path:', settings.model_path)"
 ```
-
-### **2. Lister les modèles disponibles**
-
+### **2. List Available Models**
 ```bash
 docker exec fraud-api find /mnt/fraud-models -name "*.pkl" -o -name "*.pth"
 ```
-
-### **3. Vérifier les logs de chargement**
-
+### **3. Check Loading Logs**
 ```bash
 docker logs fraud-api 2>&1 | grep -i "model\|loading"
 ```
-
-### **4. Tester l'API avec modèles mock**
-
+### **4. Test API with Mock Models**
 ```bash
-# Obtenir un token
+# Get a token
 TOKEN=$(curl -s -X POST "http://localhost:8000/auth/login" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "username=admin&password=admin123" | jq -r '.access_token')
 
-# Lister les modèles
+# List models
 curl -X GET "http://localhost:8000/api/v1/explain/models" \
   -H "Authorization: Bearer $TOKEN"
 
-# Résultat avec modèles mock :
+# Result with mock models:
 ["xgboost", "random_forest", "neural_network", "isolation_forest", "ensemble"]
 ```
-
-### **5. Vérifier le status des volumes Docker**
-
+### **5. Check Docker Volumes Status**
 ```bash
 docker volume ls | grep fraud
 docker volume inspect fraud-detection-ml_mlflow_artifacts
 ```
-
 ---
-
-## 📋 Résumé
-
-| Question | Réponse |
-|----------|---------|
-| **Où sont stockés les modèles ?** | `/mnt/fraud-models/champion/` (configuré) |
-| **Les modèles existent-ils actuellement ?** | ❌ Non, le répertoire n'existe pas |
-| **L'API fonctionne quand même ?** | ✅ Oui, avec des modèles mock (factices) |
-| **Comment créer les vrais modèles ?** | Déclencher DAG Airflow `01_training_pipeline` |
-| **Où sont les modèles après training ?** | `/mlflow/artifacts/` dans MLflow Registry |
-| **Comment les déployer dans l'API ?** | Via DAG `05_model_deployment_canary_http` |
-| **Peut-on tester sans vrais modèles ?** | ✅ Oui, les modèles mock permettent de tester l'API |
-
+## 📋 Summary
+| Question | Answer |
+|----------|--------|
+| **Where are models stored?** | `/mnt/fraud-models/champion/` (configured) |
+| **Do models currently exist?** | ❌ No, the directory doesn't exist |
+| **Does the API still work?** | ✅ Yes, with mock models (dummy models) |
+| **How to create real models?** | Trigger Airflow DAG `01_training_pipeline` |
+| **Where are models after training?** | `/mlflow/artifacts/` in MLflow Registry |
+| **How to deploy them to API?** | Via DAG `05_model_deployment_canary_http` |
+| **Can we test without real models?** | ✅ Yes, mock models allow API testing |
 ---
-
-## 🚀 Prochaines étapes
-
-1. **Lancer le training** pour créer les vrais modèles
-2. **Enregistrer dans MLflow** pour versioning
-3. **Déployer via DAG canary** pour production-ready
-4. **Tester avec vrais modèles** pour validation complète
-
+## 🚀 Next Steps
+1. **Launch training** to create real models
+2. **Register in MLflow** for versioning
+3. **Deploy via canary DAG** for production-ready setup
+4. **Test with real models** for complete validation
 ---
-
-**Besoin d'aide ?** Consultez :
-- [AUTO_RELOAD_GUIDE.md](AUTO_RELOAD_GUIDE.md) - Auto-reload des modèles
-- [DEPLOYMENT_API.md](DEPLOYMENT_API.md) - Déploiement canary
-- [README.md](../README.md) - Documentation générale
+**Need help?** Check out:
+- [AUTO_RELOAD_GUIDE.md](AUTO_RELOAD_GUIDE.md) - Model auto-reload
+- [DEPLOYMENT_API.md](DEPLOYMENT_API.md) - Canary deployment
+- [README.md](../README.md) - General documentation

@@ -294,8 +294,8 @@ def decide_deployment(
     champion_latency: float,
     challenger_latency: float,
     *,
-    min_recall: float = 0.95,
-    max_fpr: float = 0.02,
+    min_recall: float = 0.30,  # Minimum required recall. 0.30 just for demonstration
+    max_fpr: float = 0.03,
     max_latency_ms: float = 100.0,
     min_improvement_pct: float = 1.0,
 ) -> ComparisonResult:

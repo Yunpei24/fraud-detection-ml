@@ -80,7 +80,9 @@ class TrainConfig:
 
     # Business constraints
     min_recall: float = 0.80  # Minimum recall for fraud detection
-    max_fpr: float = 0.30  # Maximum false positive rate (eased from 0.05 to 0.30 for imbalanced data)
+    max_fpr: float = (
+        0.30  # Maximum false positive rate (eased from 0.05 to 0.30 for imbalanced data)
+    )
 
     # MLflow
     experiment_name: str = "fraud_detection_training"
