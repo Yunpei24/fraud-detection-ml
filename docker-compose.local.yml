@@ -133,6 +133,7 @@ services:
       --port 5000
       --backend-store-uri postgresql://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/mlflow_db
       --default-artifact-root /mlflow/artifacts
+      --serve-artifacts
     volumes:
       - mlflow_artifacts:/mlflow/artifacts
     ports:
@@ -207,21 +208,37 @@ services:
     # image: ${DOCKERHUB_USERNAME:-yoshua24}/data:develop  # ← Use Docker Hub image
     container_name: fraud-data
     environment:
+      # PostgreSQL configuration (POSTGRES_* for backwards compatibility)
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=fraud_detection
       - POSTGRES_USER=fraud_user
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fraud_pass_dev_2024}
+      # DB_* for config/settings.py DatabaseSettings (env_prefix="DB_")
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=fraud_detection
+      - DB_USER=fraud_user
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-fraud_pass_dev_2024}
+      # DATABASE_URL (priority override for realtime_pipeline.py)
+      - DATABASE_URL=postgresql://fraud_user:fraud_pass_dev_2024@postgres:5432/fraud_detection
+      # Redis configuration
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_pass_dev}
+      # Data configuration
       - DATA_SOURCE=/data/creditcard.csv
       - ARTIFACT_DIR=/artifacts
       - LOG_LEVEL=INFO
       - PROMETHEUS_PORT=9091
       - ENVIRONMENT=local
+      # Kafka configuration
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - KAFKA_TOPIC=fraud-detection-transactions
+      # API configuration (for realtime_pipeline.py with JWT authentication)
+      - API_URL=http://api:8000
+      - API_USERNAME=admin
+      - API_PASSWORD=admin123
     volumes:
       - ./creditcard.csv:/data/creditcard.csv:ro
       - data_artifacts:/artifacts
@@ -309,8 +326,8 @@ services:
     volumes:
       - ./config:/app/config:ro  # Mount centralized config
       - ./creditcard.csv:/app/data/raw/creditcard.csv:ro
-      - training_artifacts:/app/artifacts
-      - mlflow_artifacts:/mlflow/artifacts  # Mount MLflow artifacts volume for direct access
+      - training_artifacts:/app/training/artifacts  # Training artifacts (timestamped runs)
+      - mlflow_artifacts:/mlflow/artifacts  # MLflow artifacts (shared with MLflow server)
     ports:
       - "9096:9095"  # Prometheus metrics
     networks:

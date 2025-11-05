@@ -92,3 +92,5 @@ docker-compose*.yml
 *.rar
 tests/
 requirements.test.txt
+tests
+MLFLOW_MODEL_LOGGING_ANALYSIS.md

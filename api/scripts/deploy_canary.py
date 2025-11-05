@@ -106,7 +106,7 @@ class CanaryDeployer:
 
             # 2. Save models and SHAP explainers to Azure File Share canary directory
             logger.info(
-                "💾 Saving models and SHAP explainers to Azure File Share canary directory..."
+                " Saving models and SHAP explainers to Azure File Share canary directory..."
             )
             # Use Azure File Share mount path instead of local /app/models
             azure_mount_path = os.getenv(
@@ -135,7 +135,7 @@ class CanaryDeployer:
                     )
 
             # 3. Update traffic routing config for TrafficRouter
-            logger.info(f"🔧 Updating traffic routing to {traffic_pct}% canary...")
+            logger.info(f" Updating traffic routing to {traffic_pct}% canary...")
             config_file = Path("/app/config/traffic_routing.json")
 
             if not config_file.parent.exists():

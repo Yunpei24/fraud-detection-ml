@@ -722,7 +722,7 @@ For issues or questions:
 
 See LICENSE file.
 
-## Contributors
+## 👨🏾‍💻 Contributors
 
 Fraud Detection Team
 

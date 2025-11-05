@@ -16,13 +16,19 @@ USER airflow
 
 # Install common package as airflow user
 COPY --chown=airflow:root common/ /opt/airflow/common/
-RUN pip install --user --no-cache-dir /opt/airflow/common
+RUN pip install --user --no-cache-dir \
+    --default-timeout=300 \
+    --retries 5 \
+    /opt/airflow/common
 
 # Copy requirements
 COPY airflow/requirements.txt /requirements.txt
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r /requirements.txt
+# Install Python dependencies with timeout and retry settings
+RUN pip install --no-cache-dir \
+    --default-timeout=300 \
+    --retries 5 \
+    -r /requirements.txt
 
 # Create necessary directories
 RUN mkdir -p /opt/airflow/dags /opt/airflow/logs /opt/airflow/plugins /opt/airflow/config /opt/airflow/config_root

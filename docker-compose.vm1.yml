@@ -1,5 +1,3 @@
-version: '3.8'
-
 # ==============================================================================
 # VM1: APPLICATION SERVICES ONLY
 # ==============================================================================
@@ -142,6 +140,7 @@ services:
       --port 5000
       --backend-store-uri postgresql://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/mlflow_db
       --default-artifact-root ${MLFLOW_DEFAULT_ARTIFACT_ROOT:-/mlflow/artifacts}
+      --serve-artifacts
     volumes:
       - mlflow_artifacts:/mlflow/artifacts
     ports:
@@ -168,12 +167,6 @@ services:
   # api:
   #   image: ${DOCKERHUB_USERNAME:-yoshua24}/api:latest
   #   container_name: fraud-api
-  # api:
-  #   build:
-  #     context: .  # Root context to access common/
-  #     dockerfile: ./api/Dockerfile
-  #   image: ${AZURE_REGISTRY:-frauddetectionacr-xxxxxx.azurecr.io}/api:latest
-  #   container_name: fraud-api
   #   environment:
   #     - POSTGRES_HOST=postgres
   #     - POSTGRES_PORT=5432
@@ -185,14 +178,14 @@ services:
   #     - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_pass_change_me}
   #     - MLFLOW_TRACKING_URI=http://mlflow:5000
   #     - MODEL_NAME=fraud_detection_xgboost
-  #     - MODEL_STAGE=Production
   #     - LOG_LEVEL=INFO
   #     - PROMETHEUS_PORT=9090
   #     - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000","http://localhost:8000"]}
   #     - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
   #     - AZURE_STORAGE_CONTAINER_NAME=${AZURE_STORAGE_CONTAINER_NAME:-fraud-models}
   #     - ENVIRONMENT=${ENVIRONMENT:-production}
-  #     - DEBUG=false
+  #     - REQUIRE_API_KEY=true
+  #     - API_KEYS=${API_KEYS:-prod_api_key_secure_123}
   #   ports:
   #     - "8000:8000"  # API HTTP
   #     - "9090:9090"  # Prometheus metrics
@@ -225,15 +218,29 @@ services:
       - POSTGRES_DB=fraud_detection
       - POSTGRES_USER=fraud_user
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fraud_pass_dev_2024}
+      # DB_* for config/settings.py DatabaseSettings (env_prefix="DB_")
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=fraud_detection
+      - DB_USER=fraud_user
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-fraud_pass_dev_2024}
+      # DATABASE_URL (priority override for realtime_pipeline.py)
+      - DATABASE_URL=postgresql://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/fraud_detection
+      # Redis configuration
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_pass_change_me}
+      # Data configuration
       - DATA_SOURCE=/data/creditcard.csv
       - ARTIFACT_DIR=/artifacts
       - LOG_LEVEL=INFO
       - PROMETHEUS_PORT=9091
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - KAFKA_TOPIC=fraud-detection-transactions
+      # API configuration (for realtime_pipeline.py)
+      - API_URL=http://api:8000
+      - API_USERNAME=admin
+      - API_PASSWORD=admin123
       - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
       - AZURE_STORAGE_CONTAINER_NAME=${AZURE_STORAGE_CONTAINER_NAME:-fraud-data}
       - ENVIRONMENT=${ENVIRONMENT:-production}
@@ -332,8 +339,8 @@ services:
     volumes:
       - ./config:/app/config:ro  # Mount centralized config
       - ./creditcard.csv:/app/data/raw/creditcard.csv:ro  # ← Dataset in correct location
-      - training_artifacts:/app/artifacts
-      - mlflow_artifacts:/mlflow/artifacts  # Mount MLflow artifacts volume for direct access
+      - training_artifacts:/app/training/artifacts  # Training artifacts (timestamped runs)
+      - mlflow_artifacts:/mlflow/artifacts
     ports:
       - "9096:9095"  # Prometheus metrics - accessible depuis VM2
     networks:
@@ -407,15 +414,15 @@ services:
     container_name: fraud-airflow-webserver
     command: webserver
     environment:
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor  # Changed from CeleryExecutor for simplicity
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/fraud_detection
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/fraud_detection
+      - AIRFLOW__CELERY__BROKER_URL=redis://:${REDIS_PASSWORD:-redis_pass_change_me}@redis:6379/0
       - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
       - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth
-      - AIRFLOW__WEBSERVER__SECRET_KEY=${AIRFLOW_SECRET_KEY}
       - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=true
-      - AIRFLOW__WEBSERVER__BASE_URL=http://localhost:8080
       - DOCKER_NETWORK=fraud-detection-network
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@frauddetection.com}
@@ -436,6 +443,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       airflow-init:
         condition: service_completed_successfully
     healthcheck:
@@ -451,8 +460,10 @@ services:
     container_name: fraud-airflow-scheduler
     command: scheduler
     environment:
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor  # Changed from CeleryExecutor
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/fraud_detection
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/fraud_detection
+      - AIRFLOW__CELERY__BROKER_URL=redis://:${REDIS_PASSWORD:-redis_pass_change_me}@redis:6379/0
       - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
@@ -476,6 +487,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       airflow-init:
         condition: service_completed_successfully
     healthcheck:
@@ -484,6 +497,52 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    restart: unless-stopped
+
+  airflow-worker:
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:latest
+    container_name: fraud-airflow-worker
+    command: celery worker
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/fraud_detection
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/fraud_detection
+      - AIRFLOW__CELERY__BROKER_URL=redis://:${REDIS_PASSWORD:-redis_pass_change_me}@redis:6379/0
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - DOCKER_NETWORK=fraud-detection-network
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@frauddetection.com}
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
+      - ENVIRONMENT=production  # Use Docker Hub images
+      - PYTHONPATH=/opt/airflow:/opt/airflow/config:/opt/airflow/plugins
+      # Celery worker specific settings
+      - AIRFLOW__CELERY__WORKER_CONCURRENCY=2
+      - AIRFLOW__CELERY__WORKER_PREFETCH_MULTIPLIER=1
+      - AIRFLOW__CELERY__WORKER_MAX_TASKS_PER_CHILD=50
+      - AIRFLOW__CELERY__WORKER_AUTOSCALE=2,4
+    volumes:
+      - ./config:/opt/airflow/config:ro  # Mount centralized config
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/config:/opt/airflow/config-airflow  # Airflow-specific config
+      - ./airflow/plugins:/opt/airflow/plugins
+      - /var/run/docker.sock:/var/run/docker.sock  # For DockerOperator
+    networks:
+      - fraud-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A airflow.executors.celery_executor inspect active"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
 
 # ==============================================================================

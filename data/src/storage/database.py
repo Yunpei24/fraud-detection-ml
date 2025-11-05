@@ -68,26 +68,38 @@ class DatabaseService:
 
         Connection string resolution order:
         1. Use explicit connection_string from __init__ (if provided)
-        2. Load from settings.database_url (reads environment variables)
+        2. Check DATABASE_URL environment variable
+        3. Load from settings.database_url (reads DB_* environment variables)
 
         Environment variables (loaded by settings.py):
-        - DB_SERVER or POSTGRES_HOST (default: localhost)
-        - DB_NAME or POSTGRES_DB (default: fraud_db)
-        - DB_USER or POSTGRES_USER (default: postgres)
-        - DB_PASSWORD or POSTGRES_PASSWORD (default: postgres)
-        - DB_PORT or POSTGRES_PORT (default: 5432)
+        - DATABASE_URL: Full connection string (highest priority)
+        - DB_HOST (default: localhost)
+        - DB_NAME (default: fraud_db)
+        - DB_USER (default: postgres)
+        - DB_PASSWORD (default: postgres)
+        - DB_PORT (default: 5432)
         """
         try:
+            import os
             from sqlalchemy import create_engine
 
             # Load connection string from settings if not provided
             if not self.connection_string:
-                from ..config.settings import settings
+                # Priority 1: Check DATABASE_URL environment variable
+                database_url = os.getenv("DATABASE_URL")
+                if database_url:
+                    self.connection_string = database_url
+                    logger.info(
+                        f"Using DATABASE_URL from environment: {database_url.split('@')[1] if '@' in database_url else 'masked'}"
+                    )
+                else:
+                    # Priority 2: Load from settings (reads DB_* env vars)
+                    from ..config.settings import settings
 
-                self.connection_string = settings.database.url
-                logger.info(
-                    f"Loading database config from settings: {settings.database.host}:{settings.database.port}/{settings.database.name}"
-                )
+                    self.connection_string = settings.database.url
+                    logger.info(
+                        f"Loading database config from settings: {settings.database.host}:{settings.database.port}/{settings.database.name}"
+                    )
             else:
                 logger.info("Using explicit database connection string")
 
@@ -101,12 +113,14 @@ class DatabaseService:
 
             # Test connection
             with self.engine.connect() as conn:
-                conn.execute("SELECT 1")
+                from sqlalchemy import text
+
+                conn.execute(text("SELECT 1"))
 
             self._initialized = True
-            logger.info("✅ Database connection established")
+            logger.info(" Database connection established")
         except Exception as e:
-            logger.error(f"❌ Failed to connect to database: {str(e)}")
+            logger.error(f" Failed to connect to database: {str(e)}")
             raise
 
     def disconnect(self) -> None:
@@ -118,10 +132,15 @@ class DatabaseService:
 
     def insert_transactions(self, transactions: List[Dict]) -> int:
         """
-        Insert transaction records into database
+        Insert Kaggle format transaction records into database
+
+        This method stores RAW transactions from Kafka (transaction_simulator output)
+        into the transactions table. Format: Time, V1-V28, amount, Class.
 
         Args:
-            transactions: List of transaction dictionaries
+            transactions: List of transaction dictionaries with Kaggle format
+                         Required: transaction_id, Time, V1-V28, amount, Class
+                         Optional: source, timestamp
 
         Returns:
             Number of rows inserted
@@ -132,48 +151,59 @@ class DatabaseService:
         try:
             from sqlalchemy import text
 
-            # Assuming table name is 'transactions'
+            # Build INSERT query with all V1-V28 columns
+            v_columns = ", ".join([f"v{i}" for i in range(1, 29)])
+            v_values = ", ".join([f":v{i}" for i in range(1, 29)])
+
             insert_query = text(
-                """
+                f"""
                 INSERT INTO transactions (
-                    transaction_id, customer_id, merchant_id,
-                    amount, currency, time,
-                    customer_zip, merchant_zip,
-                    customer_country, merchant_country,
-                    device_id, session_id, ip_address,
-                    mcc, transaction_type,
-                    is_fraud, is_disputed,
-                    source_system, ingestion_timestamp
+                    transaction_id, time, {v_columns}, amount, class,
+                    source, timestamp, ingestion_timestamp
                 ) VALUES (
-                    :transaction_id, :customer_id, :merchant_id,
-                    :amount, :currency, :time,
-                    :customer_zip, :merchant_zip,
-                    :customer_country, :merchant_country,
-                    :device_id, :session_id, :ip_address,
-                    :mcc, :transaction_type,
-                    :is_fraud, :is_disputed,
-                    :source_system, :ingestion_timestamp
+                    :transaction_id, :time, {v_values}, :amount, :class,
+                    :source, :timestamp, :ingestion_timestamp
                 )
             """
             )
 
             with self.engine.connect() as conn:
                 for transaction in transactions:
-                    # Add ingestion timestamp if not present
-                    if (
-                        "ingestion_timestamp" not in transaction
-                        or transaction["ingestion_timestamp"] is None
-                    ):
+                    # Add default metadata if not present
+                    if "source" not in transaction:
+                        transaction["source"] = "simulator"
+                    if "timestamp" not in transaction:
+                        transaction["timestamp"] = datetime.utcnow()
+                    if "ingestion_timestamp" not in transaction:
                         transaction["ingestion_timestamp"] = datetime.utcnow()
+
+                    # Ensure all V1-V28 are present (set to 0 if missing)
+                    for i in range(1, 29):
+                        v_key = f"V{i}"
+                        if v_key not in transaction:
+                            transaction[v_key] = 0.0
+                        # Normalize key to lowercase for SQLAlchemy
+                        transaction[f"v{i}"] = transaction.pop(
+                            v_key, transaction.get(f"v{i}", 0.0)
+                        )
+
+                    # Normalize Time and Class keys
+                    if "Time" in transaction:
+                        transaction["time"] = transaction.pop("Time")
+                    if "Class" in transaction:
+                        transaction["class"] = transaction.pop("Class")
 
                     conn.execute(insert_query, transaction)
                 conn.commit()
 
-            logger.info(f"Inserted {len(transactions)} transactions into database")
+            logger.info(f" Inserted {len(transactions)} transactions into database")
             return len(transactions)
 
         except Exception as e:
-            logger.error(f"Failed to insert transactions: {str(e)}")
+            logger.error(f" Failed to insert transactions: {str(e)}")
+            logger.error(
+                f"Sample transaction: {transactions[0] if transactions else 'empty'}"
+            )
             raise
 
     def insert_predictions(self, predictions: List[Dict]) -> int:

@@ -12,13 +12,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install common package first
 COPY common/ /build/common/
-RUN pip install --no-cache-dir --user /build/common
+RUN pip install --no-cache-dir --user \
+    --default-timeout=300 \
+    --retries 5 \
+    /build/common
 
 # Copy requirements
 COPY data/requirements.txt .
 
-# Install Python dependencies to /root/.local
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Install Python dependencies to /root/.local with timeout and retry settings
+RUN pip install --no-cache-dir --user \
+    --default-timeout=300 \
+    --retries 5 \
+    -r requirements.txt
 
 
 # Stage 2: Runtime - minimal image

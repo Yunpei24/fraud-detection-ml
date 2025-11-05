@@ -81,7 +81,15 @@ ENV_VARS = {
     # Python configuration
     "PYTHONPATH": "/app",
     "PYTHONUNBUFFERED": "1",
-    # PostgreSQL configuration
+    # PostgreSQL configuration (using DB_* prefix for Pydantic compatibility)
+    "DB_HOST": "postgres",
+    "DB_PORT": "5432",
+    "DB_NAME": "fraud_detection",
+    "DB_USER": "fraud_user",
+    "DB_PASSWORD": "fraud_pass_dev_2024",
+    # Explicit database URL to override Pydantic defaults
+    "DATABASE_URL": "postgresql://fraud_user:fraud_pass_dev_2024@postgres:5432/fraud_detection",
+    # Keep POSTGRES_* for backward compatibility with some scripts
     "POSTGRES_HOST": "postgres",
     "POSTGRES_PORT": "5432",
     "POSTGRES_DB": "fraud_detection",
@@ -107,7 +115,9 @@ ENV_VARS = {
     "KAFKA_TOPIC": os.getenv("KAFKA_TOPIC", "fraud-detection-transactions"),
     "KAFKA_CONSUMER_GROUP": os.getenv("KAFKA_CONSUMER_GROUP", "fraud-detection-batch"),
     "KAFKA_AUTO_OFFSET_RESET": os.getenv("KAFKA_AUTO_OFFSET_RESET", "earliest"),
-    "KAFKA_TIMEOUT_MS": os.getenv("KAFKA_TIMEOUT_MS", "60000"),
+    "KAFKA_TIMEOUT_MS": os.getenv(
+        "KAFKA_TIMEOUT_MS", "10000"
+    ),  # 10s instead of 60s (faster feedback if Kafka empty)
     "KAFKA_MAX_POLL_RECORDS": os.getenv("KAFKA_MAX_POLL_RECORDS", "500"),
     # API configuration
     "API_URL": os.getenv("API_URL", "http://api:8000"),

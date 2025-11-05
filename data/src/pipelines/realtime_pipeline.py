@@ -253,18 +253,21 @@ class RealtimePipeline:
 
     def _get_auth_headers(self) -> Dict[str, str]:
         """
-        Get headers with JWT authorization
+        Get headers with JWT Bearer token authorization
 
         Returns:
-            Headers dict with Authorization
+            Headers dict with Authorization Bearer token
         """
-        # Ensure token is valid
-        self._refresh_token_if_needed()
-
         headers = {"Content-Type": "application/json"}
+
+        # Refresh token if needed
+        self._refresh_token_if_needed()
 
         if self.api_token:
             headers["Authorization"] = f"Bearer {self.api_token}"
+            logger.debug("Using JWT Bearer token authentication")
+        else:
+            logger.warning("No JWT token available for authentication")
 
         return headers
 
@@ -339,7 +342,7 @@ class RealtimePipeline:
 
                 # Timeout check
                 if (time.time() - start_time) > timeout_seconds:
-                    logger.warning(f"⚠️  Timeout reached after {timeout_seconds}s")
+                    logger.warning(f"  Timeout reached after {timeout_seconds}s")
                     break
 
         finally:
@@ -457,9 +460,26 @@ class RealtimePipeline:
         """
         logger.info(f"Making BATCH predictions via API: {len(df)} transactions")
 
-        # Prepare payload for API (features only)
-        features = ["Time", "amount"] + [f"V{i}" for i in range(1, 29)]
-        payload = {"transactions": df[features].to_dict(orient="records")}
+        # Prepare payload for API (features in correct format)
+        # API expects: {transactions: [{transaction_id: str, features: [30 floats]}]}
+        # Features order: Time, V1-V28, amount (30 total)
+        transactions_payload = []
+        for _, row in df.iterrows():
+            # Build features array: [Time, V1-V28, amount]
+            features = [float(row["Time"])]
+            features += [float(row[f"V{i}"]) for i in range(1, 29)]
+            features.append(float(row["amount"]))
+
+            transactions_payload.append(
+                {
+                    "transaction_id": str(
+                        row.get("transaction_id", f"txn_{len(transactions_payload)}")
+                    ),
+                    "features": features,
+                }
+            )
+
+        payload = {"transactions": transactions_payload}
 
         url = f"{self.api_url}/api/v1/batch-predict"
 
@@ -483,18 +503,37 @@ class RealtimePipeline:
                     # Success
                     results = response.json()
 
-                    df["predicted_fraud"] = [
-                        r["is_fraud"] for r in results["predictions"]
-                    ]
-                    df["fraud_probability"] = [
-                        r["fraud_probability"] for r in results["predictions"]
-                    ]
+                    # Extract predictions and map to DataFrame
+                    # API returns: {predictions: [{transaction_id, prediction, fraud_score, confidence, model_version, ...}]}
+                    predictions_list = results["predictions"]
+
+                    # Create mapping by transaction_id for safety
+                    predictions_map = {p["transaction_id"]: p for p in predictions_list}
+
+                    # Apply predictions to DataFrame
+                    df["predicted_fraud"] = df["transaction_id"].apply(
+                        lambda tid: bool(
+                            predictions_map.get(str(tid), {}).get("prediction", 0)
+                        )
+                    )
+                    df["fraud_probability"] = df["transaction_id"].apply(
+                        lambda tid: float(
+                            predictions_map.get(str(tid), {}).get("fraud_score", 0.0)
+                        )
+                    )
+                    df["model_version"] = df["transaction_id"].apply(
+                        lambda tid: str(
+                            predictions_map.get(str(tid), {}).get(
+                                "model_version", "unknown"
+                            )
+                        )
+                    )
                     df["prediction_timestamp"] = datetime.utcnow().isoformat()
 
                     fraud_count = df["predicted_fraud"].sum()
-                    logger.info("Batch prediction completed")
+                    logger.info(" Batch prediction completed")
                     logger.info(
-                        f"Frauds: {fraud_count}/{len(df)} ({fraud_count/len(df)*100:.1f}%)"
+                        f"   Frauds detected: {fraud_count}/{len(df)} ({fraud_count/len(df)*100:.1f}%)"
                     )
 
                     self.metrics["total_predicted"] += len(df)
@@ -625,30 +664,65 @@ class RealtimePipeline:
 
     def save_to_database(self, df: pd.DataFrame) -> int:
         """
-        Save transactions to PostgreSQL
+        Save transactions AND predictions to PostgreSQL
+
+        This method performs TWO insertions:
+        1. insert_transactions(): Saves RAW transactions (Time, V1-V28, amount, Class)
+        2. insert_predictions(): Saves API predictions (fraud_score, is_fraud_predicted, model_version)
 
         Args:
-            df: DataFrame with transactions and predictions
+            df: DataFrame with Kaggle features + API predictions
 
         Returns:
-            Number of rows saved
+            Number of rows saved (transactions count)
         """
-        logger.info(f"Saving {len(df)} transactions to PostgreSQL")
+        logger.info(f" Saving {len(df)} transactions + predictions to PostgreSQL")
 
         try:
-            # Convert to list of dicts
-            records = df.to_dict(orient="records")
+            # Connect to database if not already connected
+            if not self.db_service._initialized:
+                self.db_service.connect()
 
-            # Save using DatabaseService
-            count = self.db_service.insert_transactions(records)
+            # Convert DataFrame to list of dicts
+            transactions = df.to_dict(orient="records")
 
-            logger.info(f"Saved {count} transactions to database")
-            self.metrics["total_saved"] = count
+            # Save RAW TRANSACTIONS (Time, V1-V28, amount, Class)
+            logger.info(
+                f"1 Saving {len(transactions)} RAW transactions to 'transactions' table"
+            )
+            transactions_saved = self.db_service.insert_transactions(transactions)
+            logger.info(f" Saved {transactions_saved} raw transactions")
 
-            return count
+            # Save PREDICTIONS (fraud_score, is_fraud_predicted, model_version)
+            # Only save predictions if API returned results
+            predictions = []
+            for txn in transactions:
+                if "fraud_probability" in txn and txn["fraud_probability"] is not None:
+                    pred = {
+                        "transaction_id": txn["transaction_id"],
+                        "fraud_score": float(txn.get("fraud_probability", 0.0)),
+                        "is_fraud_predicted": bool(txn.get("predicted_fraud", False)),
+                        "model_version": str(txn.get("model_version", "unknown")),
+                        "confidence": float(txn.get("fraud_probability", 0.0)),
+                        "prediction_time": datetime.utcnow(),
+                    }
+                    predictions.append(pred)
+
+            if predictions:
+                logger.info(
+                    f" Saving {len(predictions)} predictions to 'predictions' table"
+                )
+                predictions_saved = self.db_service.insert_predictions(predictions)
+                logger.info(f" Saved {predictions_saved} predictions")
+            else:
+                logger.warning(" No predictions to save (API may have failed)")
+
+            self.metrics["total_saved"] = transactions_saved
+
+            return transactions_saved
 
         except Exception as e:
-            logger.error(f"Failed to save to database: {str(e)}", exc_info=True)
+            logger.error(f" Failed to save to database: {str(e)}", exc_info=True)
             self.metrics["errors"] += 1
             return 0
 

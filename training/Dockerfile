@@ -31,13 +31,19 @@ WORKDIR /app
 # Install common package first
 COPY common/ /app/common/
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir /app/common
+    pip install --no-cache-dir \
+    --default-timeout=100 \
+    --retries 5 \
+    /app/common
 
 # Install training requirements
 COPY training/requirements.txt ./requirements.txt
 
-# Use pip cache optimizations and clean up after installation
-RUN pip install --no-cache-dir -r requirements.txt
+# Use pip cache optimizations and clean up after installation with timeout and retry settings
+RUN pip install --no-cache-dir \
+    --default-timeout=100 \
+    --retries 5 \
+    -r requirements.txt
 
 # -----------------------------------------------------------
 # 5. Copy centralized config and training codebase

@@ -170,7 +170,19 @@ with DAG(
                 "source": "/Users/joshuajusteyunpeinikiema/Documents/MLOps/fraud-detection-project/fraud-detection-ml/creditcard.csv",
                 "type": "bind",
                 "read_only": True,
-            }
+            },
+            {
+                "target": "/app/training/artifacts",
+                "source": "training_artifacts",  # Named volume from docker-compose
+                "type": "volume",
+                "read_only": False,
+            },
+            {
+                "target": "/mlflow/artifacts",
+                "source": "mlflow_artifacts",  # MLflow artifacts (shared with MLflow server)
+                "type": "volume",
+                "read_only": False,
+            },
         ],
         trigger_rule=TriggerRule.NONE_FAILED,
         doc_md="""

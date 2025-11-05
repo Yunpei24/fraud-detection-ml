@@ -32,7 +32,7 @@ try:
     KAFKA_AVAILABLE = True
 except ImportError:
     KAFKA_AVAILABLE = False
-    print("⚠️  kafka-python not installed. Install with: pip install kafka-python")
+    print(" kafka-python not installed. Install with: pip install kafka-python")
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"

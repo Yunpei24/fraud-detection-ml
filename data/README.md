@@ -1,8 +1,32 @@
 # Data Module - Fraud Detection System
 
-Composant d'ingestion, validation, transformation et stockage de données pour le système de détection de fraude.
+Production-ready data ingestion, validation, transformation, and storage component for the fraud detection system.
 
-## 📂 Structure
+## 🎯 Overview
+
+The data module handles:
+- **Kafka Stream Ingestion**: Real-time transaction consumption
+- **Schema Validation**: Ensure data quality and consistency
+- **Feature Transformation**: Normalization and engineering
+- **Dual-Table Storage**: Raw transactions + ML predictions
+- **API Integration**: JWT-authenticated fraud prediction
+- **Monitoring**: Prometheus metrics and health checks
+
+## 📊 Data Flow
+
+```
+Transaction Simulator
+    ↓ (produces 50 txn every 5s)
+Kafka Topic: fraud-detection-transactions
+    ↓ (consumes 100 txn every 10s)
+Realtime Pipeline
+    ├→ Schema Validation (TransactionValidator)
+    ├→ Data Cleaning (v1-v28 normalization)
+    ├→ Batch Prediction (API call with JWT auth)
+    └→ Dual-Save (transactions + predictions tables)
+```
+
+## � Structure
 
 ```
 data/
@@ -49,12 +73,53 @@ pip install -r data/requirements.txt
 
 # 2. Configure environment variables
 cp .env.example .env
-# Edit .env with your Azure/DB credentials
+# Edit .env with your configuration
+```
+
+### Critical Configuration
+
+**⚠️ IMPORTANT**: The `DATABASE_URL` environment variable takes **absolute priority** over individual `DB_*` variables in the database connection logic.
+
+```yaml
+# In docker-compose.yml or .env
+environment:
+  # CRITICAL: This is checked FIRST
+  - DATABASE_URL=postgresql://fraud_user:fraud_pass_dev_2024@postgres:5432/fraud_detection
+  
+  # These are fallbacks (used if DATABASE_URL not set)
+  - DB_HOST=postgres
+  - DB_PORT=5432
+  - DB_NAME=fraud_detection
+  - DB_USER=fraud_user
+  - DB_PASSWORD=fraud_pass_dev_2024
+```
+
+**Why Both?**
+- `DATABASE_URL`: Used by psycopg2, SQLAlchemy, and most database libraries
+- `DB_*` variables: Used by Pydantic settings and legacy code
+- **Setting both ensures compatibility** across all database clients
+
+### Running the Realtime Pipeline
+
+```bash
+# Run locally (development)
+python -m src.pipelines.realtime_pipeline --mode batch --count 100
+
+# Run in Docker
+docker run --rm --network fraud-detection-network \
+  -e DATABASE_URL="postgresql://fraud_user:password@postgres:5432/fraud_detection" \
+  -e API_URL="http://api:8000" \
+  fraud-detection/data:local \
+  python -m src.pipelines.realtime_pipeline --mode batch --count 100
+
+# Run via Airflow (automated)
+# DAG: 00_realtime_streaming (runs every 10 seconds)
+docker exec fraud-airflow-scheduler airflow dags trigger 00_realtime_streaming
 ```
 
 ### Configuration
 
-Créer un fichier `.env` à la racine du projet:
+Create a `.env` file at the project root:
 
 ```bash
 # Azure
@@ -496,6 +561,10 @@ docker run -d -p 6379:6379 redis
 
 ---
 
-**Module créé**: October 2025  
-**Version**: 1.0.0  
-**Statut**: Production-ready ✅
+## 👨🏾‍💻 Contributors
+
+Fraud Detection Team
+
+1. Joshua Juste NIKIEMA
+2. Olalekan Taofeek OLALUWOYE
+3. Soulaimana Toihir DJALOUD

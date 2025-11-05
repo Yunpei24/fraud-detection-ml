@@ -13,13 +13,19 @@ RUN apt-get update && apt-get install -y \
 
 # Install common package first
 COPY common/ /app/common/
-RUN pip install --no-cache-dir /app/common
+RUN pip install --no-cache-dir \
+    --default-timeout=300 \
+    --retries 5 \
+    /app/common
 
 # Copy requirements
 COPY drift/requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies with timeout and retry settings
+RUN pip install --no-cache-dir \
+    --default-timeout=300 \
+    --retries 5 \
+    -r requirements.txt
 
 # Copy application code
 COPY drift/ .

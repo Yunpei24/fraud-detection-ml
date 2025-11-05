@@ -3,15 +3,20 @@
 Training pipeline for fraud detection.
 Loads data from PostgreSQL, applies preprocessing and feature engineering,
 trains multiple models with SMOTE, evaluates, and registers best model in MLflow.
+
+ARTIFACT PERSISTENCE:
+- Saves artifacts locally in /app/training/artifacts/[timestamp]/
+- Then logs to MLflow (files persist after upload)
+- Local files accessible for debugging and backup
 """
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import joblib
@@ -92,6 +97,96 @@ class TrainConfig:
     use_postgres: bool = True  # If False, falls back to local CSV
     local_csv_path: str = "/app/data/raw/creditcard.csv"  # Container path
 
+    # Artifact persistence (NEW)
+    artifacts_dir: str = "/app/training/artifacts"  # Local persistence directory
+    save_local_artifacts: bool = True  # Save locally before MLflow
+    run_timestamp: Optional[str] = None  # Auto-generated timestamp
+
+
+# -------------------------
+# Helper Functions (NEW)
+# -------------------------
+def create_artifacts_directory(cfg: TrainConfig) -> Path:
+    """
+    Create timestamped artifacts directory for this training run.
+
+    Structure:
+        /app/training/artifacts/[timestamp]/
+            ├── models/        (trained models .pkl)
+            ├── plots/         (evaluation plots .png)
+            ├── metrics/       (metrics .json)
+            ├── explainability/ (SHAP artifacts)
+            └── run_summary.json
+
+    Returns:
+        Path to created directory
+    """
+    if cfg.run_timestamp is None:
+        cfg.run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    run_dir = Path(cfg.artifacts_dir) / cfg.run_timestamp
+
+    # Create subdirectories
+    (run_dir / "models").mkdir(parents=True, exist_ok=True)
+    (run_dir / "plots").mkdir(parents=True, exist_ok=True)
+    (run_dir / "metrics").mkdir(parents=True, exist_ok=True)
+    (run_dir / "explainability").mkdir(parents=True, exist_ok=True)
+
+    logger.info(f" Artifacts directory created: {run_dir}")
+
+    return run_dir
+
+
+def save_artifact_local_and_mlflow(
+    artifact_data: Any,
+    filename: str,
+    artifact_type: str,
+    local_dir: Path,
+    mlflow_artifact_path: Optional[str] = None,
+) -> str:
+    """
+    Save artifact LOCALLY first, then log to MLflow from local file.
+    File persists locally even after MLflow upload.
+
+    Args:
+        artifact_data: Data to save (figure, dict, model, etc.)
+        filename: Filename
+        artifact_type: 'plot', 'json', 'model', 'pkl'
+        local_dir: Local save directory
+        mlflow_artifact_path: MLflow artifact path (optional)
+
+    Returns:
+        Local file path
+    """
+    # Determine local path
+    local_path = local_dir / filename
+
+    # Save locally based on type
+    if artifact_type == "plot":
+        artifact_data.savefig(local_path, dpi=160, bbox_inches="tight")
+        logger.debug(f"   Plot saved: {local_path}")
+
+    elif artifact_type == "json":
+        with open(local_path, "w") as f:
+            json.dump(artifact_data, f, indent=2)
+        logger.debug(f"   JSON saved: {local_path}")
+
+    elif artifact_type in ["model", "pkl"]:
+        joblib.dump(artifact_data, local_path)
+        logger.debug(f"   {artifact_type.upper()} saved: {local_path}")
+
+    else:
+        raise ValueError(f"Unknown artifact type: {artifact_type}")
+
+    # Log to MLflow from local file (file persists after upload)
+    try:
+        log_artifact(str(local_path), mlflow_artifact_path)
+        logger.debug(f"    Logged to MLflow: {filename}")
+    except Exception as e:
+        logger.warning(f"   MLflow upload failed: {e}")
+
+    return str(local_path)
+
 
 # -------------------------
 # Public entry point
@@ -109,9 +204,12 @@ def run_training(cfg: Optional[TrainConfig] = None) -> bool:
     cfg = cfg or TrainConfig()
 
     logger.info("=" * 80)
-    logger.info("FRAUD DETECTION MODEL TRAINING PIPELINE")
+    logger.info(" FRAUD DETECTION MODEL TRAINING PIPELINE")
     logger.info("=" * 80)
     logger.info(f"Configuration: {asdict(cfg)}")
+
+    # Create artifacts directory for this run
+    artifacts_dir = create_artifacts_directory(cfg)
 
     # MLflow experiment setup
     setup_experiment(cfg.experiment_name)
@@ -124,7 +222,7 @@ def run_training(cfg: Optional[TrainConfig] = None) -> bool:
 
     # Train & evaluate models in parallel
     models = train_models(Xtr, ytr, Xval, yval, cfg)
-    results = evaluate_models(models, Xte, yte, feature_names_final)
+    results = evaluate_models(models, Xte, yte, feature_names_final, artifacts_dir)
 
     # Validate against business rules
     ok = validate_models(results, cfg)
@@ -133,14 +231,27 @@ def run_training(cfg: Optional[TrainConfig] = None) -> bool:
     else:
         logger.info(" Validation passed")
 
-    # Register best model & persist artifacts
-    register_best_model(models, results, feature_names_final, cfg)
-    save_artifacts(models, results)
+    # Register best model (artifacts logged inside each model's MLflow run)
+    register_best_model(models, results, feature_names_final, cfg, artifacts_dir)
+
+    # Save run summary
+    summary = {
+        "timestamp": cfg.run_timestamp,
+        "validation_passed": ok,
+        "models_trained": list(models.keys()),
+        "best_model_by_auc": max(results.items(), key=lambda x: x[1].get("auc", 0))[0],
+        "metrics": results,
+        "artifacts_path": str(artifacts_dir),
+    }
+    summary_path = artifacts_dir / "run_summary.json"
+    with open(summary_path, "w") as f:
+        json.dump(summary, f, indent=2)
 
     logger.info("=" * 80)
     logger.info(
-        f"Training pipeline completed (validation={'PASSED' if ok else 'FAILED'})"
+        f" Training pipeline completed (validation={'PASSED' if ok else 'FAILED'})"
     )
+    logger.info(f" Artifacts saved to: {artifacts_dir}")
     logger.info("=" * 80)
 
     return ok
@@ -385,10 +496,11 @@ def train_models(Xtr, ytr, Xval, yval, cfg: TrainConfig) -> Dict[str, Any]:
 
 
 def evaluate_models(
-    models: Dict[str, Any], Xte, yte, feature_names: list
+    models: Dict[str, Any], Xte, yte, feature_names: list, artifacts_dir: Path
 ) -> Dict[str, Dict[str, float]]:
     """
     Evaluate all models on test set and generate plots.
+    Saves artifacts locally first, then logs to MLflow.
 
     Returns:
         Dictionary of {model_name: metrics_dict}
@@ -397,6 +509,8 @@ def evaluate_models(
 
     results: Dict[str, Dict[str, float]] = {}
     plots_data = {}
+    plots_dir = artifacts_dir / "plots"
+    explainability_dir = artifacts_dir / "explainability"
 
     for name, model in models.items():
         logger.info(f"   Evaluating {name}...")
@@ -433,30 +547,35 @@ def evaluate_models(
             f"   {name}: auc={metrics.get('auc', 0):.4f}, recall={metrics.get('recall', 0):.4f}, precision={metrics.get('precision', 0):.4f}"
         )
 
-    # Generate plots (parallelized for speed)
-    logger.info("   Generating evaluation plots (parallel)...")
+    # Generate plots (parallelized for speed) with local persistence
+    logger.info("   Generating evaluation plots (with local save)...")
 
     def generate_plots_for_model(name: str, data: dict, model: Any) -> list:
-        """Generate all plots for a single model."""
+        """Generate all plots for a single model and save locally + MLflow."""
         model_plots = []
         try:
             # ROC curve
             fig_roc = plot_roc_auc(
                 data["y_true"], data["y_score"], title=f"ROC Curve - {name}"
             )
-            model_plots.append((f"{name}_roc.png", fig_roc))
+            save_artifact_local_and_mlflow(
+                fig_roc, f"{name}_roc.png", "plot", plots_dir
+            )
+            plt.close(fig_roc)
 
             # Precision-Recall curve
             fig_pr = plot_precision_recall_curve_plot(
                 data["y_true"], data["y_score"], title=f"Precision-Recall - {name}"
             )
-            model_plots.append((f"{name}_pr.png", fig_pr))
+            save_artifact_local_and_mlflow(fig_pr, f"{name}_pr.png", "plot", plots_dir)
+            plt.close(fig_pr)
 
             # Confusion matrix
             fig_cm = plot_confusion_matrix_plot(
                 data["y_true"], data["y_pred"], title=f"Confusion Matrix - {name}"
             )
-            model_plots.append((f"{name}_cm.png", fig_cm))
+            save_artifact_local_and_mlflow(fig_cm, f"{name}_cm.png", "plot", plots_dir)
+            plt.close(fig_cm)
 
             # Feature importance (if available)
             if hasattr(model, "get_feature_importance"):
@@ -466,20 +585,22 @@ def evaluate_models(
                         feature_names,
                         title=f"Feature Importance - {name}",
                     )
-                    model_plots.append((f"{name}_importance.png", fig_fi))
+                    save_artifact_local_and_mlflow(
+                        fig_fi, f"{name}_importance.png", "plot", plots_dir
+                    )
+                    plt.close(fig_fi)
                 except Exception as e:
                     logger.warning(
                         f"    Feature importance plot failed for {name}: {e}"
                     )
 
-            logger.info(f"   Generated {len(model_plots)} plots for {name}")
+            logger.info(f"  Plots generated for {name}")
         except Exception as e:
             logger.warning(f"    Plot generation failed for {name}: {e}")
 
         return model_plots
 
     try:
-        plots = []
         # Parallelize plot generation across models (max 4 workers for 4 models)
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = {
@@ -492,25 +613,15 @@ def evaluate_models(
             for future in as_completed(futures):
                 model_name = futures[future]
                 try:
-                    model_plots = future.result()
-                    plots.extend(model_plots)
+                    future.result()
                 except Exception as e:
                     logger.warning(
                         f"    Failed to generate plots for {model_name}: {e}"
                     )
 
-        # Log all plots to MLflow
-        for filename, fig in plots:
-            # Save temporarily to log to MLflow
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
-                fig.savefig(tmp_file.name, dpi=160, bbox_inches="tight")
-                log_artifact(tmp_file.name, filename)
-                os.unlink(tmp_file.name)  # Clean up temp file
-            plt.close(fig)  # Free memory
+        logger.info("   Plots saved locally and logged to MLflow")
 
-        logger.info("   Plots logged to MLflow")
-
-        # Generate and log SHAP explanations
+        # Generate and log SHAP explanations with local persistence
         logger.info("   Generating SHAP explanations...")
         try:
             # Use a small sample for SHAP (faster computation)
@@ -533,22 +644,21 @@ def evaluate_models(
                         top_n=20,
                     )
 
-                    # Log explanation report as JSON artifact
-                    with tempfile.NamedTemporaryFile(
-                        mode="w", suffix=".json", delete=False
-                    ) as tmp_file:
-                        json.dump(explanation_report, tmp_file, indent=2)
-                        tmp_file.flush()
-                        log_artifact(tmp_file.name, f"shap_explainer_{name}.json")
-                        os.unlink(tmp_file.name)
+                    # Save explainer locally + MLflow
+                    save_artifact_local_and_mlflow(
+                        explainer,
+                        f"shap_explainer_{name}.pkl",
+                        "pkl",
+                        explainability_dir,
+                    )
 
-                    # Save SHAP explainer as pickle artifact for deployment
-                    with tempfile.NamedTemporaryFile(
-                        suffix=".pkl", delete=False
-                    ) as tmp_file:
-                        joblib.dump(explainer, tmp_file.name)
-                        log_artifact(tmp_file.name, f"shap_explainer_{name}.pkl")
-                        os.unlink(tmp_file.name)
+                    # Save explanation report locally + MLflow
+                    save_artifact_local_and_mlflow(
+                        explanation_report,
+                        f"shap_report_{name}.json",
+                        "json",
+                        explainability_dir,
+                    )
 
                     # Generate and log SHAP summary plot
                     if hasattr(model, "predict_proba"):
@@ -567,14 +677,12 @@ def evaluate_models(
                             title=f"SHAP Summary - {name}",
                         )
 
-                        with tempfile.NamedTemporaryFile(
-                            suffix=".png", delete=False
-                        ) as tmp_file:
-                            fig_shap.savefig(
-                                tmp_file.name, dpi=160, bbox_inches="tight"
-                            )
-                            log_artifact(tmp_file.name, f"{name}_shap_summary.png")
-                            os.unlink(tmp_file.name)
+                        save_artifact_local_and_mlflow(
+                            fig_shap,
+                            f"{name}_shap_summary.png",
+                            "plot",
+                            explainability_dir,
+                        )
                         plt.close(fig_shap)
 
                     logger.info(f"   SHAP explanation generated for {name}")
@@ -624,17 +732,20 @@ def register_best_model(
     results: Dict[str, Dict[str, float]],
     feature_names: list,
     cfg: TrainConfig,
+    artifacts_dir: Path,
 ):
     """
     Register ALL 4 models in MLflow Model Registry as Staging.
+    Saves models locally first, then logs to MLflow.
     This allows the canary deployment to compare the complete ensemble.
     """
     if not cfg.register_models:
         logger.info("Model registration disabled in config")
         return
 
-    logger.info("Registering all 4 models as ensemble in MLflow...")
+    logger.info(" Registering all 4 models as ensemble in MLflow...")
 
+    models_dir = artifacts_dir / "models"
     registered_models = []
 
     for model_name, model in models.items():
@@ -642,11 +753,16 @@ def register_best_model(
             # Register each model individually
             mlflow_name = f"fraud_detection_{model_name}"
 
+            # Save model locally FIRST (before MLflow)
+            local_model_path = models_dir / f"{model_name}_model.pkl"
+            model_to_save = model.model if hasattr(model, "model") else model
+            joblib.dump(model_to_save, local_model_path)
+            logger.info(f"   Model saved locally: {local_model_path}")
+
             # Create a run for model registration
             with start_run(run_name=f"register_{model_name}"):
-                # First log the model to MLflow, then register it
-                model_to_log = model.model if hasattr(model, "model") else model
-                log_model(model_to_log, artifact_path="model")
+                # Log the model to MLflow (from in-memory object)
+                log_model(model_to_save, artifact_path="model")
                 register_model(
                     name=mlflow_name,
                     stage="Staging",
@@ -659,16 +775,17 @@ def register_best_model(
                     "feature_names": feature_names,
                     "config": asdict(cfg),
                     "ensemble_weight": get_ensemble_weight(model_name),
+                    "local_path": str(local_model_path),
+                    "timestamp": cfg.run_timestamp,
                 }
 
-                # Log metadata as artifact
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".json", delete=False
-                ) as tmp_file:
-                    json.dump(metadata, tmp_file, indent=2)
-                    tmp_file.flush()
-                    log_artifact(tmp_file.name, f"{model_name}_metadata.json")
-                    os.unlink(tmp_file.name)
+                # Save metadata locally + MLflow
+                save_artifact_local_and_mlflow(
+                    metadata,
+                    f"{model_name}_metadata.json",
+                    "json",
+                    models_dir,
+                )
 
                 logger.info(f"  Model registered: {mlflow_name} (Staging)")
                 registered_models.append(mlflow_name)
@@ -676,31 +793,34 @@ def register_best_model(
         except Exception as e:
             logger.error(f"   Failed to register {model_name}: {e}")
 
-    # Log ensemble metadata as artifact
-    ensemble_metadata = {
-        "ensemble_version": f"v{cfg.random_state}",  # Use random_state as version
-        "models": registered_models,
-        "weights": {
-            "xgboost": 0.50,
-            "random_forest": 0.30,
-            "neural_network": 0.15,
-            "isolation_forest": 0.05,
-        },
-        "metrics": results,
-        "feature_names": feature_names,
-        "config": asdict(cfg),
-    }
+    # Log ensemble metadata as artifact in dedicated run
+    with start_run(run_name="register_ensemble"):
+        ensemble_metadata = {
+            "ensemble_version": f"v{cfg.random_state}",  # Use random_state as version
+            "models": registered_models,
+            "weights": {
+                "xgboost": 0.50,
+                "random_forest": 0.30,
+                "neural_network": 0.15,
+                "isolation_forest": 0.05,
+            },
+            "metrics": results,
+            "feature_names": feature_names,
+            "config": asdict(cfg),
+            "timestamp": cfg.run_timestamp,
+            "artifacts_path": str(artifacts_dir),
+        }
 
-    # Log ensemble metadata as artifact
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False
-    ) as tmp_file:
-        json.dump(ensemble_metadata, tmp_file, indent=2)
-        tmp_file.flush()
-        log_artifact(tmp_file.name, "ensemble_metadata.json")
-        os.unlink(tmp_file.name)
+        # Save ensemble metadata locally + MLflow
+        save_artifact_local_and_mlflow(
+            ensemble_metadata,
+            "ensemble_metadata.json",
+            "json",
+            artifacts_dir,
+        )
 
-    logger.info(f"   Ensemble registered with {len(registered_models)} models")
+    logger.info(f"  Ensemble registered with {len(registered_models)} models")
+    logger.info(f"   All artifacts persisted to: {artifacts_dir}")
 
 
 def get_ensemble_weight(model_name: str) -> float:
@@ -712,39 +832,6 @@ def get_ensemble_weight(model_name: str) -> float:
         "isolation_forest": 0.05,
     }
     return weights.get(model_name, 0.0)
-
-
-def save_artifacts(models: Dict[str, Any], results: Dict[str, Dict[str, float]]):
-    """
-    Log model artifacts and metrics to MLflow.
-    """
-    logger.info(" Logging model artifacts to MLflow...")
-
-    for name, model in models.items():
-        try:
-            # Log model as artifact
-            with tempfile.NamedTemporaryFile(
-                suffix=".joblib", delete=False
-            ) as tmp_file:
-                joblib.dump(model, tmp_file.name)
-                log_artifact(tmp_file.name, f"{name}_model.joblib")
-                os.unlink(tmp_file.name)
-            logger.info(f"   Logged {name} model to MLflow")
-        except Exception as e:
-            logger.warning(f"   Failed to log {name} model: {e}")
-
-    # Log metrics as artifact
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as tmp_file:
-            json.dump(results, tmp_file, indent=2)
-            tmp_file.flush()
-            log_artifact(tmp_file.name, "metrics.json")
-            os.unlink(tmp_file.name)
-        logger.info("   Logged metrics to MLflow")
-    except Exception as e:
-        logger.warning(f"   Failed to log metrics: {e}")
 
 
 if __name__ == "__main__":

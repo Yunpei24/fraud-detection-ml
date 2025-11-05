@@ -34,17 +34,17 @@ The Drift Detection component monitors the ML system for three types of drift:
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│ Drift Detection System                                  │
-│                                                         │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────┐ │
-│  │ Data Drift   │    │ Target Drift │    │ Concept  │ │
-│  │ Detector     │    │ Detector     │    │ Drift    │ │
-│  │              │    │              │    │ Detector │ │
-│  │ • KS Test    │    │ • Fraud Rate │    │ • Recall │ │
-│  │ • Chi-Square │    │ • Rate Change│    │ • FPR    │ │
-│  │ • PSI        │    │ • Chi-Square │    │ • F1     │ │
-│  └──────┬───────┘    └──────┬───────┘    └────┬─────┘ │
+┌────────────────────────────────────────────────────────┐
+│ Drift Detection System                                 │
+│                                                        │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────┐  │
+│  │ Data Drift   │    │ Target Drift │    │ Concept  │  │
+│  │ Detector     │    │ Detector     │    │ Drift    │  │
+│  │              │    │              │    │ Detector │  │
+│  │ • KS Test    │    │ • Fraud Rate │    │ • Recall │  │
+│  │ • Chi-Square │    │ • Rate Change│    │ • FPR    │  │
+│  │ • PSI        │    │ • Chi-Square │    │ • F1     │  │
+│  └──────┬───────┘    └──────┬───────┘    └────┬─────┘  │
 │         │                   │                  │       │
 │         └───────────────────┴──────────────────┘       │
 │                             │                          │

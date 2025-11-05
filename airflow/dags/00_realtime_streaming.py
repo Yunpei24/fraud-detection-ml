@@ -94,7 +94,9 @@ with DAG(
         auto_remove=True,
         mount_tmp_dir=False,
         trigger_rule=TriggerRule.NONE_FAILED,
-        execution_timeout=timedelta(seconds=30),
+        execution_timeout=timedelta(
+            seconds=60
+        ),  # Increased from 30s to 60s (Kafka consumer timeout)
         doc_md="""
         Runs streaming prediction pipeline in Docker container:
         1. Consumes up to 100 transactions from Kafka
