@@ -1,199 +1,398 @@
 # Scripts Directory
 
-This directory contains all shell scripts for building, deploying, and managing the Fraud Detection ML system.
+This directory contains utility scripts for building, deploying, and managing the Fraud Detection ML project across different environments.
 
-## 📋 Available Scripts
+## Available Scripts
 
-### Local Development Scripts
+### 1. `build-local.sh`
+**Purpose**: Build and manage Docker services for local development
 
-#### `build-local.sh`
-**Purpose**: Complete local development environment management
-**Usage**: `./scripts/build-local.sh`
+**Description**: Interactive script that provides a menu-driven interface for managing the local development environment using `docker-compose.local.yml`.
+
 **Features**:
-- Build all Docker images
-- Start/stop all services
-- Health checks for all services
-- Full test suite (build + deploy + verify)
-- Service logs and status monitoring
+- Pull latest Docker images
+- Build all services
+- Start all services
+- Stop all services
+- Check service health
+- View service logs
+- View resource usage
+- Clean up Docker resources
+- Exit
 
-**Options**:
-1. Build all images
-2. Build specific image
-3. Start all services
-4. Start specific services
-5. Stop all services
-6. View logs
-7. Clean up (remove volumes)
-8. Full test (build + up + health checks)
-
-### Production Deployment Scripts
-
-#### `deploy-vm1.sh`
-**Purpose**: Deploy application services on VM1 (your Azure subscription)
-**Usage**: `bash scripts/deploy-vm1.sh` (run on VM1)
-**Deploys**:
-- PostgreSQL, Redis, Kafka, MLflow
-- Data, Drift, Training services
-- Airflow orchestration
-- All application components
-
-**Options**:
-1. Full deployment (build + deploy)
-2. Build images only
-3. Deploy services only
-4. Stop services
-5. View status
-6. View logs
-7. Clean up
-8. Health check
-
-#### `deploy-vm2.sh`
-**Purpose**: Deploy monitoring services on VM2 (colleague's Azure subscription)
-**Usage**: `bash scripts/deploy-vm2.sh` (run on VM2)
-**Deploys**:
-- Prometheus, Grafana, Alertmanager
-- Node Exporter for infrastructure metrics
-- Complete monitoring stack
-
-**Options**:
-1. Full deployment
-2. Deploy services only
-3. Stop services
-4. View status
-5. View logs
-6. Clean up
-7. Health check
-8. Configure VM1 IP
-
-### Health Check Scripts
-
-#### `vm1-health-check.sh`
-**Purpose**: Comprehensive health checks for VM1 services
-**Usage**: `bash scripts/vm1-health-check.sh`
-**Checks**:
-- Infrastructure: PostgreSQL, Redis, Kafka, Zookeeper
-- Applications: MLflow, Data, Drift, Training services
-- Orchestration: Airflow Webserver, Scheduler
-- Metrics: External accessibility for VM2 scraping
-
-#### `vm2-health-check.sh`
-**Purpose**: Comprehensive health checks for VM2 monitoring services
-**Usage**: `bash scripts/vm2-health-check.sh`
-**Checks**:
-- Monitoring: Prometheus, Grafana, Alertmanager, Node Exporter
-- Connectivity: Cross-subscription access to VM1 services
-- Targets: Prometheus target health
-- Dashboards: Grafana dashboard provisioning
-- Alerts: Alert rule loading
-
-## 🚀 Quick Start
-
-### Local Development
+**Usage**:
 ```bash
-# From project root
 ./scripts/build-local.sh
-# Choose option 8 for full test
 ```
 
-### Production Deployment
+**Prerequisites**:
+- Docker and Docker Compose installed
+- `docker-compose.local.yml` configured
+- Network connectivity for pulling images
 
-**VM1 (Application Services)**:
+---
+
+### 2. `build-production.sh`
+**Purpose**: Interactive management tool for VM1 and VM2 production environments
+
+**Description**: Menu-driven script that provides comprehensive operations for both VM1 (application services) and VM2 (monitoring services). Offers a unified interface for deployment, health checks, log viewing, and cleanup operations.
+
+**Features**:
+- **Interactive Menu**: Select VM1, VM2, or exit
+- **VM1 Operations**:
+  - Pull latest Docker images
+  - Start application services
+  - Stop application services
+  - Check service health
+  - View service logs
+  - Clean up Docker resources
+- **VM2 Operations**:
+  - Same operations as VM1
+  - Additional Prometheus configuration validation
+  - Automatic placeholder detection (`<VM1_PUBLIC_OR_PRIVATE_IP>`)
+- **Color-coded Output**: Visual feedback for success, warnings, and errors
+- **Automatic Validation**: Checks for required files before operations
+
+**Usage**:
+```bash
+./scripts/build-production.sh
+```
+
+**Prerequisites**:
+- Docker and Docker Compose installed
+- `docker-compose.vm1.yml` configured (for VM1 operations)
+- `docker-compose.vm2.yml` configured (for VM2 operations)
+- `monitoring/prometheus.vm2.yml` configured with actual VM1 IP (for VM2)
+- Docker Hub credentials configured
+
+**Important for VM2**:
+Before starting VM2 services, ensure `monitoring/prometheus.vm2.yml` has been updated with actual VM1 IP addresses. The script will warn you if placeholders are detected.
+
+---
+
+### 3. `deploy-production.sh`
+**Purpose**: Automated production deployment with CLI flags
+
+**Description**: Command-line deployment script that supports automated deployments for VM1, VM2, or both environments. Designed for CI/CD pipelines and scripted deployments.
+
+**Usage**:
+```bash
+# Deploy VM1 only
+./scripts/deploy-production.sh --vm1
+
+# Deploy VM2 only
+./scripts/deploy-production.sh --vm2
+
+# Deploy both VMs
+./scripts/deploy-production.sh --both
+
+# Validate configuration without deploying
+./scripts/deploy-production.sh --validate
+```
+
+**Features**:
+- CLI flag-based operation (non-interactive)
+- Validation mode for configuration testing
+- Color-coded logging
+- Automatic health checks after deployment
+- Suitable for automation and CI/CD
+
+**Prerequisites**:
+- Same as `build-production.sh`
+- Suitable for automated workflows
+
+---
+
+### 4. `deploy-vm1.sh`
+**Purpose**: Deploy application services on VM1
+
+**Description**: Production deployment script for VM1 that handles all application-layer services including databases, message queues, ML services, and orchestration.
+
+**Services Deployed**:
+- PostgreSQL (database)
+- Redis (caching)
+- Kafka & Zookeeper (event streaming)
+- MLflow (model registry)
+- Data pipeline service
+- Drift detection service
+- Training service
+- Airflow (workflow orchestration)
+
+**Usage**:
 ```bash
 # On VM1
-git clone <repo>
-cd fraud-detection-ml
-bash scripts/deploy-vm1.sh
-# Choose option 1 for full deployment
+./scripts/deploy-vm1.sh
 ```
 
-**VM2 (Monitoring Services)**:
+**Prerequisites**:
+- Docker and Docker Compose installed on VM1
+- `docker-compose.vm1.yml` configured
+- Docker Hub credentials configured
+- Environment variables set (see `.env.vm1`)
+
+**Azure Requirements**:
+- VM1 must be running in your Azure subscription
+- Required ports open in Azure NSG
+- VM1 must have internet access for Docker Hub
+
+---
+
+### 5. `deploy-vm2.sh`
+**Purpose**: Deploy monitoring services on VM2
+
+**Description**: Production deployment script for VM2 that handles all monitoring infrastructure including metrics collection, visualization, alerting, and system metrics.
+
+**Services Deployed**:
+- Prometheus (metrics collection)
+- Grafana (visualization dashboards)
+- Alertmanager (alert management)
+- Node Exporter (system metrics)
+
+**Usage**:
 ```bash
 # On VM2
-git clone <repo>
-cd fraud-detection-ml
-bash scripts/deploy-vm2.sh
-# Choose option 8 first to configure VM1 IP
-# Then choose option 1 for full deployment
+./scripts/deploy-vm2.sh
 ```
 
-## 📊 Service URLs
+**Prerequisites**:
+- Docker and Docker Compose installed on VM2
+- `docker-compose.vm2.yml` configured
+- `monitoring/prometheus.vm2.yml` configured with correct VM1 IP addresses
+- Docker Hub credentials configured
+
+**Azure Requirements**:
+- VM2 must be running in colleague's Azure subscription
+- Required ports open in Azure NSG (9090, 3001, 9093, 9100)
+- VM2 must have network access to VM1 for metrics scraping
+- VM2 must have internet access for Docker Hub
+
+**Important Configuration**:
+Before running, update `monitoring/prometheus.vm2.yml` with:
+- Replace `<VM1_PUBLIC_OR_PRIVATE_IP>` with actual VM1 IP address
+- Verify all target ports match VM1 services
+
+---
+
+## Script Comparison
+
+| Feature | build-local.sh | build-production.sh | deploy-production.sh | deploy-vm1.sh | deploy-vm2.sh |
+|---------|----------------|---------------------|----------------------|---------------|---------------|
+| **Environment** | Local dev | VM1/VM2 prod | VM1/VM2 prod | VM1 only | VM2 only |
+| **Interface** | Interactive menu | Interactive menu | CLI flags | Non-interactive | Non-interactive |
+| **Use Case** | Development | Manual production ops | Automated deployment | VM1-specific deploy | VM2-specific deploy |
+| **Automation-friendly** | No | No | Yes | Yes | Yes |
+| **Multi-VM support** | N/A | Yes (menu selection) | Yes (CLI flags) | No | No |
+
+---
+
+## Cross-VM Communication Setup
+
+### VM2 → VM1 Metrics Collection
+For Prometheus on VM2 to scrape metrics from services on VM1:
+
+1. **Network Configuration**:
+   - Ensure VM2 can reach VM1 (private network or public IPs)
+   - Open required ports on VM1's NSG:
+     - 9095 (training-service)
+     - 9096 (data-service)
+     - 9097 (drift-service)
+     - 9098 (mlflow)
+     - 443 (api-service HTTPS)
+
+2. **Prometheus Configuration**:
+   - Update `monitoring/prometheus.vm2.yml`
+   - Replace placeholder IPs with actual VM1 IP
+   - Verify scrape intervals and timeouts
+
+3. **Testing**:
+   - Run deploy-vm2.sh or build-production.sh (VM2 option)
+   - Access Prometheus UI: `http://<VM2_IP>:9090`
+   - Check "Status → Targets" - all should show "UP"
+
+---
+
+## Deployment Workflows
 
 ### Local Development
-- **API**: http://localhost:8000/docs
-- **MLflow**: http://localhost:5000
-- **Airflow**: http://localhost:8080 (admin/admin)
-- **Prometheus**: http://localhost:9094
-- **Grafana**: http://localhost:3000 (admin/admin_dev_2024)
-- **Alertmanager**: http://localhost:9093
+```bash
+# Start local environment
+./scripts/build-local.sh
+# Select option 3 (Start all services)
+```
 
-### Production
-- **VM1 Services**: http://`<VM1_IP>`:8080 (Airflow)
-- **VM2 Monitoring**: http://`<VM2_IP>`:3000 (Grafana)
+### Production Deployment - Interactive (Manual Operations)
+```bash
+# SSH into VM1 or VM2
+ssh user@<VM_IP>
 
-## 🔧 Prerequisites
+# Navigate to project
+cd fraud-detection-ml
 
-### Local Development
-- Docker and Docker Compose
-- Bash shell
-- curl, jq (for health checks)
+# Run interactive script
+./scripts/build-production.sh
 
-### Production VMs
-- Ubuntu 20.04+ or similar Linux
-- Docker and Docker Compose
-- Git
-- curl, jq, sed
-- Network access between VM1 and VM2
+# Select VM1 or VM2 from menu
+# Choose operations (start, stop, logs, etc.)
+```
 
-## 🏗️ Architecture
+### Production Deployment - Automated (CI/CD)
+```bash
+# Deploy both VMs
+./scripts/deploy-production.sh --both
 
-### Local Development
-All services run on a single machine using Docker Compose with local networking.
+# Or deploy individually
+./scripts/deploy-production.sh --vm1
+./scripts/deploy-production.sh --vm2
 
-### Production
-- **VM1**: Application services (databases, APIs, processing)
-- **VM2**: Monitoring services (Prometheus, Grafana, alerts)
-- Cross-subscription communication via public IPs
+# Validate configuration first
+./scripts/deploy-production.sh --validate
+```
 
-## 🔒 Security Notes
+### Production Deployment - VM1 Specific
+```bash
+# SSH into VM1
+ssh user@<VM1_IP>
 
-- Change all default passwords in production
-- Use strong encryption keys
-- Configure NSG rules properly for cross-subscription access
-- Regular security updates and monitoring
+# Navigate to project
+cd fraud-detection-ml
 
-## 🐛 Troubleshooting
+# Pull latest code
+git pull origin main
+
+# Deploy services
+./scripts/deploy-vm1.sh
+```
+
+### Production Deployment - VM2 Specific
+```bash
+# SSH into VM2
+ssh user@<VM2_IP>
+
+# Navigate to project
+cd fraud-detection-ml
+
+# Pull latest code
+git pull origin main
+
+# Update Prometheus configuration with VM1 IP
+vim monitoring/prometheus.vm2.yml
+
+# Deploy monitoring
+./scripts/deploy-vm2.sh
+
+# Access Grafana
+# http://<VM2_IP>:3001
+# Default credentials: admin/admin
+```
+
+---
+
+## Troubleshooting
 
 ### Common Issues
-1. **Permission denied**: `chmod +x scripts/*.sh`
-2. **Docker not running**: Start Docker Desktop/service
-3. **Port conflicts**: Check `docker ps` for conflicts
-4. **VM connectivity**: Verify NSG rules and public IPs
 
-### Logs
+1. **Docker Hub Rate Limits**:
+   ```bash
+   # Login to Docker Hub
+   docker login
+   # Enter credentials stored in GitHub Secrets
+   ```
+
+2. **Port Conflicts**:
+   ```bash
+   # Check if port is in use
+   sudo lsof -i :<PORT>
+   # Kill process if needed
+   sudo kill -9 <PID>
+   ```
+
+3. **VM2 Cannot Reach VM1**:
+   - Verify NSG rules on VM1
+   - Test connectivity: `telnet <VM1_IP> 9095`
+   - Check if services are bound to 0.0.0.0 (not 127.0.0.1)
+   - Use `build-production.sh` VM2 menu to validate Prometheus config
+
+4. **Prometheus Targets Down**:
+   - Check `monitoring/prometheus.vm2.yml` IP addresses
+   - Verify services are running on VM1
+   - Check VM1 firewall rules
+   - Review Prometheus logs: `docker logs prometheus`
+   - Run `build-production.sh` → VM2 → View logs → prometheus
+
+5. **Container Startup Failures**:
+   ```bash
+   # View logs
+   docker-compose -f <compose-file> logs <service-name>
+   
+   # Restart specific service
+   docker-compose -f <compose-file> restart <service-name>
+   ```
+
+6. **Placeholder IPs Not Replaced**:
+   - `build-production.sh` will warn about `<VM1_PUBLIC_OR_PRIVATE_IP>` placeholders
+   - Update `monitoring/prometheus.vm2.yml` before starting VM2 services
+   - Use find/replace: `:<VM1_PUBLIC_OR_PRIVATE_IP>:` → `:<actual_IP>:`
+
+---
+
+## Maintenance
+
+### Updating Services
 ```bash
-# Local
-docker-compose -f docker-compose.local.yml logs -f
+# Interactive (build-production.sh)
+./scripts/build-production.sh
+# Select VM → Option 1 (Pull latest images)
+# Then Option 2 (Start services)
 
-# VM1
-docker-compose -f docker-compose.vm1.yml logs -f
+# Automated
+./scripts/deploy-production.sh --both
 
-# VM2
-docker-compose -f docker-compose.vm2.yml logs -f
+# Manual
+docker-compose -f <compose-file> pull
+docker-compose -f <compose-file> up -d
 ```
 
-### Health Checks
+### Viewing Logs
 ```bash
-# Local/VM1
-bash scripts/vm1-health-check.sh
+# Using build-production.sh (interactive)
+./scripts/build-production.sh
+# Select VM → Option 5 (View logs)
 
-# VM2
-bash scripts/vm2-health-check.sh
+# Manual
+docker-compose -f <compose-file> logs -f
+docker-compose -f <compose-file> logs -f <service-name>
+docker-compose -f <compose-file> logs --tail=100 <service-name>
 ```
 
-## 📝 Maintenance
+### Resource Cleanup
+```bash
+# Using build-production.sh (interactive)
+./scripts/build-production.sh
+# Select VM → Option 6 (Clean up)
 
-- Run health checks regularly
-- Monitor disk space and resources
-- Update Docker images periodically
-- Backup volumes before major changes
-- Test deployments in staging first
+# Manual
+docker-compose -f <compose-file> down
+docker-compose -f <compose-file> down -v  # ⚠️ deletes data
+docker system prune -a
+```
+
+---
+
+## Security Notes
+
+- **Credentials**: Never commit credentials to Git
+- **Environment Files**: Use `.env.vm1` and `.env.vm2` (gitignored)
+- **Docker Hub**: Credentials stored in GitHub Secrets
+- **VM Access**: Use SSH key authentication, disable password auth
+- **Network**: Use Azure Private Network when possible
+- **Ports**: Only expose necessary ports in NSG rules
+
+---
+
+## Additional Resources
+
+- **Docker Compose Files**: Root directory (`docker-compose.*.yml`)
+- **Prometheus Config**: `monitoring/prometheus.yml` (local), `monitoring/prometheus.vm2.yml` (production)
+- **Environment Setup**: See `ENVIRONMENT_CONFIG.md` in respective service directories
+- **Monitoring Guide**: `MONITORING_CORRECTIONS_REPORT.md`
+- **VM Communication**: `Guide/COMM_VM1_VM2.md`

@@ -31,7 +31,7 @@ scrape_configs:
   # Drift Monitoring Service Metrics (on VM1)
   - job_name: 'fraud-drift'
     static_configs:
-      - targets: ['<VM1_IP>:9095']  # ← REPLACE <VM1_IP> with VM1's IP (corrected port)
+      - targets: ['<VM1_IP>:9095']  # ← REPLACE <VM1_IP> with VM1's IP (port 9095)
         labels:
           service: 'drift'
           component: 'drift-monitoring'
@@ -43,7 +43,7 @@ scrape_configs:
   # Training Service Metrics (on VM1)
   - job_name: 'fraud-training'
     static_configs:
-      - targets: ['<VM1_IP>:9096']  # ← REPLACE <VM1_IP> with VM1's IP (corrected port)
+      - targets: ['<VM1_IP>:9095']  # ← REPLACE <VM1_IP> with VM1's IP (CORRECTED PORT: 9095 not 9096)
         labels:
           service: 'training'
           component: 'model-training'
@@ -55,7 +55,7 @@ scrape_configs:
   # API Service Metrics (on Azure Web App)
   - job_name: 'fraud-api'
     static_configs:
-      - targets: ['<AZURE_WEBAPP_URL>:80']  # ← REPLACE with Azure Web App URL (no https://)
+      - targets: ['<AZURE_WEBAPP_URL>']  # ← REPLACE with Azure Web App URL (example: myapi.azurewebsites.net)
         labels:
           service: 'api'
           component: 'fraud-detection'
@@ -63,6 +63,7 @@ scrape_configs:
     metrics_path: '/metrics'
     scrape_interval: 10s
     scrape_timeout: 5s
+    scheme: https  # Azure Web Apps use HTTPS
     # If API requires authentication, uncomment and configure:
     # basic_auth:
     #   username: 'prometheus'
@@ -91,16 +92,18 @@ scrape_configs:
     scrape_timeout: 10s
 
   # Airflow Metrics (on VM1)
-  - job_name: 'airflow'
-    static_configs:
-      - targets: ['<VM1_IP>:8080']  # Airflow webserver port
-        labels:
-          service: 'airflow'
-          component: 'orchestration'
-          instance: 'vm1-airflow'
-    metrics_path: '/admin/metrics'
-    scrape_interval: 30s
-    scrape_timeout: 10s
+  # DISABLED: Airflow doesn't expose native Prometheus metrics on /admin/metrics
+  # To enable, install StatsD exporter or apache-airflow-providers-prometheus
+  # - job_name: 'airflow'
+  #   static_configs:
+  #     - targets: ['<VM1_IP>:8080']  # Airflow webserver port
+  #       labels:
+  #         service: 'airflow'
+  #         component: 'orchestration'
+  #         instance: 'vm1-airflow'
+  #   metrics_path: '/admin/metrics'
+  #   scrape_interval: 30s
+  #   scrape_timeout: 10s
 
   # MLflow (optional - if Prometheus metrics exposed)
   - job_name: 'mlflow'

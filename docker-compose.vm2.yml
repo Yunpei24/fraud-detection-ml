@@ -21,7 +21,7 @@ services:
       - '--web.console.templates=/usr/share/prometheus/consoles'
       - '--web.enable-lifecycle'  # Permettre le reload via API
     volumes:
-      - ./monitoring/prometheus.vm2.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/prometheus.vm2.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
       - prometheus_data:/prometheus
     ports:
@@ -34,6 +34,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 10s
 
   grafana:
     image: grafana/grafana:latest
@@ -63,6 +64,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 10s
 
   # ==============================================================================
   # ALERT MANAGER FOR ALERTS
@@ -74,6 +76,7 @@ services:
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
     volumes:
       - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager
@@ -87,6 +90,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 10s
 
   # ==============================================================================
   # OPTIONAL: NODE EXPORTER FOR INFRASTRUCTURE METRICS
@@ -109,6 +113,11 @@ services:
     networks:
       - monitoring-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9100/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 # ==============================================================================
 # VOLUMES

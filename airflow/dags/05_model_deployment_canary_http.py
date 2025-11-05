@@ -256,6 +256,20 @@ with DAG(
         network_mode=DOCKER_NETWORK,
         auto_remove=True,
         do_xcom_push=True,
+        mounts=[
+            {
+                "target": "/app/training/artifacts",
+                "source": "fraud-detection-ml_training_artifacts",
+                "type": "volume",
+                "read_only": False,
+            },
+            {
+                "target": "/mlflow/artifacts",
+                "source": "fraud-detection-ml_mlflow_artifacts",
+                "type": "volume",
+                "read_only": False,
+            },
+        ],
         doc_md="""
         Compare Champion vs Challenger ENSEMBLES from MLflow Registry:
         - Champion: 4 models from Production stage
@@ -268,9 +282,7 @@ with DAG(
         - 0: Promote challenger ensemble
         - 1: Keep champion ensemble
         """,
-    )
-
-    # Task 2: Decision branch
+    )  # Task 2: Decision branch
     decide_deployment = BranchPythonOperator(
         task_id="decide_deployment",
         python_callable=parse_comparison_result,

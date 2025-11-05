@@ -173,13 +173,13 @@ with DAG(
             },
             {
                 "target": "/app/training/artifacts",
-                "source": "training_artifacts",  # Named volume from docker-compose
+                "source": "fraud-detection-ml_training_artifacts",  # Named volume with project prefix
                 "type": "volume",
                 "read_only": False,
             },
             {
                 "target": "/mlflow/artifacts",
-                "source": "mlflow_artifacts",  # MLflow artifacts (shared with MLflow server)
+                "source": "fraud-detection-ml_mlflow_artifacts",  # MLflow artifacts (shared with MLflow server)
                 "type": "volume",
                 "read_only": False,
             },
