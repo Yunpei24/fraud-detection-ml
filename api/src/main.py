@@ -135,12 +135,32 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         extra={"path": request.url.path, "errors": exc.errors()},
     )
 
+    # Convert validation errors to JSON-serializable format
+    errors = []
+    for error in exc.errors():
+        # Make a copy of the error dict
+        error_dict = dict(error)
+
+        # Convert non-serializable objects in ctx to strings
+        if "ctx" in error_dict and isinstance(error_dict["ctx"], dict):
+            ctx = error_dict["ctx"]
+            error_dict["ctx"] = {
+                key: (
+                    str(value)
+                    if not isinstance(value, (str, int, float, bool, type(None)))
+                    else value
+                )
+                for key, value in ctx.items()
+            }
+
+        errors.append(error_dict)
+
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "error_code": "E001",
             "message": "Validation error",
-            "details": exc.errors(),
+            "details": errors,
         },
     )
 

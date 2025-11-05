@@ -8,6 +8,7 @@ NOTE: These tests require PostgreSQL to be running.
 """
 
 import os
+import uuid
 import pytest
 from fastapi.testclient import TestClient
 
@@ -48,10 +49,11 @@ def auth_headers(admin_token):
 
 @pytest.fixture
 def test_user_data():
-    """Test user data for creation."""
+    """Test user data for creation with unique username."""
+    unique_id = str(uuid.uuid4())[:8]  # Use first 8 chars of UUID
     return {
-        "username": "test_analyst_user",
-        "email": "test.analyst@company.com",
+        "username": f"test_analyst_{unique_id}",
+        "email": f"test.analyst.{unique_id}@company.com",
         "password": "TestPass123!",
         "first_name": "Test",
         "last_name": "Analyst",
@@ -122,14 +124,22 @@ def test_create_user_success(auth_headers, test_user_data):
 
 def test_create_user_duplicate_username(auth_headers, test_user_data):
     """Test user creation with duplicate username."""
-    # Try to create same user again
-    response = client.post(
+    # Create user first
+    response1 = client.post(
         "/admin/users",
         json=test_user_data,
         headers=auth_headers,
     )
-    assert response.status_code == 400
-    assert "already exists" in response.json()["detail"]
+    assert response1.status_code == 201
+
+    # Try to create same user again
+    response2 = client.post(
+        "/admin/users",
+        json=test_user_data,
+        headers=auth_headers,
+    )
+    assert response2.status_code == 400
+    assert "already exists" in response2.json()["detail"]
 
 
 def test_create_user_invalid_email(auth_headers):

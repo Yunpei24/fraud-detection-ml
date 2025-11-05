@@ -43,7 +43,7 @@ def client(
         get_drift_service,
         get_prediction_service,
     )
-    from src.api.routes.auth import get_current_analyst_user
+    from src.api.routes.auth import get_current_analyst_user, get_current_user
 
     # Override dependencies with mocks
     app.dependency_overrides[get_prediction_service] = lambda: mock_prediction_service
@@ -51,6 +51,7 @@ def client(
     app.dependency_overrides[get_database_service] = lambda: mock_database_service
     app.dependency_overrides[get_drift_service] = lambda: mock_drift_service
     app.dependency_overrides[get_current_analyst_user] = lambda: mock_auth
+    app.dependency_overrides[get_current_user] = lambda: mock_auth
 
     with TestClient(app) as test_client:
         yield test_client
