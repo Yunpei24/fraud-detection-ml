@@ -17,6 +17,7 @@ from src.api.dependencies import (
     get_prediction_service,
 )
 from src.api.routes.admin import router as admin_router
+from src.api.routes.auth import get_current_user
 from src.api.routes.health import router as health_router
 from src.api.routes.metrics import router as metrics_router
 from src.api.routes.predict import router as predict_router
@@ -441,6 +442,16 @@ def client():
     mock_cache_service = Mock()
     mock_db_service = Mock()
 
+    # Mock authenticated user for JWT-protected endpoints
+    def mock_get_current_user():
+        return {
+            "user_id": "test-user-123",
+            "username": "testuser",
+            "email": "test@example.com",
+            "role": "user",
+            "is_active": True,
+        }
+
     # Configure async methods to return values directly (for routes that await them)
     async def mock_predict_single(*args, **kwargs):
         return {
@@ -513,9 +524,11 @@ def client():
     mock_db_service.save_audit_log = mock_save_audit_log
     mock_db_service.check_health.return_value = True
 
+    # Override all dependencies
     app.dependency_overrides[get_prediction_service] = lambda: mock_pred_service
     app.dependency_overrides[get_cache_service] = lambda: mock_cache_service
     app.dependency_overrides[get_database_service] = lambda: mock_db_service
+    app.dependency_overrides[get_current_user] = mock_get_current_user
 
     return TestClient(app)
 

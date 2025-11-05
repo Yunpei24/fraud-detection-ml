@@ -588,6 +588,7 @@ class RealtimePipeline:
         logger.error(f"All {max_retries} attempts failed")
         df["predicted_fraud"] = None
         df["fraud_probability"] = None
+        df["prediction_timestamp"] = None
         self.metrics["errors"] += 1
 
         return df

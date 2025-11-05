@@ -145,8 +145,20 @@ class TestRealtimePipeline:
         mock_response.status_code = 200
         mock_response.json.return_value = {
             "predictions": [
-                {"is_fraud": False, "fraud_probability": 0.1},
-                {"is_fraud": True, "fraud_probability": 0.9},
+                {
+                    "transaction_id": "txn_001",
+                    "prediction": 0,
+                    "fraud_score": 0.1,
+                    "confidence": 0.9,
+                    "model_version": "v1.0",
+                },
+                {
+                    "transaction_id": "txn_002",
+                    "prediction": 1,
+                    "fraud_score": 0.9,
+                    "confidence": 0.95,
+                    "model_version": "v1.0",
+                },
             ]
         }
         mock_session_requests.post.return_value = mock_response
@@ -157,6 +169,7 @@ class TestRealtimePipeline:
         assert "predicted_fraud" in result_df.columns
         assert "fraud_probability" in result_df.columns
         assert "prediction_timestamp" in result_df.columns
+        assert "model_version" in result_df.columns
         assert pipeline.metrics["total_predicted"] == len(sample_clean_transactions_df)
 
     def test_predict_batch_api_error(
@@ -174,6 +187,8 @@ class TestRealtimePipeline:
         # Should have None values for predictions
         assert result_df["predicted_fraud"].isnull().all()
         assert result_df["fraud_probability"].isnull().all()
+        assert "prediction_timestamp" in result_df.columns
+        assert result_df["prediction_timestamp"].isnull().all()
         assert pipeline.metrics["errors"] == 1
 
     def test_predict_stream_success(self, mock_session_requests, sample_transaction):
