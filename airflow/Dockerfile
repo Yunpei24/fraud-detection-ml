@@ -31,7 +31,7 @@ RUN pip install --no-cache-dir \
     -r /requirements.txt
 
 # Create necessary directories
-RUN mkdir -p /opt/airflow/dags /opt/airflow/logs /opt/airflow/plugins /opt/airflow/config /opt/airflow/config_root
+RUN mkdir -p /opt/airflow/dags /opt/airflow/logs /opt/airflow/plugins /opt/airflow/config /opt/airflow/config_root /opt/airflow/scripts
 
 # IMPORTANT: Copy centralized config from project root
 # This contains settings.py with Pydantic v1/v2 compatibility
@@ -42,6 +42,9 @@ COPY airflow/config/ /opt/airflow/config/
 
 # Copy DAGs
 COPY airflow/dags/ /opt/airflow/dags/
+
+# Copy scripts (for setup_api_connection.py and other utilities)
+COPY airflow/scripts/ /opt/airflow/scripts/
 
 # Add config_root to PYTHONPATH so "from config import" finds it
 ENV PYTHONPATH="/opt/airflow/config_root:${PYTHONPATH}"

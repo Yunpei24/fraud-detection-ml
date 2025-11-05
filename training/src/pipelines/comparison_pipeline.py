@@ -10,11 +10,14 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+import pandas as pd
 from mlflow.tracking import MlflowClient
 from src.config.logging_config import get_logger
 from src.data.loader import load_training_data
 from src.data.splitter import stratified_split
 from src.evaluation.metrics import calculate_all_metrics
+from fraud_detection_common.feature_engineering import build_feature_frame
+from fraud_detection_common.preprocessor import DataPreprocessor
 
 import mlflow
 
@@ -447,10 +450,33 @@ def run_comparison(
         logger.info("Loading test data...")
 
         df = load_training_data()
-        y = df["class"].values
-        X = df.drop(columns=["class"]).values
 
-        _, _, X_test, _, _, y_test = stratified_split(X, y, test_size=0.2, val_size=0.0)
+        # Apply feature engineering (same as training pipeline)
+        logger.info(" Applying feature engineering...")
+        df_featured = build_feature_frame(df)
+
+        # Separate target from features
+        y = df_featured["class"].values
+        X_df = df_featured.drop(columns=["class"])
+        feature_names = X_df.columns.tolist()
+
+        # Apply preprocessing (scaling, outlier handling)
+        logger.info(" Applying preprocessing...")
+        preprocessor = DataPreprocessor(
+            drop_columns=["time"],
+            scale_columns=["amount"],
+            outlier_columns=["amount"],
+            outlier_method="IQR",
+        )
+        X_df_clean, _ = preprocessor.fit_transform(
+            X_df, persist_dir=None, artifacts_prefix="preprocessor"
+        )
+        X = X_df_clean.values
+
+        # Split data
+        splits = stratified_split(X, y, test_size=0.2, val_size=0.0)
+        X_test = splits["X_test"]
+        y_test = splits["y_test"]
         logger.info(f" Test data loaded: {X_test.shape}")
 
     # Compare ensemble metrics
@@ -480,8 +506,6 @@ if __name__ == "__main__":
     # CLI entry point
     result = run_comparison()
 
-    # Exit with code based on decision
-    if result.decision == "promote_challenger":
-        raise SystemExit(0)  # Success - promote
-    else:
-        raise SystemExit(1)  # Keep champion - no deployment
+    # Always exit with 0 (success) - decision is parsed from logs by DAG
+    # The DAG reads "PROMOTE_CHALLENGER" or "KEEP_CHAMPION" from stdout
+    raise SystemExit(0)

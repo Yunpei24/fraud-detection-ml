@@ -126,23 +126,36 @@ class ProductionPromoter:
                     f"   {model_name} version {staging_version.version} promoted to Production"
                 )
 
-            # 4. Move canary models to champion directory and update traffic routing
-            logger.info("� Promoting canary models to champion...")
-            champion_models_dir = Path("/app/models/champion")
-            canary_models_dir = Path("/app/models/canary")
+                # 4. Move canary models to champion directory and update traffic routing
+            logger.info("🚀 Promoting canary models to champion...")
+            # Use Azure File Share mount path instead of local /app/models
+            azure_mount_path = os.getenv(
+                "AZURE_STORAGE_MOUNT_PATH", "/mnt/fraud-models"
+            )
+            champion_models_dir = Path(f"{azure_mount_path}/champion")
+            canary_models_dir = Path(f"{azure_mount_path}/canary")
 
-            # Remove old champion models
+            # Import shutil at the top
+            import shutil
+
+            # Backup current champion (if exists) for rollback capability
             if champion_models_dir.exists():
-                import shutil
-
+                backup_dir = Path(
+                    f"{azure_mount_path}/champion_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                )
+                logger.info(f"📦 Backing up champion to {backup_dir.name}...")
+                shutil.copytree(champion_models_dir, backup_dir)
                 shutil.rmtree(champion_models_dir)
+                logger.info("✅ Champion backed up and removed")
 
-            # Move canary models to champion
+            # Copy canary models to champion (keep canary for reference)
             if canary_models_dir.exists():
-                shutil.move(str(canary_models_dir), str(champion_models_dir))
-                logger.info("   Moved canary models to champion directory")
+                shutil.copytree(canary_models_dir, champion_models_dir)
+                logger.info("✅ Copied canary models to champion directory")
+                logger.info(f"   Champion path: {champion_models_dir}")
+                logger.info(f"   Canary preserved at: {canary_models_dir}")
             else:
-                logger.warning("  No canary models directory found")
+                logger.warning("⚠️  No canary models directory found")
 
             # Update traffic routing to 0% canary (all traffic to champion)
             logger.info("🔧 Updating traffic routing to 100% champion...")
@@ -150,11 +163,6 @@ class ProductionPromoter:
 
             if not config_file.parent.exists():
                 config_file.parent.mkdir(parents=True, exist_ok=True)
-
-            # Use Azure File Share mount path for model paths
-            azure_mount_path = os.getenv(
-                "AZURE_STORAGE_MOUNT_PATH", "/mnt/fraud-models"
-            )
             config = {
                 "canary_percentage": 0,
                 "canary_model_path": f"{azure_mount_path}/canary",

@@ -132,7 +132,7 @@ def verify_new_token(**context):
         api_url = Variable.get("API_URL")
         new_token = Variable.get("API_ADMIN_TOKEN")
 
-        logger.info("🔍 Verifying new token...")
+        logger.info(" Verifying new token...")
 
         # Call deployment status endpoint
         response = requests.get(

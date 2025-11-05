@@ -29,6 +29,7 @@ from airflow.utils.trigger_rule import TriggerRule
 
 # Import centralized configuration
 from config.constants import (
+    DATA_PATHS,
     DOCKER_IMAGE_TRAINING,
     DOCKER_NETWORK,
     ENV_VARS,
@@ -166,8 +167,8 @@ with DAG(
         working_dir="/app",  # Specify working directory explicitly
         mounts=[
             {
-                "target": "/app/data/raw/creditcard.csv",
-                "source": "/Users/joshuajusteyunpeinikiema/Documents/MLOps/fraud-detection-project/fraud-detection-ml/creditcard.csv",
+                "target": DATA_PATHS["CREDITCARD_CSV_CONTAINER"],
+                "source": DATA_PATHS["CREDITCARD_CSV_HOST"],
                 "type": "bind",
                 "read_only": True,
             },

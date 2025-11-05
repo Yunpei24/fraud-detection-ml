@@ -66,7 +66,7 @@ def setup_http_connections():
         )
 
         if existing:
-            print(f"⚠️  Connection '{conn_id}' already exists")
+            print(f"  Connection '{conn_id}' already exists")
             continue
 
         conn = Connection(conn_id=conn_id, conn_type="http", host=conn_info["host"])

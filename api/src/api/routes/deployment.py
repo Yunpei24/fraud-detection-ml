@@ -232,7 +232,7 @@ async def deploy_canary(
         )
 
         # Import here to avoid circular dependencies
-        from scripts.deploy_canary import deploy_canary_models
+        from scripts import deploy_canary_models
 
         # Execute deployment
         result = deploy_canary_models(
@@ -293,7 +293,7 @@ async def promote_to_production(
         )
 
         # Import here to avoid circular dependencies
-        from scripts.promote_to_production import promote_models
+        from scripts import promote_models
 
         # Execute promotion
         result = promote_models(
@@ -353,7 +353,7 @@ async def rollback_deployment(
         logger.info(f"Admin {current_user['username']} triggering deployment rollback")
 
         # Import here to avoid circular dependencies
-        from scripts.rollback_deployment import rollback_to_champion
+        from scripts import rollback_to_champion
 
         # Execute rollback
         result = rollback_to_champion()

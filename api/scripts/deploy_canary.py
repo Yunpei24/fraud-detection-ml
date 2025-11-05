@@ -77,26 +77,31 @@ class CanaryDeployer:
                 # Extract model name from URI
                 model_name = model_uri.split("/")[-2]  # e.g., "fraud_detection_xgboost"
                 loaded_models[model_name] = model
-                logger.info(f"   ✅ Loaded {model_name}")
+                logger.info(f"   Loaded {model_name}")
 
                 # Download SHAP explainer artifact
                 try:
                     # Get the run that contains this model
                     client = MlflowClient()
-                    model_details = client.get_model_version_by_alias(
-                        model_name, "Staging"
+                    model_versions = client.get_latest_versions(
+                        model_name, stages=["Staging"]
                     )
-                    run_id = model_details.run_id
 
-                    # Download SHAP explainer artifact
-                    explainer_path = client.download_artifacts(
-                        run_id,
-                        f"shap_explainer_{model_name.replace('fraud_detection_', '')}.pkl",
-                    )
-                    with open(explainer_path, "rb") as f:
-                        explainer = joblib.load(f)
-                    loaded_explainers[model_name] = explainer
-                    logger.info(f"   Loaded SHAP explainer for {model_name}")
+                    if model_versions:
+                        model_details = model_versions[0]
+                        run_id = model_details.run_id
+
+                        # Download SHAP explainer artifact
+                        explainer_path = client.download_artifacts(
+                            run_id,
+                            f"shap_explainer_{model_name.replace('fraud_detection_', '')}.pkl",
+                        )
+                        with open(explainer_path, "rb") as f:
+                            explainer = joblib.load(f)
+                        loaded_explainers[model_name] = explainer
+                        logger.info(f"   Loaded SHAP explainer for {model_name}")
+                    else:
+                        logger.warning(f"   No Staging version found for {model_name}")
                 except Exception as e:
                     logger.warning(
                         f"   Failed to load SHAP explainer for {model_name}: {e}"

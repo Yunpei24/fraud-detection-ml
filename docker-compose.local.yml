@@ -136,6 +136,7 @@ services:
       --serve-artifacts
     volumes:
       - mlflow_artifacts:/mlflow/artifacts
+      - training_artifacts:/mlflow/training_artifacts:ro  # Read-only access to training artifacts (SHAP, etc.)
     ports:
       - "5001:5000"  # Port externe 5001 (5000 already usedd by ControlCenter)
     networks:
@@ -178,9 +179,12 @@ services:
       - CORS_ORIGINS=["http://localhost:3000","http://localhost:8000"]
       - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
       - AZURE_STORAGE_CONTAINER_NAME=${AZURE_STORAGE_CONTAINER_NAME:-fraud-models}
+      - AZURE_STORAGE_MOUNT_PATH=/mlflow/artifacts  # Local dev: use mlflow_artifacts volume (production will use /mnt/fraud-models with Azure File Share)
       - ENVIRONMENT=local
       - REQUIRE_API_KEY=true
       - API_KEYS=${API_KEYS:-dev_api_key_12345,test_api_key_67890}
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts  # Read-write access to MLflow artifacts
     ports:
       - "8000:8000"  # API
       - "9090:9090"  # Prometheus metrics

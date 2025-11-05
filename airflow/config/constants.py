@@ -230,6 +230,24 @@ TRAINING_CONFIG = {
 
 
 # ============================================================================
+# DATA PATHS (Environment-aware)
+# ============================================================================
+DATA_PATHS = {
+    # CSV data source (host path - used by DockerOperator mounts)
+    # In production (Azure VM), this would be /mnt/data/creditcard.csv
+    # In local dev (macOS), use relative path from project root
+    "CREDITCARD_CSV_HOST": os.getenv(
+        "CREDITCARD_CSV_HOST_PATH",
+        os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "..", "creditcard.csv"
+        ),
+    ),
+    # Container paths (inside Docker containers)
+    "CREDITCARD_CSV_CONTAINER": "/app/data/raw/creditcard.csv",
+}
+
+
+# ============================================================================
 # DEPLOYMENT CONFIGURATION
 # ============================================================================
 DEPLOYMENT_CONFIG = {

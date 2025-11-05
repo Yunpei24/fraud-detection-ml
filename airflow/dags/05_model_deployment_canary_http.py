@@ -63,13 +63,14 @@ def parse_comparison_result(**context):
     """
     ti = context["task_instance"]
 
-    # Get exit code from comparison task
-    # Exit code 0 = promote challenger, 1 = keep champion
-    comparison_result = ti.xcom_pull(task_ids="compare_models", key="return_value")
+    # Get logs from comparison task
+    # DockerOperator pushes logs to XCom, not exit codes
+    comparison_logs = ti.xcom_pull(task_ids="compare_models", key="return_value")
 
-    print(f" Comparison result: {comparison_result}")
+    print(f" Comparison result: {comparison_logs}")
 
-    if comparison_result == 0:
+    # Parse logs to find decision
+    if comparison_logs and "PROMOTE_CHALLENGER" in str(comparison_logs):
         print(" Challenger approved - starting canary deployment")
         return "deploy_canary_5_percent"
     else:
@@ -255,6 +256,7 @@ with DAG(
         docker_url="unix://var/run/docker.sock",
         network_mode=DOCKER_NETWORK,
         auto_remove=True,
+        mount_tmp_dir=False,  # Fix for macOS Docker-in-Docker
         do_xcom_push=True,
         mounts=[
             {
@@ -267,7 +269,7 @@ with DAG(
                 "target": "/mlflow/artifacts",
                 "source": "fraud-detection-ml_mlflow_artifacts",
                 "type": "volume",
-                "read_only": False,
+                "read_only": False,  # Need write access for MLflow model loading
             },
         ],
         doc_md="""

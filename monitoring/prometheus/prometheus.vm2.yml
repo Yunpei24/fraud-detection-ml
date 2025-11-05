@@ -31,7 +31,7 @@ scrape_configs:
   # Drift Monitoring Service Metrics (on VM1)
   - job_name: 'fraud-drift'
     static_configs:
-      - targets: ['<VM1_IP>:9095']  # ← REPLACE <VM1_IP> with VM1's IP (port 9095)
+      - targets: ['<VM1_IP>:9096']  # 9095← REPLACE <VM1_IP> with VM1's IP (port 9095)
         labels:
           service: 'drift'
           component: 'drift-monitoring'

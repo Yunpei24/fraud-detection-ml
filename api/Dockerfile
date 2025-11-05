@@ -42,6 +42,10 @@ COPY --from=builder /root/.local /home/appuser/.local
 
 # Copy application code
 COPY api/src/ ./src/
+COPY api/scripts/ ./scripts/
+
+# Create model storage directory for local deployment
+RUN mkdir -p /mnt/fraud-models && chown appuser:appuser /mnt/fraud-models
 
 # Set ownership
 RUN chown -R appuser:appuser /app
@@ -51,7 +55,7 @@ USER appuser
 
 # Update PATH
 ENV PATH=/home/appuser/.local/bin:$PATH \
-    PYTHONPATH=/app
+    PYTHONPATH=/app:/app/scripts
 
 # Azure Web App uses dynamic PORT (default 8000 for local)
 ENV PORT=8000

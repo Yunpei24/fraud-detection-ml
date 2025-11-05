@@ -633,59 +633,69 @@ def evaluate_models(
 
             for name, model in models.items():
                 try:
-                    # Generate SHAP explanation
-                    (
-                        explanation_report,
-                        explainer,
-                    ) = create_explanation_report_from_model(
-                        model.model if hasattr(model, "model") else model,
-                        X_sample,
-                        feature_names=feature_names,
-                        top_n=20,
-                    )
-
-                    # Save explainer locally + MLflow
-                    save_artifact_local_and_mlflow(
-                        explainer,
-                        f"shap_explainer_{name}.pkl",
-                        "pkl",
-                        explainability_dir,
-                    )
-
-                    # Save explanation report locally + MLflow
-                    save_artifact_local_and_mlflow(
-                        explanation_report,
-                        f"shap_report_{name}.json",
-                        "json",
-                        explainability_dir,
-                    )
-
-                    # Generate and log SHAP summary plot
-                    if hasattr(model, "predict_proba"):
-                        shap_values_for_plot = explainer.shap_values(X_sample)
-                        if isinstance(shap_values_for_plot, list):
-                            shap_values_for_plot = (
-                                shap_values_for_plot[1]
-                                if len(shap_values_for_plot) > 1
-                                else shap_values_for_plot[0]
-                            )
-
-                        fig_shap = plot_shap_summary(
-                            shap_values_for_plot,
+                    # CRITICAL: Create MLflow run for SHAP logging
+                    with start_run(run_name=f"shap_{name}"):
+                        # Generate SHAP explanation
+                        (
+                            explanation_report,
+                            explainer,
+                        ) = create_explanation_report_from_model(
+                            model.model if hasattr(model, "model") else model,
                             X_sample,
                             feature_names=feature_names,
-                            title=f"SHAP Summary - {name}",
+                            top_n=20,
                         )
 
-                        save_artifact_local_and_mlflow(
-                            fig_shap,
-                            f"{name}_shap_summary.png",
-                            "plot",
+                        # Save explainer locally + MLflow
+                        explainer_path = save_artifact_local_and_mlflow(
+                            explainer,
+                            f"shap_explainer_{name}.pkl",
+                            "pkl",
                             explainability_dir,
                         )
-                        plt.close(fig_shap)
 
-                    logger.info(f"   SHAP explanation generated for {name}")
+                        logger.info(
+                            f"    SHAP explainer logged to MLflow: shap_explainer_{name}.pkl"
+                        )
+
+                        logger.info(
+                            f"    SHAP explainer logged to MLflow: shap_explainer_{name}.pkl"
+                        )
+
+                        # Save explanation report locally + MLflow
+                        save_artifact_local_and_mlflow(
+                            explanation_report,
+                            f"shap_report_{name}.json",
+                            "json",
+                            explainability_dir,
+                        )
+
+                        # Generate and log SHAP summary plot
+                        if hasattr(model, "predict_proba"):
+                            shap_values_for_plot = explainer.shap_values(X_sample)
+                            if isinstance(shap_values_for_plot, list):
+                                shap_values_for_plot = (
+                                    shap_values_for_plot[1]
+                                    if len(shap_values_for_plot) > 1
+                                    else shap_values_for_plot[0]
+                                )
+
+                            fig_shap = plot_shap_summary(
+                                shap_values_for_plot,
+                                X_sample,
+                                feature_names=feature_names,
+                                title=f"SHAP Summary - {name}",
+                            )
+
+                            save_artifact_local_and_mlflow(
+                                fig_shap,
+                                f"{name}_shap_summary.png",
+                                "plot",
+                                explainability_dir,
+                            )
+                            plt.close(fig_shap)
+
+                        logger.info(f"   SHAP explanation generated for {name}")
 
                 except Exception as e:
                     logger.warning(f"    SHAP explanation failed for {name}: {e}")
