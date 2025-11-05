@@ -22,8 +22,8 @@ on:
           - staging
 
 env:
-  AZURE_WEBAPP_NAME: fraud-detection-api
-  DOCKER_IMAGE: jyen24/api
+  AZURE_WEBAPP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+  DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/api
   PYTHON_VERSION: '3.10'
 
 jobs:
@@ -75,19 +75,19 @@ jobs:
       
       - name: Restart Web App
         run: |
-          echo "🔄 Restarting Azure Web App..."
+          echo " Restarting Azure Web App..."
           az webapp restart \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
       
       - name: Wait for deployment
         run: |
-          echo "⏳ Waiting 60 seconds for container to start..."
+          echo " Waiting 60 seconds for container to start..."
           sleep 60
       
       - name: Health Check
         run: |
-          echo "🏥 Checking API health..."
+          echo " Checking API health..."
           max_attempts=10
           attempt=0
           
@@ -100,22 +100,22 @@ jobs:
               || echo "000")
             
             if [ "$response" = "200" ]; then
-              echo "✅ Health check passed!"
+              echo " Health check passed!"
               curl -s https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health | jq '.'
               exit 0
             fi
             
-            echo "❌ Health check failed (HTTP $response). Retrying in 10s..."
+            echo " Health check failed (HTTP $response). Retrying in 10s..."
             sleep 10
           done
-          
-          echo "❌ Health check failed after $max_attempts attempts"
+
+          echo " Health check failed after $max_attempts attempts"
           exit 1
       
       - name: Get deployment logs (on failure)
         if: failure()
         run: |
-          echo "📋 Fetching container logs..."
+          echo " Fetching container logs..."
           az webapp log tail \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
@@ -147,7 +147,7 @@ jobs:
       
       - name: Test API endpoints
         run: |
-          echo "🧪 Testing API endpoints..."
+          echo " Testing API endpoints..."
           
           # Test 1: Health endpoint
           echo "Test 1: Health check"
@@ -161,11 +161,11 @@ jobs:
           echo "Test 3: Metrics"
           curl -f https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/metrics || exit 1
           
-          echo "✅ All endpoint tests passed!"
+          echo " All endpoint tests passed!"
       
       - name: Notify deployment success
         run: |
-          echo "🎉 Deployment successful!"
+          echo " Deployment successful!"
           echo "API URL: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
           echo "Docs: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/docs"
           echo "SHA: ${{ github.sha }}"
