@@ -244,6 +244,7 @@ services:
       - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
       - AZURE_STORAGE_CONTAINER_NAME=${AZURE_STORAGE_CONTAINER_NAME:-fraud-data}
       - ENVIRONMENT=${ENVIRONMENT:-production}
+      - WEBAPP_URL=${WEBAPP_URL:-http://localhost:3000}
     volumes:
       - ./creditcard.csv:/data/creditcard.csv:ro  # ← Dataset à la racine
       - data_artifacts:/artifacts
@@ -284,7 +285,7 @@ services:
       - CONCEPT_DRIFT_THRESHOLD=0.05
       - MONITORING_WINDOW_HOURS=24
       - LOG_LEVEL=INFO
-      - PROMETHEUS_PORT=9095
+      - PROMETHEUS_PORT=9097
       - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       # NEW: Airflow integration for retraining trigger
@@ -296,7 +297,7 @@ services:
       - API_USERNAME=${API_USERNAME_DRIFT:-admin}
       - API_PASSWORD=${API_PASSWORD_DRIFT:-admin123}
     ports:
-      - "9095:9095"  # Prometheus metrics - accessible depuis VM2
+      - "9097:9097"  # Prometheus metrics - accessible depuis VM2
     networks:
       - fraud-network
     depends_on:
@@ -429,6 +430,7 @@ services:
       - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
       - ENVIRONMENT=production  # Use Docker Hub images
       - PYTHONPATH=/opt/airflow:/opt/airflow/config:/opt/airflow/plugins
+      - WEBAPP_URL=${WEBAPP_URL:-http://localhost:3000}
     volumes:
       - ./config:/opt/airflow/config:ro  # Mount centralized config
       - ./airflow/dags:/opt/airflow/dags
