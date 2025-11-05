@@ -1,23 +1,13 @@
 name: Deploy API to Azure Web App
 
 on:
-  # Automatic deployment on push to main
-  push:
+  # Automatic deployment after CI/CD workflow completes successfully on main
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]
+    types:
+      - completed
     branches:
       - main
-    paths:
-      - 'api/**'
-      - 'common/**'
-      - '.github/workflows/deploy-azure.yml'
-  
-  # Automatic deployment after PR merge to main
-  pull_request:
-    branches:
-      - main
-    types: [closed]
-    paths:
-      - 'api/**'
-      - 'common/**'
   
   # Manual deployment (optional)
   workflow_dispatch:
@@ -41,11 +31,14 @@ jobs:
   deploy:
     name: Deploy to Azure Web App
     runs-on: ubuntu-latest
-    # Only execute if PR merged or direct push to main
+    # Only execute if:
+    # 1. Manual trigger (workflow_dispatch)
+    # 2. CI/CD workflow completed successfully on main branch
     if: |
-      github.event_name == 'push' || 
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+      (github.event_name == 'workflow_run' && 
+       github.event.workflow_run.conclusion == 'success' && 
+       github.event.workflow_run.head_branch == 'main')
     environment:
       name: production
       url: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net

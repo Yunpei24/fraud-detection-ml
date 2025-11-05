@@ -142,7 +142,7 @@ az webapp config appsettings set \
 
 ### Automatic Deployment
 
-The workflow is triggered automatically when:
+The workflow is triggered automatically when the **CI/CD Pipeline workflow completes successfully** on the `main` branch:
 
 1. **Push to main**
 
@@ -152,11 +152,20 @@ git merge develop
 git push origin main
 ```
 
+This will:
+- ✅ Trigger the `CI/CD Pipeline` workflow
+- ⏳ Run code quality checks, unit tests, and Docker builds
+- ✅ If successful, automatically trigger `Deploy API to Azure Web App`
+- 🚀 Deploy the validated Docker image to Azure
+
 2. **Pull Request merged into main**
 
 * Create a PR from `develop` → `main`
 * Merge the PR
-* The workflow will run automatically
+* The CI/CD workflow will run first
+* On success, the deployment workflow will run automatically
+
+**Important:** The deployment will **only** run if the CI/CD Pipeline completes successfully. If tests fail or Docker builds fail, the deployment will be skipped to ensure only validated code reaches production.
 
 ### Manual Deployment
 
@@ -207,30 +216,23 @@ az webapp log download \
 
 ## Workflow Jobs
 
-The workflow includes three jobs:
+The deployment workflow includes two jobs (the Docker image is already built by CI/CD):
 
-### Job 1: Build
+### Job 1: Deploy
 
-* Checks out code
-* Builds Docker image
-* Pushes to Docker Hub with tags:
-
-  * `latest`
-  * `<sha>`
-  * `main-<run_number>`
-
-### Job 2: Deploy
-
+* Waits for CI/CD Pipeline to complete successfully
 * Logs in to Azure
-* Configures container
+* Configures container with the latest validated image
 * Updates app settings
 * Restarts Web App
 * Performs health check (10 attempts)
 
-### Job 3: Test
+### Job 2: Test
 
 * Tests endpoints (`/health`, `/docs`, `/metrics`)
 * Sends success notification
+
+**Note:** The Docker image build is handled by the `CI/CD Pipeline` workflow, ensuring that only tested and validated images are deployed.
 
 ---
 
@@ -238,16 +240,24 @@ The workflow includes three jobs:
 
 ```yaml
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'api/**'
-      - 'common/**'
+  # Triggered after CI/CD Pipeline completes successfully
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]
+    types:
+      - completed
+    branches:
+      - main
   
-  pull_request:
-    branches: [main]
-    types: [closed]
+  # Manual deployment option
+  workflow_dispatch:
 ```
+
+**How it works:**
+
+1. Any push or PR merge to `main` triggers the `CI/CD Pipeline` workflow
+2. The CI/CD workflow runs tests, builds, and pushes Docker images
+3. **Only if CI/CD succeeds**, the `Deploy API to Azure Web App` workflow is triggered
+4. The deployment uses the Docker image that was just built and validated
 
 The workflow does **not** trigger on:
 
