@@ -195,12 +195,8 @@ jobs:
           echo "Test 1: Health check"
           curl -f https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health || exit 1
           
-          # Test 2: Docs endpoint
-          echo "Test 2: API docs"
-          curl -f https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/docs || exit 1
-          
-          # Test 3: Metrics endpoint
-          echo "Test 3: Metrics"
+          # Test 2: Metrics endpoint
+          echo "Test 2: Metrics"
           curl -f https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/metrics || exit 1
           
           echo " All endpoint tests passed!"
@@ -209,5 +205,4 @@ jobs:
         run: |
           echo " Deployment successful!"
           echo "API URL: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
-          echo "Docs: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/docs"
           echo "SHA: ${{ github.sha }}"

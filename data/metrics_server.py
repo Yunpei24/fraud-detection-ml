@@ -18,6 +18,9 @@ import os
 import signal
 import sys
 import time
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from src.monitoring.metrics import setup_prometheus_metrics
 

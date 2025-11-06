@@ -8,6 +8,10 @@ from email.mime.text import MIMEText
 from enum import Enum
 from typing import List, Optional
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 logger = logging.getLogger(__name__)
 
 

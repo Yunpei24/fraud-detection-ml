@@ -24,6 +24,10 @@ import signal
 import sys
 import time
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import structlog
 from prometheus_client import Counter, Gauge, Histogram, Info, start_http_server
 

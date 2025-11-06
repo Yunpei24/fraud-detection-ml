@@ -32,6 +32,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/deployment", tags=["deployment"])
 
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ============================================================================
 # Request/Response Models

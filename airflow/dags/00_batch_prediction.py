@@ -11,6 +11,9 @@ Mode: On-demand
 import logging
 import os
 from datetime import timedelta
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import pendulum
 from airflow import DAG

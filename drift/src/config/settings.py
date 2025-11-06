@@ -6,6 +6,9 @@ Standalone configuration for the simplified drift component.
 import os
 from dataclasses import dataclass, field
 from typing import List, Optional
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 @dataclass

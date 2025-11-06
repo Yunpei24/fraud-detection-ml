@@ -9,6 +9,9 @@ Refactored to remove dependencies on obsolete helpers/module_loader
 
 import os
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago

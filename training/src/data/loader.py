@@ -9,6 +9,10 @@ import os
 from pathlib import Path
 from typing import Iterable, List, Optional
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import pandas as pd
 import sqlalchemy
 from src.config.logging_config import get_logger

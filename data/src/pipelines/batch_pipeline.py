@@ -24,6 +24,9 @@ import pandas as pd
 from src.storage.database import DatabaseService
 from src.transformation.cleaner import DataCleaner
 from src.utils.logger import get_logger
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Import from common package (these would be available in the Docker environment)
 try:

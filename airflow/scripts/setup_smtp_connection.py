@@ -7,6 +7,9 @@ Run this script to create the SMTP connection in Airflow database.
 import os
 
 from airflow.models import Connection
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from airflow import settings
 

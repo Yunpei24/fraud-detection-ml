@@ -7,6 +7,10 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from ..config import get_logger, settings
 
 logger = get_logger(__name__)

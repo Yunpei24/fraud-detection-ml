@@ -12,6 +12,10 @@ from typing import Any, Dict, Optional
 
 from ..config import get_logger, settings
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 logger = get_logger(__name__)
 
 
