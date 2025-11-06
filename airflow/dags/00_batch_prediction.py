@@ -98,11 +98,21 @@ with DAG(
         execution_timeout=timedelta(minutes=10),
         doc_md="""
         Runs batch prediction pipeline in Docker container:
-        1. Consumes transactions from Kafka
+        1. Consumes up to 1000 transactions from Kafka
         2. Cleans and preprocesses data
-        3. Makes predictions via API (with JWT auth)
+        3. Makes predictions via API (with JWT auth: admin/admin123)
         4. Saves results to PostgreSQL
-        5. Sends fraud alerts to web app
+        5. Sends fraud alerts to web app (http://webapp:3000)
+        
+        Environment variables used (from ENV_VARS):
+        - KAFKA_BOOTSTRAP_SERVERS, KAFKA_TOPIC, KAFKA_CONSUMER_GROUP
+        - API_URL, API_USERNAME, API_PASSWORD
+        - WEBAPP_URL, WEBAPP_TIMEOUT_SECONDS
+        - POSTGRES_HOST, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
+        - MLFLOW_TRACKING_URI
+        
+        Batch size: Configurable via BATCH_SIZE env var (default: 1000)
+        Manual trigger: This DAG must be triggered manually from Airflow UI
         """,
     )
 

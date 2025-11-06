@@ -18,6 +18,20 @@ log_info() {
     echo -e "${GREEN}✓${NC} $1"
 }
 
+# Prompted safe prune to free disk space before local builds
+pre_build_prune() {
+    echo ""
+    read -p "Do you want to run a safe Docker prune to free space before building? (y/N): " prune_choice
+    if [[ "$prune_choice" =~ ^[Yy]$ ]]; then
+        log_warn "Running docker system prune and builder prune (non-interactive). This will remove unused images/containers/networks."
+        docker system prune -af || true
+        docker builder prune -af --filter until=24h || true
+        log_info "Prune finished"
+    else
+        log_info "Skipping prune"
+    fi
+}
+
 log_warn() {
     echo -e "${YELLOW}⚠${NC} $1"
 }
@@ -69,20 +83,23 @@ echo "  5) Stop all services"
 echo "  6) View logs"
 echo "  7) Clean up (down + remove volumes)"
 echo "  8) Full test (build + up + health checks)"
+echo "  9) 🔥 NUCLEAR CLEAN REBUILD (remove EVERYTHING + rebuild from scratch)"
 echo ""
-read -p "Choice (1-8): " choice
+read -p "Choice (1-9): " choice
 
 case $choice in
     1)
         log_info "Building all images..."
+        pre_build_prune
         docker-compose -f docker-compose.local.yml build --no-cache
         log_info "Build completed ✅"
         ;;
     2)
         echo "Available services: api, data, drift, training, airflow-webserver, airflow-scheduler, prometheus, grafana, postgres, redis, mlflow"
         read -p "Service name: " service
-        log_info "Building $service..."
-        docker-compose -f docker-compose.local.yml build --no-cache $service
+    log_info "Building $service..."
+    pre_build_prune
+    docker-compose -f docker-compose.local.yml build --no-cache $service
         log_info "Build completed ✅"
         ;;
     3)
@@ -133,6 +150,7 @@ case $choice in
         
         # Build
         log_info "Step 1/5: Building images..."
+        pre_build_prune
         docker-compose -f docker-compose.local.yml build
         
         # Start
@@ -217,6 +235,59 @@ case $choice in
         echo "  - Prometheus: http://localhost:9094"
         echo "  - Grafana:    http://localhost:3000 (admin/admin_dev_2024)"
         echo "  - Alertmanager: http://localhost:9093"
+        ;;
+    9)
+        log_warn "🔥🔥🔥 NUCLEAR CLEAN REBUILD 🔥🔥🔥"
+        echo ""
+        echo "This will:"
+        echo "  1. Stop and remove ALL containers"
+        echo "  2. Remove ALL volumes (PostgreSQL data, MLflow, etc.)"
+        echo "  3. Remove ALL project images"
+        echo "  4. Remove ALL Docker build cache"
+        echo "  5. Rebuild EVERYTHING from scratch"
+        echo ""
+        log_warn "⚠️  ALL DATA WILL BE LOST (DB, MLflow models, etc.)"
+        echo ""
+        read -p "Are you ABSOLUTELY sure? Type 'NUKE' to confirm: " confirm
+        
+        if [ "$confirm" = "NUKE" ]; then
+            echo ""
+            log_info "Step 1/6: Stopping and removing containers + volumes..."
+            docker-compose -f docker-compose.local.yml down -v --remove-orphans || true
+            
+            log_info "Step 2/6: Removing project images..."
+            echo "  Finding images..."
+            project_images=$(docker images | grep -E "fraud-detection|fraud-" | awk '{print $3}' || true)
+            if [ -n "$project_images" ]; then
+                echo "$project_images" | xargs docker rmi -f || true
+                log_info "  Project images removed"
+            else
+                log_info "  No project images found"
+            fi
+            
+            log_info "Step 3/6: Removing dangling images..."
+            docker images -f "dangling=true" -q | xargs docker rmi -f || true
+            
+            log_info "Step 4/6: Cleaning Docker system..."
+            docker system prune -af --volumes || true
+            
+            log_info "Step 5/6: Cleaning build cache..."
+            docker builder prune -af || true
+            
+            log_info "Step 6/6: Rebuilding from scratch..."
+            docker-compose -f docker-compose.local.yml build --no-cache --pull
+            
+            echo ""
+            log_info "🎉 NUCLEAR CLEAN REBUILD COMPLETED ✅"
+            echo ""
+            echo "Next steps:"
+            echo "  1. Start services: docker-compose -f docker-compose.local.yml up -d"
+            echo "  2. Wait 60s for initialization"
+            echo "  3. Check health: docker-compose ps"
+            echo ""
+        else
+            log_info "Cancelled (you must type exactly 'NUKE' to confirm)"
+        fi
         ;;
     *)
         log_error "Invalid choice"

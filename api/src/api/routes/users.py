@@ -5,7 +5,8 @@ This module provides comprehensive user management endpoints for administrators,
 including CRUD operations, role management, and user activation/deactivation.
 """
 
-from typing import Optional
+from datetime import datetime
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -27,6 +28,32 @@ from .auth import get_current_admin_user
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/admin/users", tags=["user-management"])
+
+
+def serialize_user_dates(user: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert datetime objects to ISO format strings for Pydantic serialization.
+
+    Args:
+        user: User dict from database with datetime objects
+
+    Returns:
+        User dict with datetime objects converted to strings
+    """
+    if not user:
+        return user
+
+    # Create a copy to avoid modifying the original
+    user_copy = user.copy()
+
+    # Convert datetime fields to ISO format strings
+    datetime_fields = ["created_at", "updated_at", "last_login"]
+    for field in datetime_fields:
+        if field in user_copy and user_copy[field] is not None:
+            if isinstance(user_copy[field], datetime):
+                user_copy[field] = user_copy[field].isoformat()
+
+    return user_copy
 
 
 @router.post(
@@ -101,10 +128,13 @@ async def create_user(
             f"User '{user_data.username}' created by admin '{current_user['username']}'"
         )
 
+        # Serialize datetime objects to strings for Pydantic
+        user_serialized = serialize_user_dates(user)
+
         return UserOperationResponse(
             success=True,
             message=f"User '{user_data.username}' created successfully",
-            user=UserDetailResponse(**user),
+            user=UserDetailResponse(**user_serialized),
         )
 
     except HTTPException:
@@ -165,8 +195,11 @@ async def list_users(
             f"(total: {total_count})"
         )
 
+        # Serialize datetime objects for each user
+        users_serialized = [serialize_user_dates(user) for user in users]
+
         return UserListResponse(
-            users=[UserDetailResponse(**user) for user in users],
+            users=[UserDetailResponse(**user) for user in users_serialized],
             total_count=total_count,
             limit=limit,
             offset=offset,
@@ -220,7 +253,10 @@ async def get_user(
             f"Admin '{current_user['username']}' retrieved user '{user['username']}'"
         )
 
-        return UserDetailResponse(**user)
+        # Serialize datetime objects
+        user_serialized = serialize_user_dates(user)
+
+        return UserDetailResponse(**user_serialized)
 
     except HTTPException:
         raise
@@ -297,10 +333,13 @@ async def update_user(
             f"User '{existing_user['username']}' updated by admin '{current_user['username']}'"
         )
 
+        # Serialize datetime objects
+        updated_user_serialized = serialize_user_dates(updated_user)
+
         return UserOperationResponse(
             success=True,
             message=f"User '{existing_user['username']}' updated successfully",
-            user=UserDetailResponse(**updated_user),
+            user=UserDetailResponse(**updated_user_serialized),
         )
 
     except HTTPException:
@@ -456,10 +495,13 @@ async def toggle_user_activation(
             f"User '{user['username']}' {action} by admin '{current_user['username']}'"
         )
 
+        # Serialize datetime objects
+        updated_user_serialized = serialize_user_dates(updated_user)
+
         return UserOperationResponse(
             success=True,
             message=f"User '{user['username']}' {action} successfully",
-            user=UserDetailResponse(**updated_user),
+            user=UserDetailResponse(**updated_user_serialized),
         )
 
     except HTTPException:
@@ -539,10 +581,13 @@ async def update_user_role(
             f"by admin '{current_user['username']}'"
         )
 
+        # Serialize datetime objects
+        updated_user_serialized = serialize_user_dates(updated_user)
+
         return UserOperationResponse(
             success=True,
             message=f"User '{user['username']}' role changed to '{role_data.role}' successfully",
-            user=UserDetailResponse(**updated_user),
+            user=UserDetailResponse(**updated_user_serialized),
         )
 
     except HTTPException:

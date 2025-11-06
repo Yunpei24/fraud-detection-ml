@@ -4,7 +4,7 @@ Admin API routes.
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from ...api.dependencies import get_cache_service, get_prediction_service
 from ...config import get_logger, settings
@@ -181,3 +181,38 @@ async def clear_cache(
                 "details": {"error": str(e)},
             },
         )
+
+
+# Endpoint for documentation redoc of FastAPI Admin routes
+@router.get("/docs", include_in_schema=False)
+async def get_admin_docs(
+    request: Request,
+    admin_token: str = Depends(verify_admin_token),
+):
+    """
+    Get admin API documentation (Redoc).
+
+    Args:
+        request: FastAPI request object to access app config
+        admin_token: Validated admin token
+
+    Returns:
+        Redoc HTML response
+
+    Raises:
+        HTTPException: If OpenAPI schema is disabled
+    """
+    from fastapi.openapi.docs import get_redoc_html
+
+    openapi_url = request.app.openapi_url
+    if not openapi_url:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="OpenAPI schema is disabled in this environment",
+        )
+
+    return get_redoc_html(
+        openapi_url=openapi_url,
+        title="Admin API Documentation",
+        redoc_js_url="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js",
+    )

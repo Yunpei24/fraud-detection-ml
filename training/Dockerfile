@@ -31,17 +31,29 @@ WORKDIR /app
 # Install common package first
 COPY common/ /app/common/
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir /app/common
+    pip install --no-cache-dir \
+    --default-timeout=100 \
+    --retries 5 \
+    /app/common
 
 # Install training requirements
 COPY training/requirements.txt ./requirements.txt
 
-# Use pip cache optimizations and clean up after installation
-RUN pip install --no-cache-dir -r requirements.txt
+# Use pip cache optimizations and clean up after installation with timeout and retry settings
+RUN pip install --no-cache-dir \
+    --default-timeout=100 \
+    --retries 5 \
+    -r requirements.txt
 
 # -----------------------------------------------------------
-# 5. Copy the entire training codebase into the container
+# 5. Copy centralized config and training codebase
 # -----------------------------------------------------------
+
+# IMPORTANT: Copy centralized config from project root
+# This contains settings.py with Pydantic v2 that is used by training/src/config/settings.py
+COPY config/ /app/config/
+
+# Copy the entire training codebase into the container
 COPY training/ .
 
 # -----------------------------------------------------------
@@ -60,9 +72,12 @@ ENV PYTHONUNBUFFERED=1 \
 RUN mkdir -p $MODEL_DIR $DATA_DIR $ARTIFACT_DIR $DATA_DIR/raw
 
 # -----------------------------------------------------------
-# 7.5. Create non-root user for security
+# 7.5. Create non-root user for security + MLflow directory
 # -----------------------------------------------------------
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+# Create MLflow directory for volume mounting (will be accessible by appuser)
+RUN mkdir -p /mlflow/artifacts && \
+    useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app /mlflow
 
 # Switch to non-root user
 USER appuser

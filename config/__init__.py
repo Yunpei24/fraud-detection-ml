@@ -17,6 +17,9 @@ from .settings import (
     settings,
 )
 
+# Import constants module for Airflow DAGs
+from . import constants
+
 __all__ = [
     "get_settings",
     "get_module_settings",
@@ -26,4 +29,5 @@ __all__ = [
     "settings",
     "GlobalSettings",
     "Environment",
+    "constants",
 ]

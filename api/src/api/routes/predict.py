@@ -11,8 +11,8 @@ from ...api.dependencies import (
     get_cache_service,
     get_database_service,
     get_prediction_service,
-    verify_api_key,
 )
+from ...api.routes.auth import get_current_user
 from ...config import get_logger
 from ...models import (
     BatchPredictionResponse,
@@ -39,11 +39,11 @@ router = APIRouter(prefix="/api/v1", tags=["predictions"])
     status_code=status.HTTP_200_OK,
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
     summary="Make fraud prediction",
-    description="Predict if a transaction is fraudulent (requires API key authentication)",
+    description="Predict if a transaction is fraudulent (requires JWT authentication)",
 )
 async def predict(
     request: TransactionRequest,
-    api_key: str = Depends(verify_api_key),
+    current_user: dict = Depends(get_current_user),
     prediction_service: PredictionService = Depends(get_prediction_service),
     cache_service: CacheService = Depends(get_cache_service),
     database_service: DatabaseService = Depends(get_database_service),
@@ -51,11 +51,11 @@ async def predict(
     """
     Make a fraud prediction for a single transaction.
 
-    Requires valid API key authentication.
+    Requires valid JWT Bearer token authentication.
 
     Args:
         request: Transaction data
-        api_key: Validated API key
+        current_user: Authenticated user from JWT token
         prediction_service: Prediction service dependency
         cache_service: Cache service dependency
         database_service: Database service dependency
@@ -144,22 +144,22 @@ async def predict(
     status_code=status.HTTP_200_OK,
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
     summary="Batch fraud prediction",
-    description="Predict fraud for multiple transactions (requires API key authentication)",
+    description="Predict fraud for multiple transactions (requires JWT authentication)",
 )
 async def batch_predict(
     request: BatchTransactionRequest,
-    api_key: str = Depends(verify_api_key),
+    current_user: dict = Depends(get_current_user),
     prediction_service: PredictionService = Depends(get_prediction_service),
     database_service: DatabaseService = Depends(get_database_service),
 ):
     """
     Make fraud predictions for multiple transactions.
 
-    Requires valid API key authentication.
+    Requires valid JWT Bearer token authentication.
 
     Args:
         request: Batch transaction data
-        api_key: Validated API key
+        current_user: Authenticated user from JWT token
         prediction_service: Prediction service dependency
         database_service: Database service dependency
 

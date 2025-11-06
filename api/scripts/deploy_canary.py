@@ -77,26 +77,31 @@ class CanaryDeployer:
                 # Extract model name from URI
                 model_name = model_uri.split("/")[-2]  # e.g., "fraud_detection_xgboost"
                 loaded_models[model_name] = model
-                logger.info(f"   ✅ Loaded {model_name}")
+                logger.info(f"   Loaded {model_name}")
 
                 # Download SHAP explainer artifact
                 try:
                     # Get the run that contains this model
                     client = MlflowClient()
-                    model_details = client.get_model_version_by_alias(
-                        model_name, "Staging"
+                    model_versions = client.get_latest_versions(
+                        model_name, stages=["Staging"]
                     )
-                    run_id = model_details.run_id
 
-                    # Download SHAP explainer artifact
-                    explainer_path = client.download_artifacts(
-                        run_id,
-                        f"shap_explainer_{model_name.replace('fraud_detection_', '')}.pkl",
-                    )
-                    with open(explainer_path, "rb") as f:
-                        explainer = joblib.load(f)
-                    loaded_explainers[model_name] = explainer
-                    logger.info(f"   Loaded SHAP explainer for {model_name}")
+                    if model_versions:
+                        model_details = model_versions[0]
+                        run_id = model_details.run_id
+
+                        # Download SHAP explainer artifact
+                        explainer_path = client.download_artifacts(
+                            run_id,
+                            f"shap_explainer_{model_name.replace('fraud_detection_', '')}.pkl",
+                        )
+                        with open(explainer_path, "rb") as f:
+                            explainer = joblib.load(f)
+                        loaded_explainers[model_name] = explainer
+                        logger.info(f"   Loaded SHAP explainer for {model_name}")
+                    else:
+                        logger.warning(f"   No Staging version found for {model_name}")
                 except Exception as e:
                     logger.warning(
                         f"   Failed to load SHAP explainer for {model_name}: {e}"
@@ -106,7 +111,7 @@ class CanaryDeployer:
 
             # 2. Save models and SHAP explainers to Azure File Share canary directory
             logger.info(
-                "💾 Saving models and SHAP explainers to Azure File Share canary directory..."
+                " Saving models and SHAP explainers to Azure File Share canary directory..."
             )
             # Use Azure File Share mount path instead of local /app/models
             azure_mount_path = os.getenv(
@@ -135,7 +140,7 @@ class CanaryDeployer:
                     )
 
             # 3. Update traffic routing config for TrafficRouter
-            logger.info(f"🔧 Updating traffic routing to {traffic_pct}% canary...")
+            logger.info(f" Updating traffic routing to {traffic_pct}% canary...")
             config_file = Path("/app/config/traffic_routing.json")
 
             if not config_file.parent.exists():
@@ -145,10 +150,20 @@ class CanaryDeployer:
             azure_mount_path = os.getenv(
                 "AZURE_STORAGE_MOUNT_PATH", "/mnt/fraud-models"
             )
+
+            # New config structure matching TrafficRoutingConfig
             config = {
-                "canary_percentage": traffic_pct,
-                "canary_model_path": f"{azure_mount_path}/canary",
-                "champion_model_path": f"{azure_mount_path}/champion",
+                "canary_enabled": traffic_pct > 0,
+                "canary_traffic_pct": traffic_pct,
+                "champion_traffic_pct": 100 - traffic_pct,
+                "canary_model_uris": [f"{azure_mount_path}/canary"],
+                "champion_model_uris": [f"{azure_mount_path}/champion"],
+                "ensemble_weights": {
+                    "xgboost": 0.50,
+                    "random_forest": 0.30,
+                    "neural_network": 0.15,
+                    "isolation_forest": 0.05,
+                },
             }
 
             with open(config_file, "w") as f:

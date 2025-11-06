@@ -29,6 +29,7 @@ from airflow.utils.trigger_rule import TriggerRule
 
 # Import centralized configuration
 from config.constants import (
+    DATA_PATHS,
     DOCKER_IMAGE_TRAINING,
     DOCKER_NETWORK,
     ENV_VARS,
@@ -163,13 +164,26 @@ with DAG(
         network_mode=DOCKER_NETWORK,
         auto_remove=True,
         mount_tmp_dir=False,
+        working_dir="/app",  # Specify working directory explicitly
         mounts=[
             {
-                "target": "/app/data/raw/creditcard.csv",
-                "source": "/Users/joshuajusteyunpeinikiema/Documents/MLOps/fraud-detection-project/fraud-detection-ml/creditcard.csv",
+                "target": DATA_PATHS["CREDITCARD_CSV_CONTAINER"],
+                "source": DATA_PATHS["CREDITCARD_CSV_HOST"],
                 "type": "bind",
                 "read_only": True,
-            }
+            },
+            {
+                "target": "/app/training/artifacts",
+                "source": "fraud-detection-ml_training_artifacts",  # Named volume with project prefix
+                "type": "volume",
+                "read_only": False,
+            },
+            {
+                "target": "/mlflow/artifacts",
+                "source": "fraud-detection-ml_mlflow_artifacts",  # MLflow artifacts (shared with MLflow server)
+                "type": "volume",
+                "read_only": False,
+            },
         ],
         trigger_rule=TriggerRule.NONE_FAILED,
         doc_md="""

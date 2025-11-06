@@ -1,3 +1,30 @@
+# Local .dockerignore for the api service
+# Keeps the Docker build context small by excluding virtualenvs, tests, data and caches
+venv/
+venv_*/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.dist-info/
+.pytest_cache/
+tests/
+docs/
+notebooks/
+.ipynb_checkpoints/
+.env
+.env.*
+.git
+.gitignore
+.DS_Store
+node_modules/
+coverage.xml
+creditcard.csv
+data/
+*.pem
+*.key
 # Python cache
 __pycache__/
 *.py[cod]
@@ -48,3 +75,10 @@ dist/
 
 # Documentation
 docs/_build/
+.env.example
+.env.docker
+AZURE_WEBAPP_CONFIG.md
+EVIDENTLY_MIGRATION_PLAN.md
+pytest.ini
+SHAP_EXPLAINERS_CONFIG.md
+USER_MANAGEMENT_API.md

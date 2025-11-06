@@ -39,24 +39,35 @@ TABLE_NAMES = {
 
 # Environment detection for Docker images
 # Set ENVIRONMENT=production to use Docker Hub
-# Set ENVIRONMENT=local (default) to use local Docker images
-ENVIRONMENT = os.getenv("ENVIRONMENT", "local")  # 'local' or 'production'
-DOCKERHUB_USERNAME = os.getenv("DOCKERHUB_USERNAME", "yoshua24")
+# Set ENVIRONMENT=development (default) to use local Docker images
+ENVIRONMENT = os.getenv(
+    "ENVIRONMENT", "development"
+)  # 'development', 'staging', 'production', or 'test'
+DOCKERHUB_USERNAME = os.getenv("DOCKERHUB_USERNAME", "josh24")
 
 # Docker images based on environment
 if ENVIRONMENT == "production":
     DOCKER_IMAGES = {
         "TRAINING": f"{DOCKERHUB_USERNAME}/training:latest",
         "API": f"{DOCKERHUB_USERNAME}/api:latest",
+        "DATA": f"{DOCKERHUB_USERNAME}/data:latest",
         "DRIFT": f"{DOCKERHUB_USERNAME}/drift:latest",
-        "DATA_QUALITY": f"{DOCKERHUB_USERNAME}/data-quality:latest",
     }
-else:  # local development
+elif (
+    ENVIRONMENT == "development"
+):  # local development (using Docker Hub images with develop tag)
+    DOCKER_IMAGES = {
+        "TRAINING": f"{DOCKERHUB_USERNAME}/training:develop",
+        "API": f"{DOCKERHUB_USERNAME}/api:develop",
+        "DATA": f"{DOCKERHUB_USERNAME}/data:develop",
+        "DRIFT": f"{DOCKERHUB_USERNAME}/drift:develop",
+    }
+else:  # test or staging
     DOCKER_IMAGES = {
         "TRAINING": "fraud-detection/training:local",
         "API": "fraud-detection/api:local",
+        "DATA": "fraud-detection/data:local",
         "DRIFT": "fraud-detection/drift:local",
-        "DATA_QUALITY": "fraud-detection/data-quality:local",
     }
 
 ENV_VARS = {
@@ -65,9 +76,20 @@ ENV_VARS = {
     "DOCKER_COMPOSE_PROJECT": "fraud-detection-ml",
     "DOCKER_IMAGE_TRAINING": DOCKER_IMAGES["TRAINING"],
     "DOCKER_IMAGE_API": DOCKER_IMAGES["API"],
+    "DOCKER_IMAGE_DATA": DOCKER_IMAGES["DATA"],
     "DOCKER_IMAGE_DRIFT": DOCKER_IMAGES["DRIFT"],
-    "DOCKER_IMAGE_DATA_QUALITY": DOCKER_IMAGES["DATA_QUALITY"],
-    # PostgreSQL configuration
+    # Python configuration
+    "PYTHONPATH": "/app",
+    "PYTHONUNBUFFERED": "1",
+    # PostgreSQL configuration (using DB_* prefix for Pydantic compatibility)
+    "DB_HOST": "postgres",
+    "DB_PORT": "5432",
+    "DB_NAME": "fraud_detection",
+    "DB_USER": "fraud_user",
+    "DB_PASSWORD": "fraud_pass_dev_2024",
+    # Explicit database URL to override Pydantic defaults
+    "DATABASE_URL": "postgresql://fraud_user:fraud_pass_dev_2024@postgres:5432/fraud_detection",
+    # Keep POSTGRES_* for backward compatibility with some scripts
     "POSTGRES_HOST": "postgres",
     "POSTGRES_PORT": "5432",
     "POSTGRES_DB": "fraud_detection",
@@ -88,6 +110,24 @@ ENV_VARS = {
     # Model registry
     "MODEL_REGISTRY_PATH": "/app/models",
     "MODEL_ARTIFACT_PATH": "s3://fraud-models",
+    # Kafka configuration
+    "KAFKA_BOOTSTRAP_SERVERS": os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
+    "KAFKA_TOPIC": os.getenv("KAFKA_TOPIC", "fraud-detection-transactions"),
+    "KAFKA_CONSUMER_GROUP": os.getenv("KAFKA_CONSUMER_GROUP", "fraud-detection-batch"),
+    "KAFKA_AUTO_OFFSET_RESET": os.getenv("KAFKA_AUTO_OFFSET_RESET", "earliest"),
+    "KAFKA_TIMEOUT_MS": os.getenv(
+        "KAFKA_TIMEOUT_MS", "10000"
+    ),  # 10s instead of 60s (faster feedback if Kafka empty)
+    "KAFKA_MAX_POLL_RECORDS": os.getenv("KAFKA_MAX_POLL_RECORDS", "500"),
+    # API configuration
+    "API_URL": os.getenv("API_URL", "http://api:8000"),
+    "API_TIMEOUT_SECONDS": os.getenv("API_TIMEOUT_SECONDS", "60"),
+    # JWT Authentication (from environment or Airflow Variables)
+    "API_USERNAME": os.getenv("API_USERNAME", "admin"),
+    "API_PASSWORD": os.getenv("API_PASSWORD", "admin123"),
+    # Web Application for fraud alerts
+    "WEBAPP_URL": os.getenv("WEBAPP_URL", "http://localhost:3001"),
+    "WEBAPP_TIMEOUT_SECONDS": os.getenv("WEBAPP_TIMEOUT_SECONDS", "30"),
 }
 
 
@@ -190,6 +230,24 @@ TRAINING_CONFIG = {
 
 
 # ============================================================================
+# DATA PATHS (Environment-aware)
+# ============================================================================
+DATA_PATHS = {
+    # CSV data source (host path - used by DockerOperator mounts)
+    # In production (Azure VM), this would be /mnt/data/creditcard.csv
+    # In local dev (macOS), use relative path from project root
+    "CREDITCARD_CSV_HOST": os.getenv(
+        "CREDITCARD_CSV_HOST_PATH",
+        os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "..", "creditcard.csv"
+        ),
+    ),
+    # Container paths (inside Docker containers)
+    "CREDITCARD_CSV_CONTAINER": "/app/data/raw/creditcard.csv",
+}
+
+
+# ============================================================================
 # DEPLOYMENT CONFIGURATION
 # ============================================================================
 DEPLOYMENT_CONFIG = {
@@ -217,8 +275,8 @@ DOCKER_NETWORK = ENV_VARS["DOCKER_NETWORK"]
 # Docker images (environment-aware)
 DOCKER_IMAGE_TRAINING = ENV_VARS["DOCKER_IMAGE_TRAINING"]
 DOCKER_IMAGE_API = ENV_VARS["DOCKER_IMAGE_API"]
+DOCKER_IMAGE_DATA = ENV_VARS["DOCKER_IMAGE_DATA"]
 DOCKER_IMAGE_DRIFT = ENV_VARS["DOCKER_IMAGE_DRIFT"]
-DOCKER_IMAGE_DATA_QUALITY = ENV_VARS["DOCKER_IMAGE_DATA_QUALITY"]
 
 # Environment info
 CURRENT_ENVIRONMENT = ENVIRONMENT

@@ -13,7 +13,7 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./Guide/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ./00_create_databases.sh:/docker-entrypoint-initdb.d/00_create_databases.sh:ro
     ports:
       - "5432:5432"
@@ -120,10 +120,11 @@ services:
     restart: unless-stopped
 
   mlflow:
-    # build:
-    #   context: ./mlflow
-    #   dockerfile: Dockerfile
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/mlflow:develop  # Docker Hub image
+    build:
+      context: .  
+      dockerfile: ./mlflow/Dockerfile
+    image: fraud-detection/mlflow:local
+    # image: ${DOCKERHUB_USERNAME:-yoshua24}/mlflow:develop  # Docker Hub image
     # image: hcr.io/mlflow/mlflow:v2.10.2
     container_name: fraud-mlflow
     command: >
@@ -132,8 +133,10 @@ services:
       --port 5000
       --backend-store-uri postgresql://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/mlflow_db
       --default-artifact-root /mlflow/artifacts
+      --serve-artifacts
     volumes:
       - mlflow_artifacts:/mlflow/artifacts
+      - training_artifacts:/mlflow/training_artifacts:ro  # Read-only access to training artifacts (SHAP, etc.)
     ports:
       - "5001:5000"  # Port externe 5001 (5000 already usedd by ControlCenter)
     networks:
@@ -154,11 +157,11 @@ services:
   # ==============================================================================
 
   api:
-    # build:
-    #   context: .  
-    #   dockerfile: ./api/Dockerfile
-    # image: fraud-detection/api:local 
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/api:develop  # ← Use Docker Hub image
+    build:
+      context: .  
+      dockerfile: ./api/Dockerfile
+    image: fraud-detection/api:local 
+    # image: ${DOCKERHUB_USERNAME:-yoshua24}/api:develop  # ← Use Docker Hub image
     container_name: fraud-api
     environment:
       - POSTGRES_HOST=postgres
@@ -176,9 +179,12 @@ services:
       - CORS_ORIGINS=["http://localhost:3000","http://localhost:8000"]
       - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
       - AZURE_STORAGE_CONTAINER_NAME=${AZURE_STORAGE_CONTAINER_NAME:-fraud-models}
-      - ENVIRONMENT=development
+      - AZURE_STORAGE_MOUNT_PATH=/mlflow/artifacts  # Local dev: use mlflow_artifacts volume (production will use /mnt/fraud-models with Azure File Share)
+      - ENVIRONMENT=local
       - REQUIRE_API_KEY=true
       - API_KEYS=${API_KEYS:-dev_api_key_12345,test_api_key_67890}
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts  # Read-write access to MLflow artifacts
     ports:
       - "8000:8000"  # API
       - "9090:9090"  # Prometheus metrics
@@ -199,26 +205,44 @@ services:
     restart: unless-stopped
 
   data:
-    # build:
-    #   context: .  # Context root to access common/
-    #   dockerfile: ./data/Dockerfile
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/data:develop  # ← Use Docker Hub image
+    build:
+      context: .  
+      dockerfile: ./data/Dockerfile
+    image: fraud-detection/data:local
+    # image: ${DOCKERHUB_USERNAME:-yoshua24}/data:develop  # ← Use Docker Hub image
     container_name: fraud-data
     environment:
+      # PostgreSQL configuration (POSTGRES_* for backwards compatibility)
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=fraud_detection
       - POSTGRES_USER=fraud_user
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fraud_pass_dev_2024}
+      # DB_* for config/settings.py DatabaseSettings (env_prefix="DB_")
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=fraud_detection
+      - DB_USER=fraud_user
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-fraud_pass_dev_2024}
+      # DATABASE_URL (priority override for realtime_pipeline.py)
+      - DATABASE_URL=postgresql://fraud_user:fraud_pass_dev_2024@postgres:5432/fraud_detection
+      # Redis configuration
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_pass_dev}
+      # Data configuration
       - DATA_SOURCE=/data/creditcard.csv
       - ARTIFACT_DIR=/artifacts
       - LOG_LEVEL=INFO
       - PROMETHEUS_PORT=9091
+      - ENVIRONMENT=local
+      # Kafka configuration
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - KAFKA_TOPIC=fraud-detection-transactions
+      # API configuration (for realtime_pipeline.py with JWT authentication)
+      - API_URL=http://api:8000
+      - API_USERNAME=admin
+      - API_PASSWORD=admin123
     volumes:
       - ./creditcard.csv:/data/creditcard.csv:ro
       - data_artifacts:/artifacts
@@ -239,10 +263,11 @@ services:
     restart: unless-stopped
 
   drift:
-    # build:
-    #   context: .  # 
-    #   dockerfile: ./drift/Dockerfile
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/drift:develop  # ← Use Docker Hub image
+    build:
+      context: .  
+      dockerfile: ./drift/Dockerfile
+    image: fraud-detection/drift:local
+    # image: ${DOCKERHUB_USERNAME:-yoshua24}/drift:develop  # ← Use Docker Hub image
     container_name: fraud-drift
     environment:
       - POSTGRES_HOST=postgres
@@ -256,11 +281,16 @@ services:
       - MONITORING_WINDOW_HOURS=24
       - LOG_LEVEL=INFO
       - PROMETHEUS_PORT=9095
-      # 🚨 NEW: Airflow integration for retraining trigger
+      # NEW: Airflow integration for retraining trigger
       - AIRFLOW_API_URL=http://airflow-webserver:8080/api/v1
       - AIRFLOW_USERNAME=${AIRFLOW_USERNAME:-airflow}
       - AIRFLOW_PASSWORD=${AIRFLOW_PASSWORD:-airflow}
+      - ENVIRONMENT=local
       - RETRAINING_COOLDOWN_HOURS=48
+      # API Authentication for drift detection
+      - API_URL=http://api:8000
+      - API_USERNAME=${API_USERNAME_DRIFT:-admin}
+      - API_PASSWORD=${API_PASSWORD_DRIFT:-admin123}
     ports:
       - "9095:9095"  # Prometheus metrics
     networks:
@@ -278,10 +308,11 @@ services:
     restart: unless-stopped
 
   training:
-    # build:
-    #   context: .  
-    #   dockerfile: ./training/Dockerfile
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/training:develop  # Use Docker Hub image
+    build:
+      context: .  
+      dockerfile: ./training/Dockerfile
+    image: fraud-detection/training:local
+    # image: ${DOCKERHUB_USERNAME:-yoshua24}/training:develop  # Use Docker Hub image
     container_name: fraud-training
     environment:
       - POSTGRES_HOST=postgres
@@ -294,12 +325,13 @@ services:
       - EXPERIMENT_NAME=fraud-detection
       - DATA_PATH=/data/creditcard.csv
       - LOG_LEVEL=INFO
+      - ENVIRONMENT=local
       - PROMETHEUS_PORT=9095
     volumes:
       - ./config:/app/config:ro  # Mount centralized config
       - ./creditcard.csv:/app/data/raw/creditcard.csv:ro
-      - training_artifacts:/app/artifacts
-      - mlflow_artifacts:/mlflow/artifacts  # Mount MLflow artifacts volume for direct access
+      - training_artifacts:/app/training/artifacts  # Training artifacts (timestamped runs)
+      - mlflow_artifacts:/mlflow/artifacts  # MLflow artifacts (shared with MLflow server)
     ports:
       - "9096:9095"  # Prometheus metrics
     networks:
@@ -321,18 +353,23 @@ services:
   # ==============================================================================
 
   # Airflow base image (build once, use twice)
-  airflow-base:
-    # build:
-    #   context: . 
-    #   dockerfile: ./airflow/Dockerfile
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop
-    # This service is not run, just used to build the image
-    profiles:
-      - build-only
+  # airflow-base:
+  #   build:
+  #     context: .  
+  #     dockerfile: ./airflow/Dockerfile
+  #   image: fraud-detection/airflow:local
+  #   # image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop
+  #   # This service is not run, just used to build the image
+  #   profiles:
+  #     - build-only
 
   # Airflow DB initialization (runs once then exits)
   airflow-init:
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop 
+    build:
+      context: .  
+      dockerfile: ./airflow/Dockerfile
+    image: fraud-detection/airflow:local
+    # image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop 
     container_name: fraud-airflow-init
     command: >
       bash -c "
@@ -360,7 +397,11 @@ services:
     restart: "no"  # Run only once
 
   airflow-webserver:
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop 
+    build:
+      context: .  
+      dockerfile: ./airflow/Dockerfile
+    image: fraud-detection/airflow:local
+    # image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop 
     container_name: fraud-airflow-webserver
     command: webserver
     environment:
@@ -377,7 +418,7 @@ services:
       - DOCKER_NETWORK=fraud-detection-ml_fraud-network
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@localhost.com}
-      - ENVIRONMENT=local  # Use local Docker images
+      - ENVIRONMENT=local  # Use development environment
     volumes:
       - ./config:/opt/airflow/config:ro  # Mount centralized config
       - ./airflow/dags:/opt/airflow/dags
@@ -404,7 +445,11 @@ services:
     restart: unless-stopped
 
   airflow-scheduler:
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop 
+    build:
+      context: .  
+      dockerfile: ./airflow/Dockerfile
+    image: fraud-detection/airflow:local
+    # image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop 
     container_name: fraud-airflow-scheduler
     command: scheduler
     environment:
@@ -419,7 +464,7 @@ services:
       - DOCKER_NETWORK=fraud-detection-ml_fraud-network
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@localhost.com}
-      - ENVIRONMENT=local  # Use local Docker images
+      - ENVIRONMENT=local  # Use development environment
     volumes:
       - ./config:/opt/airflow/config:ro  # Mount centralized config
       - ./airflow/dags:/opt/airflow/dags
@@ -444,7 +489,11 @@ services:
     restart: unless-stopped
 
   airflow-worker:
-    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop
+    build:
+      context: .  
+      dockerfile: ./airflow/Dockerfile
+    image: fraud-detection/airflow:local
+    # image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:develop
     container_name: fraud-airflow-worker
     command: celery worker
     environment:
@@ -459,7 +508,7 @@ services:
       - DOCKER_NETWORK=fraud-detection-ml_fraud-network
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@localhost.com}
-      - ENVIRONMENT=local  # Use local Docker images
+      - ENVIRONMENT=local  # Use development environment
       # Celery worker specific settings
       - AIRFLOW__CELERY__WORKER_CONCURRENCY=2
       - AIRFLOW__CELERY__WORKER_PREFETCH_MULTIPLIER=1

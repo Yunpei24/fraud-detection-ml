@@ -1,0 +1,96 @@
+# Local .dockerignore for the training service
+# Exclude venvs, notebooks, artifacts, and large local files from build context
+
+# Virtual environments
+venv/
+venv_*/
+.venv/
+env/
+ENV/
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+.eggs/
+dist/
+build/
+*.dist-info/
+
+# Testing and coverage
+.pytest_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+tests/
+.benchmarks/
+
+# Notebooks (not needed in production image)
+Notebooks/
+*.ipynb
+.ipynb_checkpoints/
+
+# MLflow runs and artifacts (too large, managed separately)
+mlruns/
+mlartifacts/
+artifacts/
+
+# Training outputs (generated at runtime)
+models/
+checkpoints/
+logs/
+*.log
+
+# Data files (should be mounted or downloaded at runtime)
+data/
+*.csv
+*.parquet
+*.pkl
+*.joblib
+*.h5
+*.hdf5
+
+# Git and CI/CD
+.git/
+.gitignore
+.github/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment files
+.env
+.env.*
+.env.local
+
+# Documentation
+docs/
+*.md
+LICENSE
+
+# Docker files
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Large binary files
+*.tar
+*.tar.gz
+*.zip
+*.rar
+tests/
+requirements.test.txt
+tests
+MLFLOW_MODEL_LOGGING_ANALYSIS.md

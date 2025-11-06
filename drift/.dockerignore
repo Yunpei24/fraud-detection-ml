@@ -1,3 +1,25 @@
+# Local .dockerignore for the drift service
+# Exclude venvs, artifacts, tests and datasets from build context
+venv/
+venv_*/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+notebooks/
+.ipynb_checkpoints/
+.env
+.env.*
+.git
+.gitignore
+.DS_Store
+node_modules/
+coverage.xml
+data/
+creditcard.csv
+tmp/
+*.log
 # Python
 __pycache__
 *.pyc
@@ -68,3 +90,4 @@ data/processed/
 .DS_Store
 Thumbs.db
 *.tmp
+test_api_client_auth.py

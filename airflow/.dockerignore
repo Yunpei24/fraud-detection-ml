@@ -1,0 +1,26 @@
+# Local .dockerignore for the airflow service
+# Exclude logs, venvs and local-only artifacts from build context
+venv/
+venv_*/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+notebooks/
+.ipynb_checkpoints/
+.env
+.env.*
+.git
+.gitignore
+.DS_Store
+node_modules/
+logs/
+airflow/logs/
+airflow/www/static/
+dags/__pycache__/
+tmp/
+*.log
+credentials/
+*.pem
+*.key

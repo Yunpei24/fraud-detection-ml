@@ -110,7 +110,7 @@ def main():
         "V26": "v26",
         "V27": "v27",
         "V28": "v28",
-        "amount": "amount",
+        "Amount": "amount",
         "Class": "class",
     }
 

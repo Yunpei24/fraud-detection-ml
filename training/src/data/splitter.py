@@ -33,15 +33,21 @@ def stratified_split(
     X_train, X_temp, y_train, y_temp = train_test_split(
         X, y, test_size=test_size, stratify=y, random_state=random_state
     )
-    # compute val share relative to remaining pool
-    val_rel = val_size / (1.0 - test_size)
-    X_val, X_test, y_val, y_test = train_test_split(
-        X_temp,
-        y_temp,
-        test_size=(1 - val_rel),
-        stratify=y_temp,
-        random_state=random_state,
-    )
+
+    # Handle edge case: if val_size=0, skip validation split
+    if val_size == 0.0:
+        X_val, y_val = X_temp[:0], y_temp[:0]  # Empty arrays
+        X_test, y_test = X_temp, y_temp
+    else:
+        # compute val share relative to remaining pool
+        val_rel = val_size / (1.0 - test_size)
+        X_val, X_test, y_val, y_test = train_test_split(
+            X_temp,
+            y_temp,
+            test_size=(1 - val_rel),
+            stratify=y_temp,
+            random_state=random_state,
+        )
 
     logger.info(
         f"Stratified split -> "

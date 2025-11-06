@@ -13,13 +13,19 @@ RUN apt-get update && apt-get install -y \
 
 # Install common package first
 COPY common/ /app/common/
-RUN pip install --no-cache-dir /app/common
+RUN pip install --no-cache-dir \
+    --default-timeout=300 \
+    --retries 5 \
+    /app/common
 
 # Copy requirements
 COPY drift/requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies with timeout and retry settings
+RUN pip install --no-cache-dir \
+    --default-timeout=300 \
+    --retries 5 \
+    -r requirements.txt
 
 # Copy application code
 COPY drift/ .
@@ -34,11 +40,11 @@ RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Expose Prometheus metrics port
-EXPOSE 9095
+EXPOSE 9097
 
 # Health check - verify metrics server is running
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:9095/metrics || exit 1
+  CMD curl -f http://localhost:9097/metrics || exit 1
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

@@ -134,6 +134,25 @@ class TrafficRouter:
             "ensemble_weights": self.config.ensemble_weights,
         }
 
+    @property
+    def canary_percentage(self) -> int:
+        """Get canary traffic percentage."""
+        return self.config.canary_traffic_pct if self.config.canary_enabled else 0
+
+    @property
+    def canary_model_path(self) -> Optional[str]:
+        """Get canary model path from URIs."""
+        if self.config.canary_model_uris and len(self.config.canary_model_uris) > 0:
+            return self.config.canary_model_uris[0]
+        return None
+
+    @property
+    def champion_model_path(self) -> Optional[str]:
+        """Get champion model path from URIs."""
+        if self.config.champion_model_uris and len(self.config.champion_model_uris) > 0:
+            return self.config.champion_model_uris[0]
+        return settings.model_path  # Default to settings if not configured
+
 
 class PredictionService:
     """Service for making fraud predictions."""
@@ -405,6 +424,44 @@ class PredictionService:
             True if model is healthy
         """
         return self.model.health_check()
+
+    def get_available_models(self) -> List[str]:
+        """
+        Get list of models that are actually loaded and available.
+
+        Returns:
+            List of available model types
+        """
+        available_models = []
+
+        # Check which individual models are loaded in the ensemble
+        if (
+            hasattr(self.model, "xgboost_model")
+            and self.model.xgboost_model is not None
+        ):
+            available_models.append("xgboost")
+
+        if (
+            hasattr(self.model, "random_forest_model")
+            and self.model.random_forest_model is not None
+        ):
+            available_models.append("random_forest")
+
+        if hasattr(self.model, "nn_model") and self.model.nn_model is not None:
+            available_models.append("neural_network")
+
+        if (
+            hasattr(self.model, "isolation_forest_model")
+            and self.model.isolation_forest_model is not None
+        ):
+            available_models.append("isolation_forest")
+
+        # If at least one model is loaded, ensemble is available
+        if available_models:
+            available_models.append("ensemble")
+
+        self.logger.info(f"Available models: {available_models}")
+        return available_models
 
     async def explain_prediction_shap(
         self,

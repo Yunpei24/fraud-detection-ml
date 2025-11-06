@@ -8,7 +8,10 @@ USER root
 
 # Install psycopg2-binary for PostgreSQL backend support
 # Note: psycopg2-binary is a standalone package that doesn't require compilation ==2.9.9
-RUN pip install --no-cache-dir psycopg2-binary
+RUN pip install --no-cache-dir \
+    --default-timeout=300 \
+    --retries 5 \
+    psycopg2-binary
 
 # Install Python urllib for healthcheck (already in base image, but explicit)
 # No additional packages needed

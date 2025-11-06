@@ -12,6 +12,7 @@ Key Features:
 - Pydantic validation for type safety
 - Environment-specific configurations
 - Shared common settings (database, Azure, monitoring, etc.)
+- Compatible with both Pydantic v1 (Airflow) and v2 (other modules)
 
 Usage:
     from config.settings import get_settings
@@ -30,8 +31,46 @@ Usage:
 from pathlib import Path
 from typing import Any, List, Optional
 
-from pydantic import Field, computed_field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+# Pydantic compatibility layer for v1 and v2
+try:
+    # Try Pydantic v2 first
+    from pydantic import Field, field_validator
+    from pydantic_settings import BaseSettings, SettingsConfigDict
+
+    PYDANTIC_V2 = True
+
+    # computed_field is available in v2
+    from pydantic import computed_field
+
+except ImportError:
+    # Fall back to Pydantic v1
+    from pydantic import BaseSettings, Field, validator
+
+    PYDANTIC_V2 = False
+
+    # Mock SettingsConfigDict for v1
+    class SettingsConfigDict:
+        """Mock SettingsConfigDict for Pydantic v1"""
+
+        def __init__(self, **kwargs):
+            pass
+
+    # Mock computed_field decorator for v1 - use property instead
+    def computed_field(func):
+        """Mock computed_field decorator for Pydantic v1"""
+        return property(func)
+
+    # Mock field_validator for v1 - convert to validator
+    def field_validator(*field_names, mode="after"):
+        """Mock field_validator for Pydantic v1 - returns validator decorator"""
+
+        def decorator(func):
+            # In v1, use @validator
+            return validator(*field_names, pre=(mode == "before"), allow_reuse=True)(
+                func
+            )
+
+        return decorator
 
 
 class Environment(str):
@@ -40,7 +79,7 @@ class Environment(str):
     DEVELOPMENT = "development"
     STAGING = "staging"
     PRODUCTION = "production"
-    TEST = "test"
+    LOCAL = "local"
 
 
 class DatabaseSettings(BaseSettings):
@@ -67,9 +106,14 @@ class DatabaseSettings(BaseSettings):
         """SQLAlchemy-compatible URL with connection parameters"""
         return f"{self.url}?sslmode={self.ssl_mode}&pool_size={self.pool_size}&max_overflow={self.max_overflow}"
 
-    model_config = SettingsConfigDict(
-        env_prefix="DB_", protected_namespaces=("settings_",)
-    )
+    if PYDANTIC_V2:
+        model_config = SettingsConfigDict(
+            env_prefix="DB_", protected_namespaces=("settings_",)
+        )
+    else:
+
+        class Config:
+            env_prefix = "DB_"
 
 
 class RedisSettings(BaseSettings):
@@ -90,9 +134,14 @@ class RedisSettings(BaseSettings):
         protocol = "rediss" if self.ssl else "redis"
         return f"{protocol}://{auth}{self.host}:{self.port}/{self.db}"
 
-    model_config = SettingsConfigDict(
-        env_prefix="REDIS_", protected_namespaces=("settings_",)
-    )
+    if PYDANTIC_V2:
+        model_config = SettingsConfigDict(
+            env_prefix="REDIS_", protected_namespaces=("settings_",)
+        )
+    else:
+
+        class Config:
+            env_prefix = "REDIS_"
 
 
 class AzureSettings(BaseSettings):
@@ -111,14 +160,11 @@ class AzureSettings(BaseSettings):
     container_models: str = Field(default="models", description="Models container")
     container_reports: str = Field(default="reports", description="Reports container")
     container_data: str = Field(default="data", description="Data container")
-
     data_lake_path: str = Field(
         default="abfss://data@frauddetection.dfs.core.windows.net",
         description="Data lake path",
     )
-
     key_vault_url: Optional[str] = Field(default=None, description="Key Vault URL")
-
     event_hub_connection_string: Optional[str] = Field(
         default=None, description="Event Hub connection string"
     )
@@ -126,9 +172,14 @@ class AzureSettings(BaseSettings):
         default="fraud-transactions", description="Event Hub name"
     )
 
-    model_config = SettingsConfigDict(
-        env_prefix="AZURE_", protected_namespaces=("settings_",)
-    )
+    if PYDANTIC_V2:
+        model_config = SettingsConfigDict(
+            env_prefix="AZURE_", protected_namespaces=("settings_",)
+        )
+    else:
+
+        class Config:
+            env_prefix = "AZURE_"
 
 
 class KafkaSettings(BaseSettings):
@@ -153,9 +204,14 @@ class KafkaSettings(BaseSettings):
         """Convert comma-separated servers to list"""
         return [s.strip() for s in self.bootstrap_servers.split(",")]
 
-    model_config = SettingsConfigDict(
-        env_prefix="KAFKA_", protected_namespaces=("settings_",)
-    )
+    if PYDANTIC_V2:
+        model_config = SettingsConfigDict(
+            env_prefix="KAFKA_", protected_namespaces=("settings_",)
+        )
+    else:
+
+        class Config:
+            env_prefix = "KAFKA_"
 
 
 class MonitoringSettings(BaseSettings):
@@ -166,9 +222,14 @@ class MonitoringSettings(BaseSettings):
     log_format: str = Field(default="json", description="Log format")
     enable_audit_log: bool = Field(default=True, description="Enable audit logging")
 
-    model_config = SettingsConfigDict(
-        env_prefix="MONITORING_", protected_namespaces=("settings_",)
-    )
+    if PYDANTIC_V2:
+        model_config = SettingsConfigDict(
+            env_prefix="MONITORING_", protected_namespaces=("settings_",)
+        )
+    else:
+
+        class Config:
+            env_prefix = "MONITORING_"
 
 
 class SecuritySettings(BaseSettings):
@@ -179,9 +240,14 @@ class SecuritySettings(BaseSettings):
     access_token_expire_minutes: int = Field(default=30, description="Token expiration")
     api_key_header: str = Field(default="X-API-Key", description="API key header")
 
-    model_config = SettingsConfigDict(
-        env_prefix="SECURITY_", protected_namespaces=("settings_",)
-    )
+    if PYDANTIC_V2:
+        model_config = SettingsConfigDict(
+            env_prefix="SECURITY_", protected_namespaces=("settings_",)
+        )
+    else:
+
+        class Config:
+            env_prefix = "SECURITY_"
 
 
 class AlertSettings(BaseSettings):
@@ -198,18 +264,12 @@ class AlertSettings(BaseSettings):
     email_recipients: List[str] = Field(
         default=["ml-team@example.com"], description="Email recipients"
     )
-
     slack_enabled: bool = Field(default=False, description="Enable Slack alerts")
     slack_webhook: str = Field(default="", description="Slack webhook URL")
     slack_channel: str = Field(default="#fraud-alerts", description="Slack channel")
-
     max_alerts_per_hour: int = Field(default=5, description="Max alerts per hour")
     alert_debounce_minutes: int = Field(
         default=30, description="Alert debounce minutes"
-    )
-
-    model_config = SettingsConfigDict(
-        env_prefix="ALERT_", protected_namespaces=("settings_",)
     )
 
     @field_validator("email_recipients", mode="before")
@@ -219,6 +279,15 @@ class AlertSettings(BaseSettings):
         if isinstance(v, str):
             return [email.strip() for email in v.split(",") if email.strip()]
         return v
+
+    if PYDANTIC_V2:
+        model_config = SettingsConfigDict(
+            env_prefix="ALERT_", protected_namespaces=("settings_",)
+        )
+    else:
+
+        class Config:
+            env_prefix = "ALERT_"
 
 
 class MLflowSettings(BaseSettings):
@@ -234,12 +303,16 @@ class MLflowSettings(BaseSettings):
         default="fraud-detection-ensemble", description="Model name"
     )
 
-    model_config = SettingsConfigDict(
-        env_prefix="MLFLOW_", protected_namespaces=("settings_",)
-    )
+    if PYDANTIC_V2:
+        model_config = SettingsConfigDict(
+            env_prefix="MLFLOW_", protected_namespaces=("settings_",)
+        )
+    else:
+
+        class Config:
+            env_prefix = "MLFLOW_"
 
 
-# Module-specific settings
 class APISettings(BaseSettings):
     """API module specific settings"""
 
@@ -247,24 +320,20 @@ class APISettings(BaseSettings):
     port: int = Field(default=8000, description="API port")
     workers: int = Field(default=4, description="Uvicorn workers")
     reload: bool = Field(default=False, description="Auto reload")
-
     version: str = Field(default="1.0.0", description="API version")
     title: str = Field(default="Fraud Detection API", description="API title")
     description: str = Field(
         default="Real-time fraud detection API", description="API description"
     )
-
     fraud_threshold: float = Field(
         default=0.5, ge=0.0, le=1.0, description="Fraud threshold"
     )
     confidence_threshold: float = Field(
         default=0.7, ge=0.0, le=1.0, description="Confidence threshold"
     )
-
     rate_limit_enabled: bool = Field(default=True, description="Enable rate limiting")
     rate_limit_requests: int = Field(default=100, description="Requests per period")
     rate_limit_period: int = Field(default=60, description="Rate limit period")
-
     cors_origins: List[str] = Field(
         default=["http://localhost:3000"], description="CORS origins"
     )
@@ -274,7 +343,6 @@ class APISettings(BaseSettings):
         description="Allowed methods",
     )
     cors_allow_headers: List[str] = Field(default=["*"], description="Allowed headers")
-
     enable_batch_prediction: bool = Field(
         default=True, description="Enable batch prediction"
     )
@@ -283,11 +351,8 @@ class APISettings(BaseSettings):
     )
     enable_model_reload: bool = Field(default=True, description="Enable model reload")
     enable_cache: bool = Field(default=True, description="Enable caching")
-
     ml_model_path: str = Field(default="/app/models", description="Model path")
     ml_model_version: str = Field(default="v1.0.0", description="Model version")
-
-    # Model names
     xgboost_model_name: str = Field(
         default="xgboost_fraud_model.pkl", description="XGBoost model filename"
     )
@@ -302,8 +367,6 @@ class APISettings(BaseSettings):
         default="isolation_forest_model.pkl",
         description="Isolation Forest model filename",
     )
-
-    # SHAP explainer names
     shap_explainer_xgb_name: str = Field(
         default="shap_explainer_xgb.pkl", description="XGBoost SHAP explainer"
     )
@@ -317,12 +380,7 @@ class APISettings(BaseSettings):
         default="shap_explainer_iforest.pkl",
         description="Isolation Forest SHAP explainer",
     )
-
     prometheus_port: int = Field(default=9090, description="Prometheus port")
-
-    model_config = SettingsConfigDict(
-        env_prefix="API_", protected_namespaces=("settings_",)
-    )
 
     @field_validator(
         "cors_origins", "cors_allow_methods", "cors_allow_headers", mode="before"
@@ -334,31 +392,42 @@ class APISettings(BaseSettings):
             return [item.strip() for item in v.split(",")]
         return v
 
+    if PYDANTIC_V2:
+        model_config = SettingsConfigDict(
+            env_prefix="API_", protected_namespaces=("settings_",)
+        )
+    else:
+
+        class Config:
+            env_prefix = "API_"
+
 
 class DataSettings(BaseSettings):
     """Data module specific settings"""
 
     api_url: str = Field(default="http://api:8000", description="API URL")
     api_timeout_seconds: int = Field(default=60, description="API timeout")
-
     webapp_url: str = Field(default="", description="Web app URL")
     webapp_timeout_seconds: int = Field(default=30, description="Web app timeout")
-
     prometheus_port: int = Field(default=9092, description="Prometheus port")
     enable_profiling: bool = Field(default=False, description="Enable profiling")
     enable_data_validation: bool = Field(
         default=True, description="Enable data validation"
     )
 
-    model_config = SettingsConfigDict(
-        env_prefix="DATA_", protected_namespaces=("settings_",)
-    )
+    if PYDANTIC_V2:
+        model_config = SettingsConfigDict(
+            env_prefix="DATA_", protected_namespaces=("settings_",)
+        )
+    else:
+
+        class Config:
+            env_prefix = "DATA_"
 
 
 class DriftSettings(BaseSettings):
     """Drift detection module specific settings"""
 
-    # Drift thresholds
     data_drift_threshold: float = Field(
         default=0.3, ge=0.0, le=1.0, description="Data drift threshold"
     )
@@ -368,8 +437,6 @@ class DriftSettings(BaseSettings):
     concept_drift_threshold: float = Field(
         default=0.05, ge=0.0, le=1.0, description="Concept drift threshold"
     )
-
-    # Performance baselines
     baseline_recall: float = Field(
         default=0.98, ge=0.0, le=1.0, description="Baseline recall"
     )
@@ -382,13 +449,9 @@ class DriftSettings(BaseSettings):
     baseline_fraud_rate: float = Field(
         default=0.002, ge=0.0, le=1.0, description="Baseline fraud rate"
     )
-
-    # Monitoring windows
     hourly_window_size: int = Field(default=3600, description="Hourly window size")
     daily_window_size: int = Field(default=86400, description="Daily window size")
     weekly_window_size: int = Field(default=604800, description="Weekly window size")
-
-    # Retraining
     min_samples_for_drift: int = Field(
         default=1000, description="Min samples for drift"
     )
@@ -398,23 +461,24 @@ class DriftSettings(BaseSettings):
     consecutive_drift_detections: int = Field(
         default=3, description="Consecutive detections needed"
     )
-
-    # Reports
     report_enabled: bool = Field(default=True, description="Enable reports")
     report_retention_days: int = Field(default=90, description="Report retention")
     report_format: str = Field(default="html", description="Report format")
-
     prometheus_port: int = Field(default=9091, description="Prometheus port")
 
-    model_config = SettingsConfigDict(
-        env_prefix="DRIFT_", protected_namespaces=("settings_",)
-    )
+    if PYDANTIC_V2:
+        model_config = SettingsConfigDict(
+            env_prefix="DRIFT_", protected_namespaces=("settings_",)
+        )
+    else:
+
+        class Config:
+            env_prefix = "DRIFT_"
 
 
 class TrainingSettings(BaseSettings):
     """Training module specific settings"""
 
-    # Data paths
     train_data_path: str = Field(
         default="/data/train.csv", description="Training data path"
     )
@@ -425,8 +489,6 @@ class TrainingSettings(BaseSettings):
     checkpoint_dir: str = Field(
         default="/checkpoints", description="Checkpoint directory"
     )
-
-    # Training parameters
     batch_size: int = Field(default=1024, description="Batch size")
     epochs: int = Field(default=10, description="Training epochs")
     validation_split: float = Field(
@@ -435,12 +497,8 @@ class TrainingSettings(BaseSettings):
     early_stopping_patience: int = Field(
         default=5, description="Early stopping patience"
     )
-
-    # Cross-validation
     cv_folds: int = Field(default=5, description="CV folds")
     cv_strategy: str = Field(default="stratified", description="CV strategy")
-
-    # Feature engineering
     enable_feature_selection: bool = Field(
         default=True, description="Enable feature selection"
     )
@@ -449,8 +507,6 @@ class TrainingSettings(BaseSettings):
     )
     enable_scaling: bool = Field(default=True, description="Enable scaling")
     scaler_type: str = Field(default="standard", description="Scaler type")
-
-    # Evaluation
     eval_metrics: List[str] = Field(
         default=["precision", "recall", "f1", "auc", "accuracy"],
         description="Evaluation metrics",
@@ -458,12 +514,7 @@ class TrainingSettings(BaseSettings):
     eval_threshold: float = Field(
         default=0.5, ge=0.0, le=1.0, description="Evaluation threshold"
     )
-
     prometheus_port: int = Field(default=9093, description="Prometheus port")
-
-    model_config = SettingsConfigDict(
-        env_prefix="TRAINING_", protected_namespaces=("settings_",)
-    )
 
     @field_validator("eval_metrics", mode="before")
     @classmethod
@@ -472,6 +523,15 @@ class TrainingSettings(BaseSettings):
         if isinstance(v, str):
             return [metric.strip() for metric in v.split(",")]
         return v
+
+    if PYDANTIC_V2:
+        model_config = SettingsConfigDict(
+            env_prefix="TRAINING_", protected_namespaces=("settings_",)
+        )
+    else:
+
+        class Config:
+            env_prefix = "TRAINING_"
 
 
 class AirflowSettings(BaseSettings):
@@ -487,8 +547,6 @@ class AirflowSettings(BaseSettings):
     max_active_runs_per_dag: int = Field(
         default=3, description="Max active runs per DAG"
     )
-
-    # Service URLs
     api_base_url: str = Field(
         default="http://fraud-api:8000", description="API base URL"
     )
@@ -498,40 +556,30 @@ class AirflowSettings(BaseSettings):
     drift_base_url: str = Field(
         default="http://fraud-drift:8002", description="Drift base URL"
     )
-
-    # Training config
     min_training_samples: int = Field(default=10000, description="Min training samples")
     training_cooldown_hours: int = Field(default=48, description="Training cooldown")
-
-    # Databricks
     databricks_host: str = Field(default="", description="Databricks host")
     databricks_token: str = Field(default="", description="Databricks token")
     databricks_training_job_id: int = Field(default=0, description="Databricks job ID")
-
-    # Azure ACR
     azure_acr_login_server: str = Field(
         default="frauddetection.azurecr.io", description="ACR login server"
     )
-
     training_dag_id: str = Field(
         default="02_model_training", description="Training DAG ID"
     )
 
-    model_config = SettingsConfigDict(
-        env_prefix="AIRFLOW_", protected_namespaces=("settings_",)
-    )
+    if PYDANTIC_V2:
+        model_config = SettingsConfigDict(
+            env_prefix="AIRFLOW_", protected_namespaces=("settings_",)
+        )
+    else:
+
+        class Config:
+            env_prefix = "AIRFLOW_"
 
 
 class GlobalSettings(BaseSettings):
     """Global settings for the entire fraud detection project"""
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="allow",
-        protected_namespaces=("settings_",),
-    )
 
     # Environment
     environment: str = Field(default=Environment.DEVELOPMENT, description="Environment")
@@ -562,11 +610,27 @@ class GlobalSettings(BaseSettings):
             Environment.DEVELOPMENT,
             Environment.STAGING,
             Environment.PRODUCTION,
-            Environment.TEST,
+            Environment.LOCAL,
         ]
         if v.lower() not in valid_envs:
             raise ValueError(f"Environment must be one of {valid_envs}")
         return v.lower()
+
+    if PYDANTIC_V2:
+        model_config = SettingsConfigDict(
+            env_file=".env",
+            env_file_encoding="utf-8",
+            case_sensitive=False,
+            extra="allow",
+            protected_namespaces=("settings_",),
+        )
+    else:
+
+        class Config:
+            env_file = ".env"
+            env_file_encoding = "utf-8"
+            case_sensitive = False
+            extra = "allow"
 
 
 # Global settings instance

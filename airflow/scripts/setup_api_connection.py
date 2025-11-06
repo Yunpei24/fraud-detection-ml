@@ -65,7 +65,7 @@ def get_admin_token(api_url: str, username: str, password: str) -> Optional[str]
         JWT token or None if failed
     """
     try:
-        logger.info(f"🔐 Obtaining admin token from {api_url}...")
+        logger.info(f" Obtaining admin token from {api_url}...")
 
         response = requests.post(
             f"{api_url}/auth/login",
@@ -79,20 +79,20 @@ def get_admin_token(api_url: str, username: str, password: str) -> Optional[str]
             token = data.get("access_token")
 
             if token:
-                logger.info("✅ Admin token obtained successfully")
+                logger.info(" Admin token obtained successfully")
                 logger.info(f"   Token: {token[:20]}...{token[-10:]}")
                 logger.info(f"   Expires in: {data.get('expires_in', 'N/A')} seconds")
                 return token
             else:
-                logger.error("❌ No access_token in response")
+                logger.error(" No access_token in response")
                 return None
         else:
-            logger.error(f"❌ Login failed: {response.status_code}")
+            logger.error(f" Login failed: {response.status_code}")
             logger.error(f"   Response: {response.text}")
             return None
 
     except Exception as e:
-        logger.error(f"❌ Failed to obtain token: {e}")
+        logger.error(f" Failed to obtain token: {e}")
         return None
 
 
@@ -184,7 +184,7 @@ def verify_connection(api_url: str, admin_token: str):
         admin_token: JWT admin token
     """
     try:
-        logger.info("🔍 Verifying connection to API...")
+        logger.info(" Verifying connection to API...")
 
         # Call deployment status endpoint
         response = requests.get(
@@ -195,17 +195,17 @@ def verify_connection(api_url: str, admin_token: str):
 
         if response.status_code == 200:
             data = response.json()
-            logger.info("✅ Connection verified successfully!")
+            logger.info(" Connection verified successfully!")
             logger.info(f"   Deployment mode: {data.get('deployment_mode')}")
             logger.info(f"   Canary percentage: {data.get('canary_percentage')}%")
             return True
         else:
-            logger.error(f"❌ Connection verification failed: {response.status_code}")
+            logger.error(f" Connection verification failed: {response.status_code}")
             logger.error(f"   Response: {response.text}")
             return False
 
     except Exception as e:
-        logger.error(f"❌ Connection verification failed: {e}")
+        logger.error(f" Connection verification failed: {e}")
         return False
 
 
@@ -279,7 +279,7 @@ Examples:
     # Validate URL
     api_url = args.api_url.rstrip("/")
 
-    logger.info("🚀 Setting up Airflow connection for Fraud Detection API")
+    logger.info(" Setting up Airflow connection for Fraud Detection API")
     logger.info(f"   API URL: {api_url}")
 
     # Get or generate admin token
@@ -292,59 +292,59 @@ Examples:
         admin_token = get_admin_token(api_url, args.admin_username, args.admin_password)
 
         if not admin_token:
-            logger.error("❌ Failed to obtain admin token")
+            logger.error(" Failed to obtain admin token")
             logger.error("   Check your username, password, and API URL")
             sys.exit(1)
 
         # Store credentials for auto-renewal if requested
         if args.auto_renew:
-            logger.info("💾 Storing credentials for automatic token renewal...")
+            logger.info(" Storing credentials for automatic token renewal...")
             Variable.set("API_ADMIN_USERNAME", args.admin_username)
             Variable.set(
                 "API_ADMIN_PASSWORD", args.admin_password, serialize_json=False
             )
-            logger.info("✅ Credentials stored securely in Airflow Variables")
+            logger.info(" Credentials stored securely in Airflow Variables")
     else:
         logger.info(f"   Mode: Explicit token")
 
     # Create connection
     if not create_http_connection(api_url, args.connection_id):
-        logger.error("❌ Failed to create connection")
+        logger.error(" Failed to create connection")
         sys.exit(1)
 
     # Store API URL for token renewal DAG
     Variable.set("API_URL", api_url)
-    logger.info(f"✅ API URL stored in variables")
+    logger.info(f" API URL stored in variables")
 
     # Set admin token
     if not set_admin_token(admin_token, args.variable_key):
-        logger.error("❌ Failed to set admin token")
+        logger.error(" Failed to set admin token")
         sys.exit(1)
 
     # Verify connection if requested
     if args.verify:
         if not verify_connection(api_url, admin_token):
             logger.warning(
-                "⚠️  Connection verification failed, but configuration is saved"
+                " Connection verification failed, but configuration is saved"
             )
             logger.warning("   Check API URL and admin credentials")
 
     logger.info("")
-    logger.info("✅ Setup complete!")
+    logger.info(" Setup complete!")
     logger.info("")
-    logger.info("📋 Next steps:")
+    logger.info(" Next steps:")
     logger.info("   1. Verify the connection in Airflow UI: Admin > Connections")
     logger.info("   2. Check the variable in Airflow UI: Admin > Variables")
     logger.info("   3. Trigger the DAG: dags/05_model_deployment_canary_http")
     logger.info("")
 
     if args.auto_renew:
-        logger.info("🔄 Automatic token renewal enabled:")
+        logger.info(" Automatic token renewal enabled:")
         logger.info("   • Credentials stored in Airflow Variables")
         logger.info("   • Create a DAG to renew token periodically (daily recommended)")
         logger.info("")
 
-    logger.info("💡 To update connection or renew token, run this script again")
+    logger.info(" To update connection or renew token, run this script again")
 
     sys.exit(0)
 

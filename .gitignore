@@ -224,3 +224,16 @@ DOCKERHUB_SETUP1.md
 JWT_AUTH_SETUP.md
 PYDANTIC_V2_MIGRATION.md
 MONITORING_CORRECTIONS_REPORT.md
+schema.sql
+config/settings.py.backup
+common/venv_common
+scripts/setup-azure.sh
+BROKEN_DAG_ERROR_EXPLAINED.md
+verify_local_artifacts.sh
+scripts/nuclear-clean-rebuild.sh
+QUICKSTART_PRODUCER_CONSUMER.md
+scripts/TroubleShoot
+DOCKER_COMPOSE_VM1_UPDATES.md
+DOCKER_COMPOSE_VM1_CHANGES_SUMMARY.txt
+VM2_PRODUCTION_CONFIG_UPDATES.md
+VM2_README.md

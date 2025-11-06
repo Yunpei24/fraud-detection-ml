@@ -237,9 +237,10 @@ def client():
     app.dependency_overrides[get_drift_service] = lambda: mock_drift_service
 
     # Import and override authentication
-    from src.api.routes.auth import get_current_analyst_user
+    from src.api.routes.auth import get_current_analyst_user, get_current_user
 
     app.dependency_overrides[get_current_analyst_user] = lambda: mock_user
+    app.dependency_overrides[get_current_user] = lambda: mock_user
 
     with TestClient(app) as test_client:
         yield test_client

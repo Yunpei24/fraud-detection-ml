@@ -12,13 +12,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install common package first
 COPY common/ /build/common/
-RUN pip install --no-cache-dir --user /build/common
+RUN pip install --no-cache-dir --user \
+    --default-timeout=300 \
+    --retries 5 \
+    /build/common
 
 # Copy requirements
 COPY data/requirements.txt .
 
-# Install Python dependencies to /root/.local
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Install Python dependencies to /root/.local with timeout and retry settings
+RUN pip install --no-cache-dir --user \
+    --default-timeout=300 \
+    --retries 5 \
+    -r requirements.txt
 
 
 # Stage 2: Runtime - minimal image
@@ -35,6 +41,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy Python packages from builder stage
 COPY --from=builder /root/.local /root/.local
+
+# IMPORTANT: Copy centralized config from project root
+# This contains settings.py with Pydantic v2 that is used by data/src/config/settings.py
+COPY config/ /app/config/
 
 # Copy application code
 COPY data/ .

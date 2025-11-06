@@ -149,7 +149,7 @@ jobs:
       with:
         # This might remove tools that are actually needed
         tool-cache: false
-        # All of these default to true, but feel free to set to "false" if necessary
+        # All of these default to true, but feel free to set to "false" if necessary.
         android: true
         dotnet: true
         haskell: true
@@ -313,32 +313,44 @@ jobs:
             context: .
             dockerfile: ./api/Dockerfile
             path_filter: 'api/**'
+            platforms: 'linux/amd64'  # Build only for amd64 to reduce cache size
           - service: data
             context: .
             dockerfile: ./data/Dockerfile
             path_filter: 'data/**'
+            platforms: 'linux/amd64,linux/arm64'
           - service: drift
             context: .
             dockerfile: ./drift/Dockerfile
             path_filter: 'drift/**'
+            platforms: 'linux/amd64,linux/arm64'
           - service: training
             context: .
             dockerfile: ./training/Dockerfile
             path_filter: 'training/**'
+            platforms: 'linux/amd64,linux/arm64'
           - service: airflow
             context: .
             dockerfile: ./airflow/Dockerfile
             path_filter: 'airflow/**'
+            platforms: 'linux/amd64,linux/arm64'
           - service: mlflow
             context: .
             dockerfile: ./mlflow/Dockerfile
             path_filter: 'mlflow/**'
+            platforms: 'linux/amd64,linux/arm64'
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         fetch-depth: 0  # Necessary to compare changes
+
+    - name: Free up Docker space on runner
+      run: |
+        echo "Pruning docker system and builder to free space..."
+        docker system prune -af || true
+        docker builder prune -af --filter until=24h || true
 
     - name: Check if service was modified
       id: check_changes
@@ -383,7 +395,7 @@ jobs:
         echo "service_modified=$SERVICE_MODIFIED" >> $GITHUB_OUTPUT
         echo "Service ${{ matrix.service }} modified: $SERVICE_MODIFIED"
 
-    # Setup QEMU for multi-arch builds
+    # Setup QEMU for Multi-Architectures builds
     - name: Set up QEMU
       if: steps.check_changes.outputs.service_modified == 'true'
       uses: docker/setup-qemu-action@v3
@@ -393,6 +405,15 @@ jobs:
     - name: Set up Docker Buildx
       if: steps.check_changes.outputs.service_modified == 'true'
       uses: docker/setup-buildx-action@v3
+
+    - name: Clean up Docker and GitHub Actions cache (for API only)
+      if: steps.check_changes.outputs.service_modified == 'true' && matrix.service == 'api'
+      run: |
+        echo "Cleaning up Docker system for API build..."
+        docker system prune -af --volumes || true
+        docker builder prune -af --filter until=168h || true
+        echo "Disk space after cleanup:"
+        df -h
 
     - name: Log in to Docker Hub
       if: steps.check_changes.outputs.service_modified == 'true' && github.event_name != 'pull_request'
@@ -420,13 +441,22 @@ jobs:
       with:
         context: ${{ matrix.context }}
         file: ${{ matrix.dockerfile }}
-        platforms: linux/amd64,linux/arm64
+        platforms: ${{ matrix.platforms }}
         push: ${{ github.event_name != 'pull_request' }}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-to: type=gha,mode=min
         provenance: false  # Disable provenance attestations for compatibility
+      timeout-minutes: 45  # Add explicit timeout
+
+    - name: Cleanup after build
+      if: always() && steps.check_changes.outputs.service_modified == 'true'
+      run: |
+        echo "Cleaning up Docker after build..."
+        docker system prune -af || true
+        echo "Disk space after build:"
+        df -h
 
     - name: Generate artifact attestation
       if: steps.check_changes.outputs.service_modified == 'true' && github.event_name != 'pull_request'

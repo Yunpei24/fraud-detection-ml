@@ -87,10 +87,10 @@ def tune_xgboost_hyperparameters(
 
     Returns optimized parameters.
     """
-    logger.info("🔍 Tuning XGBoost hyperparameters...")
+    logger.info(" Tuning XGBoost hyperparameters...")
 
     # Sample a subset of data for hyperparameter tuning to reduce memory usage
-    sample_size = min(50000, len(X_train))  # Limit to 50k samples max
+    sample_size = min(20000, len(X_train))  # Limit to 50k samples max
     if len(X_train) > sample_size:
         logger.info(
             f"Sampling {sample_size} examples from {len(X_train)} for hyperparameter tuning"
@@ -204,10 +204,10 @@ def tune_random_forest_hyperparameters(
     """
     Tune Random Forest hyperparameters.
     """
-    logger.info("🔍 Tuning Random Forest hyperparameters...")
+    logger.info(" Tuning Random Forest hyperparameters...")
 
     # Sample a subset of data for hyperparameter tuning to reduce memory usage
-    sample_size = min(50000, len(X_train))  # Limit to 50k samples max
+    sample_size = min(30000, len(X_train))  # Limit to 50k samples max
     if len(X_train) > sample_size:
         logger.info(
             f"Sampling {sample_size} examples from {len(X_train)} for hyperparameter tuning"
@@ -304,7 +304,7 @@ def tune_neural_network_hyperparameters(
     logger.info(" Tuning Neural Network hyperparameters...")
 
     # Sample a smaller subset for neural network tuning (they're very memory intensive)
-    sample_size = min(25000, len(X_train))  # Limit to 25k samples for NN
+    sample_size = min(5000, len(X_train))  # Limit to 5k samples for NN
     if len(X_train) > sample_size:
         logger.info(
             f"Sampling {sample_size} examples from {len(X_train)} for neural network hyperparameter tuning"
@@ -328,7 +328,7 @@ def tune_neural_network_hyperparameters(
         "learning_rate": ["constant"],
         "learning_rate_init": [0.001],
         "batch_size": [64, 128],  # Smaller batches
-        "max_iter": [200],  # Limit iterations
+        "max_iter": [70],  # Limit iterations
     }
 
     search = GridSearchCV(

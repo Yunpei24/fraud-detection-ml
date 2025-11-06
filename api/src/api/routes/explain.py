@@ -7,6 +7,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from ...api.dependencies import get_prediction_service
 from ...api.routes.auth import get_current_analyst_user
 from ...config import get_logger
 from ...models import (
@@ -33,7 +34,8 @@ router = APIRouter(prefix="/api/v1/explain", tags=["explainability"])
     dependencies=[Depends(get_current_analyst_user)],
 )
 async def get_shap_explanation(
-    request: ExplanationRequest, prediction_service: PredictionService = Depends()
+    request: ExplanationRequest,
+    prediction_service: PredictionService = Depends(get_prediction_service),
 ):
     """
     Generate SHAP explanation for a transaction.
@@ -104,7 +106,8 @@ async def get_shap_explanation(
     dependencies=[Depends(get_current_analyst_user)],
 )
 async def get_feature_importance(
-    model_type: str, prediction_service: PredictionService = Depends()
+    model_type: str,
+    prediction_service: PredictionService = Depends(get_prediction_service),
 ):
     """
     Get global feature importance for a model.
@@ -167,13 +170,36 @@ async def get_feature_importance(
     description="Get list of models available for explanation",
     dependencies=[Depends(get_current_analyst_user)],
 )
-async def get_available_models():
+async def get_available_models(
+    prediction_service: PredictionService = Depends(get_prediction_service),
+):
     """
     Get list of models available for explanation.
 
     Requires analyst or admin role.
 
+    Args:
+        prediction_service: Prediction service dependency
+
     Returns:
-        List of available model types
+        List of available model types (e.g., ['xgboost', 'neural_network', 'ensemble'])
     """
-    return ["xgboost", "neural_network", "isolation_forest", "ensemble"]
+    try:
+        available_models = prediction_service.get_available_models()
+
+        logger.info(
+            f"Retrieved available models: {available_models} ({len(available_models)} models)"
+        )
+
+        return available_models
+
+    except Exception as e:
+        logger.error(f"Failed to retrieve available models: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error_code": "E803",
+                "message": "Failed to retrieve available models",
+                "details": {"error": str(e)},
+            },
+        )

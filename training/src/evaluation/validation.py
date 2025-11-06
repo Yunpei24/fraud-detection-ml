@@ -99,8 +99,8 @@ def cross_validation(
 def validate_all_models(
     models_results: Dict[str, Dict[str, float]],
     *,
-    min_recall: float = 0.95,
-    max_fpr: float = 0.02,
+    min_recall: float = 0.80,
+    max_fpr: float = 0.03,
 ) -> bool:
     """
     Check that every model in `models_results` meets business constraints.

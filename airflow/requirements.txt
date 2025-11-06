@@ -31,8 +31,8 @@ azure-identity==1.15.0
 redis==5.0.1
 
 # Utilities
-# NOTE: Airflow 2.7.0 requires pydantic<2.0.0
-# pydantic-settings v2 requires pydantic v2, so we can't use it here
+# NOTE: Airflow 2.7.0 REQUIRES pydantic<2.0.0 (verified from PyPI)
+# pydantic-settings v2 requires pydantic v2, so we use v1 settings
 pydantic>=1.10.0,<2.0.0
 python-dotenv==1.0.0
 structlog==24.1.0

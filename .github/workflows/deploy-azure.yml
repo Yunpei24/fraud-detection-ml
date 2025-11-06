@@ -1,0 +1,171 @@
+name: Deploy API to Azure Web App
+
+on:
+  # Automatic deployment after CI/CD workflow completes successfully on main
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]
+    types:
+      - completed
+    branches:
+      - main
+  
+  # Manual deployment (optional)
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  AZURE_WEBAPP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+  DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/api
+  PYTHON_VERSION: '3.10'
+
+jobs:
+  # Deploy to Azure Web App using the image built by ci-cd.yml
+  deploy:
+    name: Deploy to Azure Web App
+    runs-on: ubuntu-latest
+    # Only execute if:
+    # 1. Manual trigger (workflow_dispatch)
+    # 2. CI/CD workflow completed successfully on main branch
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && 
+       github.event.workflow_run.conclusion == 'success' && 
+       github.event.workflow_run.head_branch == 'main')
+    environment:
+      name: production
+      url: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Set Web App Container Settings
+        run: |
+          az webapp config container set \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --docker-custom-image-name ${{ env.DOCKER_IMAGE }}:latest \
+            --docker-registry-server-url https://index.docker.io
+      
+      - name: Configure Web App Settings
+        run: |
+          az webapp config appsettings set \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --settings \
+              ENVIRONMENT=production \
+              WEBSITES_PORT=8000 \
+              DOCKER_REGISTRY_SERVER_URL=https://index.docker.io \
+              WEBSITES_ENABLE_APP_SERVICE_STORAGE=false \
+              DEPLOYMENT_SHA=${{ github.sha }} \
+              DEPLOYMENT_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+      
+      - name: Restart Web App
+        run: |
+          echo " Restarting Azure Web App..."
+          az webapp restart \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
+      
+      - name: Wait for deployment
+        run: |
+          echo " Waiting 60 seconds for container to start..."
+          sleep 60
+      
+      - name: Health Check
+        run: |
+          echo " Checking API health..."
+          max_attempts=10
+          attempt=0
+          
+          while [ $attempt -lt $max_attempts ]; do
+            attempt=$((attempt + 1))
+            echo "Attempt $attempt/$max_attempts..."
+            
+            response=$(curl -s -o /dev/null -w "%{http_code}" \
+              https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health \
+              || echo "000")
+            
+            if [ "$response" = "200" ]; then
+              echo " Health check passed!"
+              curl -s https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health | jq '.'
+              exit 0
+            fi
+            
+            echo " Health check failed (HTTP $response). Retrying in 10s..."
+            sleep 10
+          done
+
+          echo " Health check failed after $max_attempts attempts"
+          exit 1
+      
+      - name: Get deployment logs (on failure)
+        if: failure()
+        run: |
+          echo " Fetching container logs..."
+          az webapp log tail \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --lines 100
+      
+      - name: Azure logout
+        if: always()
+        run: az logout
+
+  # Post-deployment tests
+  test:
+    name: Post-Deployment Tests
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: success()
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install test dependencies
+        run: |
+          pip install requests pytest
+      
+      - name: Test API endpoints
+        run: |
+          echo " Testing API endpoints..."
+          
+          # Test 1: Health endpoint
+          echo "Test 1: Health check"
+          curl -f https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health || exit 1
+          
+          # Test 2: Docs endpoint
+          echo "Test 2: API docs"
+          curl -f https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/docs || exit 1
+          
+          # Test 3: Metrics endpoint
+          echo "Test 3: Metrics"
+          curl -f https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/metrics || exit 1
+          
+          echo " All endpoint tests passed!"
+      
+      - name: Notify deployment success
+        run: |
+          echo " Deployment successful!"
+          echo "API URL: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+          echo "Docs: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/docs"
+          echo "SHA: ${{ github.sha }}"

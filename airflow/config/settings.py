@@ -3,8 +3,6 @@ Configuration settings for Airflow module
 Migrated to use centralized configuration for consistency.
 """
 
-# import sys
-# from pathlib import Path
 from typing import List
 
 from config import get_settings
