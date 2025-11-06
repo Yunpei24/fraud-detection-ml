@@ -1,0 +1,477 @@
+# ==============================================================================
+# VM1: APPLICATION SERVICES WITH AZURE DATABASE FOR POSTGRESQL
+# ==============================================================================
+# This configuration uses Azure Database for PostgreSQL instead of local container
+# PostgreSQL service is REMOVED - using Azure managed database
+# All services connect to: fraud-detection-db.postgres.database.azure.com
+# ==============================================================================
+
+services:
+  # ==============================================================================
+  # INFRASTRUCTURE SERVICES (Redis only - PostgreSQL is Azure managed)
+  # ==============================================================================
+
+  # PostgreSQL container REMOVED - using Azure Database for PostgreSQL
+  # Connection string: fraud-detection-db.postgres.database.azure.com:5432
+
+  redis:
+    image: redis:7-alpine
+    container_name: fraud-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_pass_change_me}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - fraud-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ==============================================================================
+  # KAFKA INFRASTRUCTURE
+  # ==============================================================================
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: fraud-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_LOG4J_ROOT_LOGLEVEL: WARN
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    networks:
+      - fraud-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: fraud-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - fraud-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  mlflow:
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/mlflow:latest
+    container_name: fraud-mlflow
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri postgresql://fraud_user:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/mlflow_db?sslmode=require
+      --default-artifact-root ${MLFLOW_DEFAULT_ARTIFACT_ROOT:-/mlflow/artifacts}
+      --serve-artifacts
+    environment:
+      # Azure PostgreSQL connection with SSL
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+    ports:
+      - "5000:5000"
+    networks:
+      - fraud-network
+    # REMOVED: depends_on postgres (Azure managed)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # ==============================================================================
+  # APPLICATION SERVICES
+  # ==============================================================================
+
+  data:
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/data:latest
+    container_name: fraud-data
+    environment:
+      # Azure PostgreSQL configuration (with SSL)
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-fraud_detection}
+      - POSTGRES_USER=${POSTGRES_USER:-fraud_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_SSL_MODE=require
+      # DB_* for config/settings.py
+      - DB_HOST=${POSTGRES_HOST}
+      - DB_PORT=${POSTGRES_PORT:-5432}
+      - DB_NAME=${POSTGRES_DB:-fraud_detection}
+      - DB_USER=${POSTGRES_USER:-fraud_user}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      # DATABASE_URL with SSL
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-fraud_user}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-fraud_detection}?sslmode=require
+      # Redis configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_pass_change_me}
+      # Data configuration
+      - DATA_SOURCE=/data/creditcard.csv
+      - ARTIFACT_DIR=/artifacts
+      - LOG_LEVEL=INFO
+      - PROMETHEUS_PORT=9091
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_TOPIC=fraud-detection-transactions
+      # API configuration
+      - API_URL=${API_URL:-http://api:8000}
+      - API_USERNAME=${API_USERNAME:-admin}
+      - API_PASSWORD=${API_PASSWORD:-admin123}
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
+      - AZURE_STORAGE_CONTAINER_NAME=${AZURE_STORAGE_CONTAINER_NAME:-fraud-data}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - WEBAPP_URL=${WEBAPP_URL:-http://localhost:3000}
+    volumes:
+      - ./creditcard.csv:/data/creditcard.csv:ro
+      - data_artifacts:/artifacts
+    ports:
+      - "127.0.0.1:9191:9091"  # Nginx reverse proxy on port 9191
+    networks:
+      - fraud-network
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  drift:
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/drift:latest
+    container_name: fraud-drift
+    environment:
+      # Azure PostgreSQL configuration (with SSL)
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-fraud_detection}
+      - POSTGRES_USER=${POSTGRES_USER:-fraud_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_SSL_MODE=require
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_pass_change_me}
+      # MLflow
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      # Drift thresholds
+      - DATA_DRIFT_THRESHOLD=0.2
+      - CONCEPT_DRIFT_THRESHOLD=0.05
+      - MONITORING_WINDOW_HOURS=24
+      - LOG_LEVEL=INFO
+      - PROMETHEUS_PORT=9097
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      # Airflow integration
+      - AIRFLOW_API_URL=http://airflow-webserver:8080/api/v1
+      - AIRFLOW_USERNAME=${AIRFLOW_USERNAME:-airflow}
+      - AIRFLOW_PASSWORD=${AIRFLOW_PASSWORD:-airflow}
+      - RETRAINING_COOLDOWN_HOURS=48
+      - API_URL=${API_URL:-http://api:8000}
+      - API_USERNAME=${API_USERNAME_DRIFT:-admin}
+      - API_PASSWORD=${API_PASSWORD_DRIFT:-admin123}
+    ports:
+      - "127.0.0.1:9197:9097"  # Nginx reverse proxy on port 9197
+    networks:
+      - fraud-network
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9095/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  training:
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/training:latest
+    container_name: fraud-training
+    environment:
+      # Azure PostgreSQL configuration (with SSL)
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-fraud_detection}
+      - POSTGRES_USER=${POSTGRES_USER:-fraud_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_SSL_MODE=require
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_pass_change_me}
+      # MLflow
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      # Training config
+      - MODEL_NAME=fraud_detection_xgboost
+      - EXPERIMENT_NAME=fraud-detection
+      - DATA_PATH=/data/creditcard.csv
+      - LOG_LEVEL=INFO
+      - PROMETHEUS_PORT=9095
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
+      - AZURE_STORAGE_CONTAINER_NAME=${AZURE_STORAGE_CONTAINER_NAME:-fraud-models}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+    volumes:
+      - ./config:/app/config:ro
+      - ./creditcard.csv:/app/data/raw/creditcard.csv:ro
+      - training_artifacts:/app/training/artifacts
+      - mlflow_artifacts:/mlflow/artifacts
+    ports:
+      - "127.0.0.1:9195:9095"  # Nginx reverse proxy on port 9195
+    networks:
+      - fraud-network
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9095/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # ==============================================================================
+  # AIRFLOW ORCHESTRATION
+  # ==============================================================================
+
+  airflow-init:
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:latest
+    container_name: fraud-airflow-init
+    command: >
+      bash -c "
+      airflow db init &&
+      airflow users create
+        --username ${AIRFLOW_USERNAME:-admin}
+        --firstname Admin
+        --lastname User
+        --role Admin
+        --email ${AIRFLOW_ADMIN_EMAIL:-admin@frauddetection.local} || true &&
+      python /opt/airflow/scripts/setup_connections.py &&
+      python /opt/airflow/scripts/setup_smtp_connection.py || echo 'SMTP setup failed, continuing...'
+      "
+    environment:
+      # Azure PostgreSQL connection for Airflow metadata (with SSL)
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-fraud_user}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-fraud_detection}?sslmode=require
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+    volumes:
+      - ./config:/opt/airflow/config:ro
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/config:/opt/airflow/config-airflow
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./airflow/scripts:/opt/airflow/scripts
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - fraud-network
+    restart: "no"
+
+  airflow-webserver:
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:latest
+    container_name: fraud-airflow-webserver
+    command: webserver
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      # Azure PostgreSQL connections (with SSL)
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-fraud_user}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-fraud_detection}?sslmode=require
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://${POSTGRES_USER:-fraud_user}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-fraud_detection}?sslmode=require
+      - AIRFLOW__CELERY__BROKER_URL=redis://:${REDIS_PASSWORD:-redis_pass_change_me}@redis:6379/0
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth
+      - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=true
+      - DOCKER_NETWORK=fraud-detection-network
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@frauddetection.com}
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
+      - ENVIRONMENT=production
+      - PYTHONPATH=/opt/airflow:/opt/airflow/config:/opt/airflow/plugins
+      - WEBAPP_URL=${WEBAPP_URL:-http://localhost:3000}
+    volumes:
+      - ./config:/opt/airflow/config:ro
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/config:/opt/airflow/config-airflow
+      - ./airflow/plugins:/opt/airflow/plugins
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8080:8080"
+    networks:
+      - fraud-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  airflow-scheduler:
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:latest
+    container_name: fraud-airflow-scheduler
+    command: scheduler
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      # Azure PostgreSQL connections (with SSL)
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-fraud_user}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-fraud_detection}?sslmode=require
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://${POSTGRES_USER:-fraud_user}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-fraud_detection}?sslmode=require
+      - AIRFLOW__CELERY__BROKER_URL=redis://:${REDIS_PASSWORD:-redis_pass_change_me}@redis:6379/0
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK=true
+      - AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL=30
+      - DOCKER_NETWORK=fraud-detection-network
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@frauddetection.com}
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
+      - ENVIRONMENT=production
+      - PYTHONPATH=/opt/airflow:/opt/airflow/config:/opt/airflow/plugins
+    volumes:
+      - ./config:/opt/airflow/config:ro
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/config:/opt/airflow/config-airflow
+      - ./airflow/plugins:/opt/airflow/plugins
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - fraud-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  airflow-worker:
+    image: ${DOCKERHUB_USERNAME:-yoshua24}/airflow:latest
+    container_name: fraud-airflow-worker
+    command: celery worker
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      # Azure PostgreSQL connections (with SSL)
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-fraud_user}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-fraud_detection}?sslmode=require
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://${POSTGRES_USER:-fraud_user}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-fraud_detection}?sslmode=require
+      - AIRFLOW__CELERY__BROKER_URL=redis://:${REDIS_PASSWORD:-redis_pass_change_me}@redis:6379/0
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - DOCKER_NETWORK=fraud-detection-network
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@frauddetection.com}
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
+      - ENVIRONMENT=production
+      - PYTHONPATH=/opt/airflow:/opt/airflow/config:/opt/airflow/plugins
+      - AIRFLOW__CELERY__WORKER_AUTOSCALE=2,4
+    volumes:
+      - ./config:/opt/airflow/config:ro
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/config:/opt/airflow/config-airflow
+      - ./airflow/plugins:/opt/airflow/plugins
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - fraud-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A airflow.executors.celery_executor.app inspect ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+# ==============================================================================
+# VOLUMES (postgres_data REMOVED - using Azure managed database)
+# ==============================================================================
+
+volumes:
+  # postgres_data: REMOVED - Azure managed
+  redis_data:
+    driver: local
+  zookeeper_data:
+    driver: local
+  zookeeper_logs:
+    driver: local
+  kafka_data:
+    driver: local
+  mlflow_artifacts:
+    driver: local
+  data_artifacts:
+    driver: local
+  training_artifacts:
+    driver: local
+
+# ==============================================================================
+# NETWORKS
+# ==============================================================================
+
+networks:
+  fraud-network:
+    name: fraud-detection-network
+    driver: bridge
