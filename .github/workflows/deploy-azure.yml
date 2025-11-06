@@ -87,7 +87,7 @@ jobs:
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --plan fraud-detection-plan \
-            --runtime "DOCKER|${{ env.DOCKER_IMAGE }}:latest"
+            --deployment-container-image-name ${{ env.DOCKER_IMAGE }}:latest
       
       - name: Set Web App Container Settings
         run: |
