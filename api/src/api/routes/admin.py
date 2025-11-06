@@ -200,8 +200,7 @@ async def get_admin_docs_with_token(
     # Verify token
     if token != settings.admin_token:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="Invalid admin token"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin token"
         )
 
     # Get OpenAPI URL
@@ -214,7 +213,7 @@ async def get_admin_docs_with_token(
 
     # Build full OpenAPI URL with proper scheme
     scheme = request.url.scheme  # https
-    host = request.url.netloc     # fraud-detection-api-ammi-2025.azurewebsites.net
+    host = request.url.netloc  # fraud-detection-api-ammi-2025.azurewebsites.net
     full_openapi_url = f"{scheme}://{host}{openapi_url}"
 
     # Generate HTML with embedded Redoc and FIXED JavaScript
