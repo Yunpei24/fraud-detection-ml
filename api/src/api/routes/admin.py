@@ -194,24 +194,14 @@ async def get_admin_docs_with_token(
     Access admin documentation with token in URL.
 
     Usage: GET /admin/docs-access?token=YOUR_ADMIN_TOKEN
-
-    Args:
-        request: FastAPI request object
-        token: Admin token (in URL query parameter)
-
-    Returns:
-        HTML page with embedded Redoc documentation
-
-    Raises:
-        HTTPException: If token is invalid or OpenAPI is disabled
     """
-    # Import settings
     from src.config.settings import settings
 
     # Verify token
     if token != settings.admin_token:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin token"
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Invalid admin token"
         )
 
     # Get OpenAPI URL
@@ -222,11 +212,12 @@ async def get_admin_docs_with_token(
             detail="OpenAPI schema is disabled in this environment",
         )
 
-    # Build full OpenAPI URL
-    base_url = str(request.base_url).rstrip("/")
-    full_openapi_url = f"{base_url}{openapi_url}"
+    # Build full OpenAPI URL with proper scheme
+    scheme = request.url.scheme  # https
+    host = request.url.netloc     # fraud-detection-api-ammi-2025.azurewebsites.net
+    full_openapi_url = f"{scheme}://{host}{openapi_url}"
 
-    # Generate HTML with embedded Redoc
+    # Generate HTML with embedded Redoc and FIXED JavaScript
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -239,13 +230,13 @@ async def get_admin_docs_with_token(
             body {{
                 margin: 0;
                 padding: 0;
+                font-family: 'Montserrat', sans-serif;
             }}
             .header {{
                 background: #1976d2;
                 color: white;
                 padding: 20px;
                 text-align: center;
-                font-family: 'Montserrat', sans-serif;
             }}
             .header h1 {{
                 margin: 0;
@@ -256,35 +247,130 @@ async def get_admin_docs_with_token(
                 font-size: 14px;
                 opacity: 0.9;
             }}
+            #loading {{
+                text-align: center;
+                padding: 50px;
+                font-size: 18px;
+                color: #666;
+            }}
         </style>
     </head>
     <body>
         <div class="header">
-            <h1> Admin API Documentation</h1>
+            <h1>🔐 Admin API Documentation</h1>
             <p>Fraud Detection System - Admin Routes</p>
         </div>
-        <redoc spec-url="{full_openapi_url}"></redoc>
+        
+        <div id="loading">
+            <p>Loading API documentation...</p>
+        </div>
+        
+        <div id="redoc-container"></div>
+        
         <script src="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js"></script>
         <script>
-            // Intercept fetch to add admin token header
+            const ADMIN_TOKEN = '{token}';
+            const OPENAPI_URL = '{full_openapi_url}';
+            
+            console.log('Initializing Admin Documentation');
+            console.log('OpenAPI URL:', OPENAPI_URL);
+            
+            // Intercept fetch to add admin token header (FIXED VERSION)
             const originalFetch = window.fetch;
             window.fetch = function(...args) {{
-                const [url, options = {{}}] = args;
+                let [url, options] = args;
+                
+                // Initialize options and headers if not present
+                if (!options) {{
+                    options = {{}};
+                }}
+                if (!options.headers) {{
+                    options.headers = {{}};
+                }}
+                
+                // Convert Headers object to plain object if needed
+                if (options.headers instanceof Headers) {{
+                    const plainHeaders = {{}};
+                    options.headers.forEach((value, key) => {{
+                        plainHeaders[key] = value;
+                    }});
+                    options.headers = plainHeaders;
+                }}
                 
                 // Add admin token to all API requests
-                if (url.includes('{request.url.hostname}') || url.startsWith('/')) {{
-                    options.headers = {{
-                        ...options.headers,
-                        'X-Admin-Token': '{token}'
-                    }};
+                if (url.includes('{host}') || url.startsWith('/')) {{
+                    console.log('Adding X-Admin-Token to request:', url);
+                    options.headers['X-Admin-Token'] = ADMIN_TOKEN;
                 }}
                 
                 return originalFetch(url, options);
             }};
             
-            console.log('Admin documentation loaded successfully');
-            console.log('API Base URL: {base_url}');
-            console.log('OpenAPI Spec: {full_openapi_url}');
+            // Load OpenAPI spec and initialize Redoc
+            async function loadDocumentation() {{
+                try {{
+                    console.log('Fetching OpenAPI spec...');
+                    
+                    const response = await fetch(OPENAPI_URL);
+                    
+                    if (!response.ok) {{
+                        throw new Error(`HTTP ${{response.status}}: ${{response.statusText}}`);
+                    }}
+                    
+                    const openApiSpec = await response.json();
+                    console.log('OpenAPI spec loaded:', openApiSpec.info);
+                    
+                    // Hide loading message
+                    document.getElementById('loading').style.display = 'none';
+                    
+                    // Initialize Redoc with the loaded spec
+                    Redoc.init(
+                        openApiSpec,
+                        {{
+                            scrollYOffset: 50,
+                            hideDownloadButton: false,
+                            theme: {{
+                                colors: {{
+                                    primary: {{ main: '#1976d2' }}
+                                }},
+                                typography: {{
+                                    fontSize: '15px',
+                                    headings: {{
+                                        fontFamily: 'Montserrat, sans-serif'
+                                    }}
+                                }}
+                            }}
+                        }},
+                        document.getElementById('redoc-container')
+                    );
+                    
+                    console.log('✅ Admin documentation loaded successfully');
+                    
+                }} catch (error) {{
+                    console.error('❌ Failed to load documentation:', error);
+                    
+                    document.getElementById('loading').innerHTML = `
+                        <div style="color: #d32f2f; padding: 20px;">
+                            <h2>⚠️ Failed to Load Documentation</h2>
+                            <p><strong>Error:</strong> ${{error.message}}</p>
+                            <p><strong>OpenAPI URL:</strong> <code>${{OPENAPI_URL}}</code></p>
+                            <p>
+                                <a href="${{OPENAPI_URL}}" target="_blank" 
+                                   style="color: #1976d2; text-decoration: underline;">
+                                    Test OpenAPI endpoint directly
+                                </a>
+                            </p>
+                        </div>
+                    `;
+                }}
+            }}
+            
+            // Load documentation when page is ready
+            if (document.readyState === 'loading') {{
+                document.addEventListener('DOMContentLoaded', loadDocumentation);
+            }} else {{
+                loadDocumentation();
+            }}
         </script>
     </body>
     </html>
