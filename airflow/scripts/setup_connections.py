@@ -5,6 +5,9 @@ Usage: python setup_connections.py
 """
 
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from airflow.models import Connection
 

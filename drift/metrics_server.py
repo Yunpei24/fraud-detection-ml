@@ -17,6 +17,9 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import structlog
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest

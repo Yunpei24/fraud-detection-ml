@@ -5,6 +5,9 @@ Standalone configuration using environment variables.
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Database settings
 # Default to 'postgres' for local Docker development

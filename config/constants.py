@@ -5,7 +5,9 @@ to eliminate hardcoded values across the codebase.
 """
 
 import os
+from dotenv import load_dotenv
 
+load_dotenv()
 # ============================================================================
 # DATABASE TABLE NAMES
 # ============================================================================

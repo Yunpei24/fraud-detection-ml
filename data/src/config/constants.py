@@ -6,6 +6,9 @@ For production deployments, use environment variables for sensitive/environment-
 """
 
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ==============================================================================
 # BATCH PROCESSING
