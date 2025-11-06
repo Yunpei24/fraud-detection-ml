@@ -11,6 +11,7 @@ from ...config import get_logger, settings
 from ...models import ModelVersionResponse
 from ...services import CacheService, PredictionService
 from ...utils import UnauthorizedException
+from fastapi.responses import HTMLResponse
 
 logger = get_logger(__name__)
 
@@ -184,26 +185,36 @@ async def clear_cache(
 
 
 # Endpoint for documentation redoc of FastAPI Admin routes
-@router.get("/docs", include_in_schema=False)
-async def get_admin_docs(
+@router.get("/docs-access", include_in_schema=False)
+async def get_admin_docs_with_token(
     request: Request,
-    admin_token: str = Depends(verify_admin_token),
+    token: str,  # Query parameter
 ):
     """
-    Get admin API documentation (Redoc).
+    Access admin documentation with token in URL.
+
+    Usage: GET /admin/docs-access?token=YOUR_ADMIN_TOKEN
 
     Args:
-        request: FastAPI request object to access app config
-        admin_token: Validated admin token
+        request: FastAPI request object
+        token: Admin token (in URL query parameter)
 
     Returns:
-        Redoc HTML response
+        HTML page with embedded Redoc documentation
 
     Raises:
-        HTTPException: If OpenAPI schema is disabled
+        HTTPException: If token is invalid or OpenAPI is disabled
     """
-    from fastapi.openapi.docs import get_redoc_html
+    # Import settings
+    from src.config.settings import settings
 
+    # Verify token
+    if token != settings.admin_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin token"
+        )
+
+    # Get OpenAPI URL
     openapi_url = request.app.openapi_url
     if not openapi_url:
         raise HTTPException(
@@ -211,8 +222,72 @@ async def get_admin_docs(
             detail="OpenAPI schema is disabled in this environment",
         )
 
-    return get_redoc_html(
-        openapi_url=openapi_url,
-        title="Admin API Documentation",
-        redoc_js_url="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js",
-    )
+    # Build full OpenAPI URL
+    base_url = str(request.base_url).rstrip("/")
+    full_openapi_url = f"{base_url}{openapi_url}"
+
+    # Generate HTML with embedded Redoc
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Admin API Documentation - Fraud Detection</title>
+        <meta charset="utf-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
+        <style>
+            body {{
+                margin: 0;
+                padding: 0;
+            }}
+            .header {{
+                background: #1976d2;
+                color: white;
+                padding: 20px;
+                text-align: center;
+                font-family: 'Montserrat', sans-serif;
+            }}
+            .header h1 {{
+                margin: 0;
+                font-size: 24px;
+            }}
+            .header p {{
+                margin: 5px 0 0 0;
+                font-size: 14px;
+                opacity: 0.9;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1> Admin API Documentation</h1>
+            <p>Fraud Detection System - Admin Routes</p>
+        </div>
+        <redoc spec-url="{full_openapi_url}"></redoc>
+        <script src="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js"></script>
+        <script>
+            // Intercept fetch to add admin token header
+            const originalFetch = window.fetch;
+            window.fetch = function(...args) {{
+                const [url, options = {{}}] = args;
+                
+                // Add admin token to all API requests
+                if (url.includes('{request.url.hostname}') || url.startsWith('/')) {{
+                    options.headers = {{
+                        ...options.headers,
+                        'X-Admin-Token': '{token}'
+                    }};
+                }}
+                
+                return originalFetch(url, options);
+            }};
+            
+            console.log('Admin documentation loaded successfully');
+            console.log('API Base URL: {base_url}');
+            console.log('OpenAPI Spec: {full_openapi_url}');
+        </script>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_content)
