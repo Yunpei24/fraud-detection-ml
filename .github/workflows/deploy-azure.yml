@@ -52,13 +52,43 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       
+      - name: Check if Web App exists
+        id: check_webapp
+        run: |
+          if az webapp show --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} &>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Create App Service Plan (if needed)
+        if: steps.check_webapp.outputs.exists == 'false'
+        run: |
+          echo "📦 Creating App Service Plan..."
+          az appservice plan create \
+            --name fraud-detection-plan \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --is-linux \
+            --sku B1 \
+            --location westeurope || true
+      
+      - name: Create Web App (if needed)
+        if: steps.check_webapp.outputs.exists == 'false'
+        run: |
+          echo "🚀 Creating Web App..."
+          az webapp create \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --plan fraud-detection-plan \
+            --deployment-container-image-name ${{ env.DOCKER_IMAGE }}:latest
+      
       - name: Set Web App Container Settings
         run: |
           az webapp config container set \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --docker-custom-image-name ${{ env.DOCKER_IMAGE }}:latest \
-            --docker-registry-server-url https://index.docker.io
+            --container-image-name ${{ env.DOCKER_IMAGE }}:latest \
+            --container-registry-url https://index.docker.io
       
       - name: Configure Web App Settings
         run: |
@@ -115,11 +145,16 @@ jobs:
       - name: Get deployment logs (on failure)
         if: failure()
         run: |
-          echo " Fetching container logs..."
-          az webapp log tail \
+          echo "📋 Fetching container logs..."
+          az webapp log download \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --lines 100
+            --log-file deployment-logs.zip || true
+          
+          # Alternative: stream logs
+          timeout 30s az webapp log tail \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} || true
       
       - name: Azure logout
         if: always()
