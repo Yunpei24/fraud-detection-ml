@@ -61,16 +61,23 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
       
+      - name: Get Resource Group Location
+        id: get_location
+        run: |
+          LOCATION=$(az group show --name ${{ secrets.AZURE_RESOURCE_GROUP }} --query location -o tsv)
+          echo "location=$LOCATION" >> $GITHUB_OUTPUT
+          echo " Resource Group location: $LOCATION"
+      
       - name: Create App Service Plan (if needed)
         if: steps.check_webapp.outputs.exists == 'false'
         run: |
-          echo "📦 Creating App Service Plan..."
+          echo " Creating App Service Plan..."
           az appservice plan create \
             --name fraud-detection-plan \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --is-linux \
             --sku B1 \
-            --location westeurope || true
+            --location ${{ steps.get_location.outputs.location }}
       
       - name: Create Web App (if needed)
         if: steps.check_webapp.outputs.exists == 'false'
@@ -80,7 +87,7 @@ jobs:
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --plan fraud-detection-plan \
-            --deployment-container-image-name ${{ env.DOCKER_IMAGE }}:latest
+            --runtime "DOCKER|${{ env.DOCKER_IMAGE }}:latest"
       
       - name: Set Web App Container Settings
         run: |
@@ -145,7 +152,7 @@ jobs:
       - name: Get deployment logs (on failure)
         if: failure()
         run: |
-          echo "📋 Fetching container logs..."
+          echo " Fetching container logs..."
           az webapp log download \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
