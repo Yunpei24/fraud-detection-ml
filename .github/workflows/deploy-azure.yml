@@ -24,6 +24,7 @@ on:
 env:
   AZURE_WEBAPP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
   DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/api
+  STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
   PYTHON_VERSION: '3.10'
 
 jobs:
@@ -82,7 +83,7 @@ jobs:
       - name: Create Web App (if needed)
         if: steps.check_webapp.outputs.exists == 'false'
         run: |
-          echo "🚀 Creating Web App..."
+          echo " Creating Web App..."
           az webapp create \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
@@ -97,6 +98,108 @@ jobs:
             --container-image-name ${{ env.DOCKER_IMAGE }}:latest \
             --container-registry-url https://index.docker.io
       
+      - name: Check if Storage Account exists
+        id: check_storage
+        run: |
+          if az storage account show \
+            --name ${{ env.STORAGE_ACCOUNT_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} &>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo " Storage Account exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo " Storage Account does not exist"
+          fi
+
+      - name: Create Storage Account (if needed)
+        if: steps.check_storage.outputs.exists == 'false'
+        run: |
+          echo " Creating Storage Account..."
+          
+          # Get location from Web App
+          LOCATION=$(az webapp show \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query location -o tsv)
+          
+          az storage account create \
+            --name ${{ env.STORAGE_ACCOUNT_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --location $LOCATION \
+            --sku Standard_LRS \
+            --kind StorageV2 \
+            --allow-blob-public-access false
+          
+          echo " Storage Account created"
+
+      - name: Get Storage Account Key
+        id: get_storage_key
+        run: |
+          STORAGE_KEY=$(az storage account keys list \
+            --account-name ${{ env.STORAGE_ACCOUNT_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query "[0].value" -o tsv)
+          
+          # Masquer la clé dans les logs GitHub
+          echo "::add-mask::$STORAGE_KEY"
+          echo "key=$STORAGE_KEY" >> $GITHUB_OUTPUT
+          echo " Storage key retrieved"
+
+      - name: Create File Share (if needed)
+        run: |
+          echo " Checking File Share..."
+          
+          SHARE_EXISTS=$(az storage share exists \
+            --name fraud-models \
+            --account-name ${{ env.STORAGE_ACCOUNT_NAME }} \
+            --account-key "${{ steps.get_storage_key.outputs.key }}" \
+            --query "exists" -o tsv)
+          
+          if [ "$SHARE_EXISTS" != "true" ]; then
+            echo "Creating File Share..."
+            az storage share create \
+              --name fraud-models \
+              --account-name ${{ env.STORAGE_ACCOUNT_NAME }} \
+              --account-key "${{ steps.get_storage_key.outputs.key }}" \
+              --quota 20
+            echo " File Share created (20 GB quota)"
+          else
+            echo " File Share already exists"
+          fi
+
+      - name: Mount File Share to Web App
+        run: |
+          echo " Mounting File Share to Web App..."
+          
+          # Supprimer le montage existant (si présent) pour éviter les conflits
+          az webapp config storage-account delete \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --custom-id FraudModelsStorage 2>/dev/null || true
+          
+          # Créer le nouveau montage
+          az webapp config storage-account add \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --custom-id FraudModelsStorage \
+            --storage-type AzureFiles \
+            --share-name fraud-models \
+            --account-name ${{ env.STORAGE_ACCOUNT_NAME }} \
+            --access-key "${{ steps.get_storage_key.outputs.key }}" \
+            --mount-path /mnt/fraud-models
+          
+          echo " File Share mounted at /mnt/fraud-models"
+
+      - name: Verify File Share Mount
+        run: |
+          echo " Verifying File Share configuration..."
+          
+          az webapp config storage-account list \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query "[?name=='FraudModelsStorage'].{MountPath:mountPath, ShareName:shareName}" \
+            --output table
+      
       - name: Configure Web App Settings
         run: |
           az webapp config appsettings set \
@@ -105,9 +208,11 @@ jobs:
             --settings \
               ENVIRONMENT=production \
               WEBSITES_PORT=8000 \
+              MODEL_STORAGE_PATH=/mnt/fraud-models \
               DOCKER_REGISTRY_SERVER_URL=https://index.docker.io \
-              WEBSITES_ENABLE_APP_SERVICE_STORAGE=true \
+              WEBSITES_ENABLE_APP_SERVICE_STORAGE=false \
               DEPLOYMENT_SHA=${{ github.sha }} \
+              MLFLOW_TRACKING_URI="http://40.66.54.22:5000" \
               DEPLOYMENT_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
       
       - name: Restart Web App

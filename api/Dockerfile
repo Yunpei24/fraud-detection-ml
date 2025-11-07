@@ -61,9 +61,8 @@ ENV PATH=/home/appuser/.local/bin:$PATH \
 ENV PORT=8000
 EXPOSE $PORT
 
-# Health check (optional - Azure has its own)
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:${PORT}/health || exit 1
 
-# Start with dynamic port from Azure
-CMD uvicorn src.main:app --host 0.0.0.0 --port ${PORT} --log-level info
+CMD python -m uvicorn src.main:app --host 0.0.0.0 --port ${PORT} --log-level info
