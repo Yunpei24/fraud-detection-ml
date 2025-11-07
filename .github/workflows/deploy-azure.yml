@@ -105,10 +105,19 @@ jobs:
             --name ${{ env.STORAGE_ACCOUNT_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} &>/dev/null; then
             echo "exists=true" >> $GITHUB_OUTPUT
-            echo " Storage Account exists"
+            echo " Storage Account exists in resource group"
           else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo " Storage Account does not exist"
+            AVAILABLE=$(az storage account check-name \
+              --name ${{ env.STORAGE_ACCOUNT_NAME }} \
+              --query "nameAvailable" -o tsv)
+            
+            if [ "$AVAILABLE" = "false" ]; then
+              echo "exists=true" >> $GITHUB_OUTPUT
+              echo " Storage Account name is taken (exists elsewhere)"
+            else
+              echo "exists=false" >> $GITHUB_OUTPUT
+              echo " Storage Account name is available"
+            fi
           fi
 
       - name: Create Storage Account (if needed)
