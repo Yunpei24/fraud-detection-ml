@@ -125,7 +125,7 @@ jobs:
           az storage account create \
             --name ${{ env.STORAGE_ACCOUNT_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --location $LOCATION \
+            --location ${{ secrets.AZURE_LOCATION }} \
             --sku Standard_LRS \
             --kind StorageV2 \
             --allow-blob-public-access false
