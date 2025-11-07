@@ -69,7 +69,7 @@ jobs:
           echo "location=$LOCATION" >> $GITHUB_OUTPUT
           echo " Resource Group location: $LOCATION"
       
-      - name: Create App Service Plan (if needed)
+      - name: Create App Service plan (if needed)
         if: steps.check_webapp.outputs.exists == 'false'
         run: |
           echo " Creating App Service Plan..."
@@ -125,7 +125,7 @@ jobs:
           az storage account create \
             --name ${{ env.STORAGE_ACCOUNT_NAME }} \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --location $LOCATION \
+            --location ${{ secrets.AZURE_LOCATION }} \
             --sku Standard_LRS \
             --kind StorageV2 \
             --allow-blob-public-access false

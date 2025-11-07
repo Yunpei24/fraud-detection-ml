@@ -61,7 +61,7 @@ ENV PATH=/home/appuser/.local/bin:$PATH \
 ENV PORT=8000
 EXPOSE $PORT
 
-# Health check
+# Health check for Azure Web App
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:${PORT}/health || exit 1
 
