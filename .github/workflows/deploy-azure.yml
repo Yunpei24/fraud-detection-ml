@@ -106,7 +106,7 @@ jobs:
               ENVIRONMENT=production \
               WEBSITES_PORT=8000 \
               DOCKER_REGISTRY_SERVER_URL=https://index.docker.io \
-              WEBSITES_ENABLE_APP_SERVICE_STORAGE=false \
+              WEBSITES_ENABLE_APP_SERVICE_STORAGE=true \
               DEPLOYMENT_SHA=${{ github.sha }} \
               DEPLOYMENT_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
       
