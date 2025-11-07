@@ -243,6 +243,10 @@ services:
       - API_URL=http://api:8000
       - API_USERNAME=admin
       - API_PASSWORD=admin123
+      - API_TIMEOUT_SECONDS=60
+      # Web Application configuration
+      - WEBAPP_URL=http://localhost:3001
+      - WEBAPP_TIMEOUT_SECONDS=30
     volumes:
       - ./creditcard.csv:/data/creditcard.csv:ro
       - data_artifacts:/artifacts
