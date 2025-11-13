@@ -74,8 +74,8 @@ HTTP_500_INTERNAL_SERVER_ERROR = 500
 HTTP_503_SERVICE_UNAVAILABLE = 503
 
 # Rate Limiting
-DEFAULT_RATE_LIMIT = 100  # requests per minute
-RATE_LIMIT_PERIOD = 60  # seconds
+DEFAULT_RATE_LIMIT = 100000  # requests per minute
+RATE_LIMIT_PERIOD = 90  # seconds
 
 # Health Check
 HEALTH_CHECK_DEPENDENCIES = ["database", "redis", "models", "azure_storage"]
