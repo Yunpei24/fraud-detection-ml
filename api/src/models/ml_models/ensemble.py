@@ -8,6 +8,7 @@ import pickle
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+import joblib
 import numpy as np
 import torch
 
@@ -64,9 +65,15 @@ class EnsembleModel:
             # Load XGBoost model
             xgboost_path = os.path.join(self.models_path, settings.xgboost_model_name)
             if os.path.exists(xgboost_path):
-                with open(xgboost_path, "rb") as f:
-                    self.xgboost_model = pickle.load(f)
-                logger.info(" XGBoost model loaded")
+                try:
+                    with open(xgboost_path, "rb") as f:
+                        self.xgboost_model = pickle.load(f)
+                    logger.info(" XGBoost model loaded")
+                except (pickle.UnpicklingError, EOFError, Exception) as e:
+                    logger.warning(
+                        f"Failed to load XGBoost from {xgboost_path}: {str(e)}, using mock"
+                    )
+                    self.xgboost_model = self._create_mock_model("xgboost")
             else:
                 logger.warning(f"XGBoost model not found at {xgboost_path}, using mock")
                 self.xgboost_model = self._create_mock_model("xgboost")
@@ -74,9 +81,15 @@ class EnsembleModel:
             # Load Random Forest model
             rf_path = os.path.join(self.models_path, settings.random_forest_model_name)
             if os.path.exists(rf_path):
-                with open(rf_path, "rb") as f:
-                    self.random_forest_model = pickle.load(f)
-                logger.info(" Random Forest model loaded")
+                try:
+                    with open(rf_path, "rb") as f:
+                        self.random_forest_model = pickle.load(f)
+                    logger.info(" Random Forest model loaded")
+                except (pickle.UnpicklingError, EOFError, Exception) as e:
+                    logger.warning(
+                        f"Failed to load Random Forest from {rf_path}: {str(e)}, using mock"
+                    )
+                    self.random_forest_model = self._create_mock_model("random_forest")
             else:
                 logger.warning(
                     f"Random Forest model not found at {rf_path}, using mock"
@@ -86,9 +99,14 @@ class EnsembleModel:
             # Load Neural Network model
             nn_path = os.path.join(self.models_path, settings.nn_model_name)
             if os.path.exists(nn_path):
-                self.nn_model = torch.load(nn_path)
-                self.nn_model.eval()
-                logger.info(" Neural Network model loaded")
+                try:
+                    self.nn_model = joblib.load(nn_path)
+                    logger.info(" Neural Network model loaded")
+                except (pickle.UnpicklingError, EOFError, Exception) as e:
+                    logger.warning(
+                        f"Failed to load NN from {nn_path}: {str(e)}, using mock"
+                    )
+                    self.nn_model = self._create_mock_model("neural_network")
             else:
                 logger.warning(f"NN model not found at {nn_path}, using mock")
                 self.nn_model = self._create_mock_model("neural_network")
@@ -98,9 +116,17 @@ class EnsembleModel:
                 self.models_path, settings.isolation_forest_model_name
             )
             if os.path.exists(iforest_path):
-                with open(iforest_path, "rb") as f:
-                    self.isolation_forest_model = pickle.load(f)
-                logger.info(" Isolation Forest model loaded")
+                try:
+                    with open(iforest_path, "rb") as f:
+                        self.isolation_forest_model = pickle.load(f)
+                    logger.info(" Isolation Forest model loaded")
+                except (pickle.UnpicklingError, EOFError, Exception) as e:
+                    logger.warning(
+                        f"Failed to load Isolation Forest from {iforest_path}: {str(e)}, using mock"
+                    )
+                    self.isolation_forest_model = self._create_mock_model(
+                        "isolation_forest"
+                    )
             else:
                 logger.warning(
                     f"Isolation Forest not found at {iforest_path}, using mock"
@@ -114,9 +140,14 @@ class EnsembleModel:
                 self.models_path, settings.shap_explainer_xgb_name
             )
             if os.path.exists(shap_xgb_path):
-                with open(shap_xgb_path, "rb") as f:
-                    self.shap_explainer_xgb = pickle.load(f)
-                logger.info(" SHAP explainer (XGBoost) loaded")
+                try:
+                    with open(shap_xgb_path, "rb") as f:
+                        self.shap_explainer_xgb = pickle.load(f)
+                    logger.info(" SHAP explainer (XGBoost) loaded")
+                except (pickle.UnpicklingError, EOFError, Exception) as e:
+                    logger.warning(
+                        f"Failed to load SHAP explainer (XGBoost) from {shap_xgb_path}: {str(e)}"
+                    )
             else:
                 logger.warning(f"SHAP explainer (XGBoost) not found at {shap_xgb_path}")
 
@@ -125,9 +156,14 @@ class EnsembleModel:
                 self.models_path, settings.shap_explainer_rf_name
             )
             if os.path.exists(shap_rf_path):
-                with open(shap_rf_path, "rb") as f:
-                    self.shap_explainer_rf = pickle.load(f)
-                logger.info(" SHAP explainer (Random Forest) loaded")
+                try:
+                    with open(shap_rf_path, "rb") as f:
+                        self.shap_explainer_rf = pickle.load(f)
+                    logger.info(" SHAP explainer (Random Forest) loaded")
+                except (pickle.UnpicklingError, EOFError, Exception) as e:
+                    logger.warning(
+                        f"Failed to load SHAP explainer (RF) from {shap_rf_path}: {str(e)}"
+                    )
             else:
                 logger.warning(f"SHAP explainer (RF) not found at {shap_rf_path}")
 
@@ -136,9 +172,14 @@ class EnsembleModel:
                 self.models_path, settings.shap_explainer_nn_name
             )
             if os.path.exists(shap_nn_path):
-                with open(shap_nn_path, "rb") as f:
-                    self.shap_explainer_nn = pickle.load(f)
-                logger.info("✓ SHAP explainer (Neural Network) loaded")
+                try:
+                    with open(shap_nn_path, "rb") as f:
+                        self.shap_explainer_nn = pickle.load(f)
+                    logger.info(" SHAP explainer (Neural Network) loaded")
+                except (pickle.UnpicklingError, EOFError, Exception) as e:
+                    logger.warning(
+                        f"Failed to load SHAP explainer (NN) from {shap_nn_path}: {str(e)}"
+                    )
             else:
                 logger.warning(f"SHAP explainer (NN) not found at {shap_nn_path}")
 
@@ -147,9 +188,14 @@ class EnsembleModel:
                 self.models_path, settings.shap_explainer_iforest_name
             )
             if os.path.exists(shap_iforest_path):
-                with open(shap_iforest_path, "rb") as f:
-                    self.shap_explainer_iforest = pickle.load(f)
-                logger.info("✓ SHAP explainer (Isolation Forest) loaded")
+                try:
+                    with open(shap_iforest_path, "rb") as f:
+                        self.shap_explainer_iforest = pickle.load(f)
+                    logger.info(" SHAP explainer (Isolation Forest) loaded")
+                except (pickle.UnpicklingError, EOFError, Exception) as e:
+                    logger.warning(
+                        f"Failed to load SHAP explainer (IForest) from {shap_iforest_path}: {str(e)}"
+                    )
             else:
                 logger.warning(
                     f"SHAP explainer (IForest) not found at {shap_iforest_path}"

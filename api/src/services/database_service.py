@@ -641,6 +641,132 @@ class DatabaseService:
             # SQLAlchemy mode - not implemented for general queries
             raise NotImplementedError("execute_query not supported in SQLAlchemy mode")
 
+    async def fetch_all(
+        self, query: str, params: Optional[tuple] = None, timeout: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Execute a SELECT query and return results as list of dictionaries.
+
+        This is an async wrapper around execute_query for compatibility with
+        async drift detection services.
+
+        Args:
+            query: SQL query string
+            params: Query parameters
+            timeout: Query timeout in seconds
+
+        Returns:
+            List of dictionaries with query results
+        """
+        if self.settings:
+            # psycopg2 mode
+            conn = self.connect()
+            try:
+                with conn.cursor() as cursor:
+                    if timeout:
+                        cursor.execute("SET statement_timeout = %s", (timeout * 1000,))
+                    cursor.execute(query, params or ())
+
+                    if query.strip().upper().startswith("SELECT"):
+                        results = cursor.fetchall()
+                        columns = [desc[0] for desc in cursor.description]
+                        # Convert to list of dicts
+                        return [dict(zip(columns, row)) for row in results]
+                    else:
+                        return []
+            except Exception as e:
+                self.logger.error(f"Query execution failed: {e}")
+                raise QueryExecutionError(f"Failed to execute query: {e}")
+        else:
+            # SQLAlchemy mode
+            session = self.get_session()
+            try:
+                from sqlalchemy import text
+
+                # Convert tuple params to dict for SQLAlchemy
+                if params:
+                    # SQLAlchemy text() expects positional params as list
+                    # We need to replace %s with :param1, :param2, etc.
+                    param_dict = {}
+                    modified_query = query
+                    for i, param_value in enumerate(params):
+                        placeholder = f":param{i}"
+                        modified_query = modified_query.replace("%s", placeholder, 1)
+                        param_dict[f"param{i}"] = param_value
+
+                    result = session.execute(text(modified_query), param_dict)
+                else:
+                    result = session.execute(text(query))
+
+                columns = result.keys()
+                rows = result.fetchall()
+
+                # Convert to list of dicts
+                return [dict(zip(columns, row)) for row in rows]
+            except SQLAlchemyError as e:
+                self.logger.error(f"Query execution failed: {e}")
+                raise QueryExecutionError(f"Failed to execute query: {e}")
+            finally:
+                session.close()
+
+    async def execute(
+        self, query: str, params: Optional[tuple] = None, timeout: Optional[int] = None
+    ) -> int:
+        """
+        Execute an INSERT/UPDATE/DELETE query and return affected rows count.
+
+        This is an async wrapper for non-SELECT queries.
+
+        Args:
+            query: SQL query string (INSERT, UPDATE, DELETE)
+            params: Query parameters
+            timeout: Query timeout in seconds
+
+        Returns:
+            Number of affected rows
+        """
+        if self.settings:
+            # psycopg2 mode
+            conn = self.connect()
+            try:
+                with conn.cursor() as cursor:
+                    if timeout:
+                        cursor.execute("SET statement_timeout = %s", (timeout * 1000,))
+                    cursor.execute(query, params or ())
+                    conn.commit()
+                    return cursor.rowcount
+            except Exception as e:
+                conn.rollback()
+                self.logger.error(f"Query execution failed: {e}")
+                raise QueryExecutionError(f"Failed to execute query: {e}")
+        else:
+            # SQLAlchemy mode
+            session = self.get_session()
+            try:
+                from sqlalchemy import text
+
+                # Convert tuple params to dict for SQLAlchemy
+                if params:
+                    param_dict = {}
+                    modified_query = query
+                    for i, param_value in enumerate(params):
+                        placeholder = f":param{i}"
+                        modified_query = modified_query.replace("%s", placeholder, 1)
+                        param_dict[f"param{i}"] = param_value
+
+                    result = session.execute(text(modified_query), param_dict)
+                else:
+                    result = session.execute(text(query))
+
+                session.commit()
+                return result.rowcount
+            except SQLAlchemyError as e:
+                session.rollback()
+                self.logger.error(f"Query execution failed: {e}")
+                raise QueryExecutionError(f"Failed to execute query: {e}")
+            finally:
+                session.close()
+
     def insert_transaction(self, transaction_data: Dict[str, Any]) -> int:
         """
         Insert a transaction record.

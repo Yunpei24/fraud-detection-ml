@@ -70,6 +70,10 @@ with DAG(
             "CONCEPT_DRIFT_THRESHOLD": str(THRESHOLDS["CONCEPT_DRIFT_THRESHOLD"]),
             "MONITORING_WINDOW_HOURS": "24",
             "LOG_LEVEL": "INFO",
+            # API configuration for drift detection
+            "API_BASE_URL": os.getenv("API_BASE_URL", "http://api:8000"),
+            "API_USERNAME": os.getenv("API_USERNAME_DRIFT", "admin"),
+            "API_PASSWORD": os.getenv("API_PASSWORD_DRIFT", "admin123"),
         },
         mount_tmp_dir=False,
     )

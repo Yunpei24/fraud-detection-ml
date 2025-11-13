@@ -15,23 +15,60 @@ services:
     image: postgres:15-alpine
     container_name: fraud-postgres
     environment:
-      POSTGRES_USER: fraud_user
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fraud_pass_dev_2024}
-      POSTGRES_DB: fraud_detection
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+      POSTGRES_DB: ${POSTGRES_DB:-fraud_detection}
+      POSTGRES_USER: ${POSTGRES_USER:-fraud_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ./00_create_databases.sh:/docker-entrypoint-initdb.d/00_create_databases.sh:ro
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     networks:
       - fraud-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fraud_user -d fraud_detection"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fraud_user}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+    command: >
+      sh -c '
+        apk add --no-cache openssl &&
+        mkdir -p /etc/ssl/certs /etc/ssl/private &&
+        openssl req -new -x509 -days 365 -nodes \
+          -out /etc/ssl/certs/ssl-cert-snakeoil.pem \
+          -keyout /etc/ssl/private/ssl-cert-snakeoil.key \
+          -subj "/CN=postgres" &&
+        chown postgres:postgres /etc/ssl/certs/ssl-cert-snakeoil.pem /etc/ssl/private/ssl-cert-snakeoil.key &&
+        chmod 600 /etc/ssl/private/ssl-cert-snakeoil.key &&
+        su-exec postgres postgres \
+          -c ssl=on \
+          -c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem \
+          -c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+      '
+  
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: fraud-pgbouncer
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=fraud_user
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_NAME=fraud_detection
+      - POOL_MODE=transaction
+      - MAX_CLIENT_CONN=100
+      - DEFAULT_POOL_SIZE=20
+      - MIN_POOL_SIZE=5
+      - RESERVE_POOL_SIZE=5
+    ports:
+      - "127.0.0.1:6432:5432"  # Map host:6432 -> container:5432 (PgBouncer internal port)
+    networks:
+      - fraud-network
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   redis:
@@ -144,7 +181,7 @@ services:
     volumes:
       - mlflow_artifacts:/mlflow/artifacts
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5001:5000"
     networks:
       - fraud-network
     depends_on:
@@ -249,7 +286,7 @@ services:
       - ./creditcard.csv:/data/creditcard.csv:ro  # ← Dataset à la racine
       - data_artifacts:/artifacts
     ports:
-      - "9091:9091"  # Prometheus metrics - accessible from VM2
+      - "127.0.0.1:9191:9091"  # Prometheus metrics - accessible from VM2
     networks:
       - fraud-network
     depends_on:
@@ -294,10 +331,11 @@ services:
       - AIRFLOW_PASSWORD=${AIRFLOW_PASSWORD:-airflow}
       - RETRAINING_COOLDOWN_HOURS=48
       - API_URL=http://api:8000
+      - API_BASE_URL=${API_BASE_URL:-http://api:8000}
       - API_USERNAME=${API_USERNAME_DRIFT:-admin}
       - API_PASSWORD=${API_PASSWORD_DRIFT:-admin123}
     ports:
-      - "9097:9097"  # Prometheus metrics - accessible depuis VM2
+      - "127.0.0.1:9197:9097"  # Prometheus metrics - accessible depuis VM2
     networks:
       - fraud-network
     depends_on:
@@ -343,7 +381,7 @@ services:
       - training_artifacts:/app/training/artifacts  # Training artifacts (timestamped runs)
       - mlflow_artifacts:/mlflow/artifacts
     ports:
-      - "9096:9095"  # Prometheus metrics - accessible depuis VM2
+      - "127.0.0.1:9195:9095"  # Prometheus metrics - accessible depuis VM2
     networks:
       - fraud-network
     depends_on:
@@ -382,12 +420,12 @@ services:
       bash -c "
       airflow db init &&
       airflow users create
-        --username ${AIRFLOW_ADMIN_USERNAME:-admin}
-        --password ${AIRFLOW_ADMIN_PASSWORD:-admin}
-        --firstname Admin
-        --lastname User
-        --role Admin
-        --email ${AIRFLOW_ADMIN_EMAIL:-admin@frauddetection.local} || true &&
+      --username ${AIRFLOW_ADMIN_USERNAME:-admin}
+      --password ${AIRFLOW_ADMIN_PASSWORD:-admin}
+      --firstname Admin
+      --lastname User
+      --role Admin
+      --email ${AIRFLOW_ADMIN_EMAIL:-admin@frauddetection.local} || true &&
       python /opt/airflow/scripts/setup_connections.py &&
       python /opt/airflow/scripts/setup_smtp_connection.py || echo 'SMTP setup failed, continuing...'
       "
@@ -395,6 +433,10 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://fraud_user:${POSTGRES_PASSWORD:-fraud_pass_dev_2024}@postgres:5432/fraud_detection
       - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fraud_pass_dev_2024}
+      - DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME:-jyen24}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - CREDITCARD_CSV_HOST_PATH=/home/frauduser/fraud-detection-ml/creditcard.csv
     volumes:
       - ./config:/opt/airflow/config:ro  # Mount centralized config
       - ./airflow/dags:/opt/airflow/dags
@@ -431,6 +473,9 @@ services:
       - ENVIRONMENT=production  # Use Docker Hub images
       - PYTHONPATH=/opt/airflow:/opt/airflow/config:/opt/airflow/plugins
       - WEBAPP_URL=${WEBAPP_URL:-http://localhost:3000}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fraud_pass_dev_2024}
+      - DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME:-jyen24}
+      - CREDITCARD_CSV_HOST_PATH=/home/frauduser/fraud-detection-ml/creditcard.csv
     volumes:
       - ./config:/opt/airflow/config:ro  # Mount centralized config
       - ./airflow/dags:/opt/airflow/dags
@@ -477,6 +522,9 @@ services:
       - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
       - ENVIRONMENT=production  # Use Docker Hub images
       - PYTHONPATH=/opt/airflow:/opt/airflow/config:/opt/airflow/plugins
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fraud_pass_dev_2024}
+      - DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME:-jyen24}
+      - CREDITCARD_CSV_HOST_PATH=/home/frauduser/fraud-detection-ml/creditcard.csv
     volumes:
       - ./config:/opt/airflow/config:ro  # Mount centralized config
       - ./airflow/dags:/opt/airflow/dags
@@ -524,6 +572,9 @@ services:
       - AIRFLOW__CELERY__WORKER_PREFETCH_MULTIPLIER=1
       - AIRFLOW__CELERY__WORKER_MAX_TASKS_PER_CHILD=50
       - AIRFLOW__CELERY__WORKER_AUTOSCALE=2,4
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fraud_pass_dev_2024}
+      - DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME:-jyen24}
+      - CREDITCARD_CSV_HOST_PATH=/home/frauduser/fraud-detection-ml/creditcard.csv
     volumes:
       - ./config:/opt/airflow/config:ro  # Mount centralized config
       - ./airflow/dags:/opt/airflow/dags

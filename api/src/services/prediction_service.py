@@ -539,7 +539,6 @@ class PredictionService:
         except Exception as e:
             self.logger.error(f"SHAP explanation failed for {transaction_id}: {e}")
             raise PredictionFailedException(
-                error_code="E800",
                 message="SHAP explanation generation failed",
                 details={"transaction_id": transaction_id, "error": str(e)},
             )

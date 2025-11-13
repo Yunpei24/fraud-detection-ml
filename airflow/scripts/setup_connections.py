@@ -21,8 +21,16 @@ def setup_postgres_connection():
     session = settings.Session()
     existing = session.query(Connection).filter(Connection.conn_id == conn_id).first()
 
+    # Get password from environment variable
+    postgres_password = os.getenv("POSTGRES_PASSWORD", "fraud_pass_dev_2024")
+
     if existing:
-        print(f" Connection '{conn_id}' already exists")
+        # Update existing connection with current password
+        print(f"⚠️  Connection '{conn_id}' already exists, updating password...")
+        existing.password = postgres_password
+        session.commit()
+        session.close()
+        print(f"✅ PostgreSQL connection '{conn_id}' password updated")
         return
 
     conn = Connection(
@@ -31,7 +39,7 @@ def setup_postgres_connection():
         host="postgres",
         schema="fraud_detection",
         login="fraud_user",
-        password="fraud_pass_dev_2024",
+        password=postgres_password,
         port=5432,
     )
 
@@ -39,7 +47,7 @@ def setup_postgres_connection():
     session.commit()
     session.close()
 
-    print(f" PostgreSQL connection '{conn_id}' created")
+    print(f"✅ PostgreSQL connection '{conn_id}' created")
 
 
 def setup_http_connections():
