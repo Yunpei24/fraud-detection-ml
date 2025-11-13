@@ -98,7 +98,7 @@ xgboost_model_name = os.getenv("XGBOOST_MODEL_NAME", "xgboost_fraud_model.pkl")
 random_forest_model_name = os.getenv(
     "RANDOM_FOREST_MODEL_NAME", "random_forest_fraud_model.pkl"
 )
-nn_model_name = os.getenv("NN_MODEL_NAME", "nn_fraud_model.pth")
+nn_model_name = os.getenv("NN_MODEL_NAME", "neural_network_fraud_model.pkl")
 isolation_forest_model_name = os.getenv(
     "ISOLATION_FOREST_MODEL_NAME", "isolation_forest_model.pkl"
 )

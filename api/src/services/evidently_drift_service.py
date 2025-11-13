@@ -5,6 +5,7 @@ This service provides comprehensive drift detection capabilities for fraud detec
 supporting all three drift types with advanced statistical testing and automated monitoring.
 """
 
+import json
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, Tuple
@@ -29,6 +30,40 @@ from evidently.tests import (
 from .database_service import DatabaseService
 
 logger = logging.getLogger(__name__)
+
+
+def convert_numpy_types(obj):
+    """
+    Recursively convert NumPy types to Python native types for JSON serialization.
+    Also handles special float values (Infinity, NaN).
+    """
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        # Handle special float values that aren't valid JSON
+        if np.isnan(obj):
+            return None
+        elif np.isinf(obj):
+            return None
+        return float(obj)
+    elif isinstance(obj, (float, int)):
+        # Handle Python native types that might have special values
+        if isinstance(obj, float):
+            if np.isnan(obj) or np.isinf(obj):
+                return None
+        return obj
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [convert_numpy_types(item) for item in obj]
+    elif isinstance(obj, (datetime, timedelta)):
+        return obj.isoformat()
+    else:
+        return obj
 
 
 class EvidentlyDriftService:
@@ -85,11 +120,6 @@ class EvidentlyDriftService:
             ],
             categorical_features=[
                 "transaction_type",
-                "customer_country",
-                "merchant_country",
-                "currency",
-                "device_id",
-                "ip_address",
             ],
             datetime_features=["time"],
         )
@@ -149,7 +179,8 @@ class EvidentlyDriftService:
             # Store individual metrics in drift_metrics table
             await self._store_individual_metrics(results)
 
-            return results
+            # Convert NumPy types to Python native types for API response
+            return convert_numpy_types(results)
 
         except Exception as e:
             logger.error(f"Error in comprehensive drift detection: {e}")
@@ -556,22 +587,17 @@ class EvidentlyDriftService:
     async def _get_current_window_data(self, window_hours: int) -> pd.DataFrame:
         """
         Get current window data for drift analysis.
+        For development: If no recent data found, use the most recent data available.
         """
         query = """
         SELECT
             t.transaction_id,
             t.amount,
-            t.currency,
             t.time,
-            t.is_fraud,
+            t.class as is_fraud,
             t.v1, t.v2, t.v3, t.v4, t.v5, t.v6, t.v7, t.v8, t.v9, t.v10,
             t.v11, t.v12, t.v13, t.v14, t.v15, t.v16, t.v17, t.v18, t.v19, t.v20,
             t.v21, t.v22, t.v23, t.v24, t.v25, t.v26, t.v27, t.v28,
-            t.transaction_type,
-            t.customer_country,
-            t.merchant_country,
-            t.device_id,
-            t.ip_address,
             p.fraud_score
         FROM transactions t
         LEFT JOIN predictions p ON t.transaction_id = p.transaction_id
@@ -581,41 +607,88 @@ class EvidentlyDriftService:
         """
 
         cutoff_time = datetime.utcnow() - timedelta(hours=window_hours)
-        rows = await self.db.fetch_all(query, (cutoff_time,))
+        # Convert datetime to Unix timestamp (seconds since epoch) to match numeric type
+        cutoff_timestamp = cutoff_time.timestamp()
+        rows = await self.db.fetch_all(query, (cutoff_timestamp,))
+
+        # If no recent data, get the most recent data available (for development)
+        if not rows:
+            fallback_query = """
+            SELECT
+                t.transaction_id,
+                t.amount,
+                t.time,
+                t.class as is_fraud,
+                t.v1, t.v2, t.v3, t.v4, t.v5, t.v6, t.v7, t.v8, t.v9, t.v10,
+                t.v11, t.v12, t.v13, t.v14, t.v15, t.v16, t.v17, t.v18, t.v19, t.v20,
+                t.v21, t.v22, t.v23, t.v24, t.v25, t.v26, t.v27, t.v28,
+                p.fraud_score
+            FROM transactions t
+            LEFT JOIN predictions p ON t.transaction_id = p.transaction_id
+            ORDER BY t.time DESC
+            LIMIT 1000
+            """
+            rows = await self.db.fetch_all(fallback_query)
+            logger.warning(
+                f"No recent data found, using {len(rows)} most recent transactions as fallback"
+            )
+
         return pd.DataFrame(rows)
 
     async def _get_reference_window_data(self, reference_days: int) -> pd.DataFrame:
         """
         Get reference window data for drift analysis.
+        For development: If no historical data found, use half of available data as reference.
         """
         query = """
         SELECT
             t.transaction_id,
             t.amount,
-            t.currency,
             t.time,
-            t.is_fraud,
+            t.class as is_fraud,
             t.v1, t.v2, t.v3, t.v4, t.v5, t.v6, t.v7, t.v8, t.v9, t.v10,
             t.v11, t.v12, t.v13, t.v14, t.v15, t.v16, t.v17, t.v18, t.v19, t.v20,
             t.v21, t.v22, t.v23, t.v24, t.v25, t.v26, t.v27, t.v28,
-            t.transaction_type,
-            t.customer_country,
-            t.merchant_country,
-            t.device_id,
-            t.ip_address,
             p.fraud_score
         FROM transactions t
         LEFT JOIN predictions p ON t.transaction_id = p.transaction_id
         WHERE t.time >= %s
         AND t.time < %s
-        AND t.is_fraud = false  -- Use legitimate transactions as reference
+        AND t.class = 0  -- Use legitimate transactions as reference
         ORDER BY t.time DESC
         LIMIT 50000
         """
 
         start_time = datetime.utcnow() - timedelta(days=reference_days + 1)
         end_time = datetime.utcnow() - timedelta(days=1)
-        rows = await self.db.fetch_all(query, (start_time, end_time))
+        # Convert datetime to Unix timestamp
+        start_timestamp = start_time.timestamp()
+        end_timestamp = end_time.timestamp()
+        rows = await self.db.fetch_all(query, (start_timestamp, end_timestamp))
+
+        # If no historical data, use first half of all available data as reference (for development)
+        if not rows:
+            fallback_query = """
+            SELECT
+                t.transaction_id,
+                t.amount,
+                t.time,
+                t.class as is_fraud,
+                t.v1, t.v2, t.v3, t.v4, t.v5, t.v6, t.v7, t.v8, t.v9, t.v10,
+                t.v11, t.v12, t.v13, t.v14, t.v15, t.v16, t.v17, t.v18, t.v19, t.v20,
+                t.v21, t.v22, t.v23, t.v24, t.v25, t.v26, t.v27, t.v28,
+                p.fraud_score
+            FROM transactions t
+            LEFT JOIN predictions p ON t.transaction_id = p.transaction_id
+            WHERE t.class = 0  -- Use legitimate transactions as reference
+            ORDER BY t.time ASC
+            LIMIT 5000
+            """
+            rows = await self.db.fetch_all(fallback_query)
+            logger.warning(
+                f"No historical reference data found, using {len(rows)} oldest legitimate transactions as fallback"
+            )
+
         return pd.DataFrame(rows)
 
     async def _get_window_data(
@@ -629,7 +702,10 @@ class EvidentlyDriftService:
         WHERE time >= %s AND time < %s
         LIMIT 10000
         """
-        rows = await self.db.fetch_all(query, (start_time, end_time))
+        # Convert datetime to Unix timestamp
+        start_timestamp = start_time.timestamp()
+        end_timestamp = end_time.timestamp()
+        rows = await self.db.fetch_all(query, (start_timestamp, end_timestamp))
         return pd.DataFrame(rows)
 
     async def _quick_drift_check(
@@ -659,6 +735,9 @@ class EvidentlyDriftService:
         """
         Store comprehensive drift analysis results.
         """
+        # Convert all NumPy types to Python native types for JSON serialization
+        clean_results = convert_numpy_types(results)
+
         query = """
         INSERT INTO drift_analysis_results (
             timestamp, analysis_window, reference_window,
@@ -670,14 +749,14 @@ class EvidentlyDriftService:
         await self.db.execute(
             query,
             (
-                results["timestamp"],
-                results["analysis_window"],
-                results["reference_window"],
-                str(results["data_drift"]),
-                str(results["target_drift"]),
-                str(results["concept_drift"]),
-                str(results["multivariate_drift"]),
-                str(results["drift_summary"]),
+                clean_results["timestamp"],
+                clean_results["analysis_window"],
+                clean_results["reference_window"],
+                json.dumps(clean_results["data_drift"]),
+                json.dumps(clean_results["target_drift"]),
+                json.dumps(clean_results["concept_drift"]),
+                json.dumps(clean_results["multivariate_drift"]),
+                json.dumps(clean_results["drift_summary"]),
             ),
         )
 

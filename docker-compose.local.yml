@@ -179,7 +179,7 @@ services:
       - CORS_ORIGINS=["http://localhost:3000","http://localhost:8000"]
       - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
       - AZURE_STORAGE_CONTAINER_NAME=${AZURE_STORAGE_CONTAINER_NAME:-fraud-models}
-      - AZURE_STORAGE_MOUNT_PATH=/mlflow/artifacts  # Local dev: use mlflow_artifacts volume (production will use /mnt/fraud-models with Azure File Share)
+      - AZURE_STORAGE_MOUNT_PATH=/mlflow/artifacts/champion  # Point to champion directory where models are stored
       - ENVIRONMENT=local
       - REQUIRE_API_KEY=true
       - API_KEYS=${API_KEYS:-dev_api_key_12345,test_api_key_67890}
@@ -293,6 +293,7 @@ services:
       - RETRAINING_COOLDOWN_HOURS=48
       # API Authentication for drift detection
       - API_URL=http://api:8000
+      - API_BASE_URL=${API_BASE_URL:-http://api:8000}
       - API_USERNAME=${API_USERNAME_DRIFT:-admin}
       - API_PASSWORD=${API_PASSWORD_DRIFT:-admin123}
     ports:
@@ -423,6 +424,10 @@ services:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@localhost.com}
       - ENVIRONMENT=local  # Use development environment
+      # API configuration for drift detection
+      - API_BASE_URL=${API_BASE_URL:-http://api:8000}
+      - API_USERNAME_DRIFT=${API_USERNAME_DRIFT:-admin}
+      - API_PASSWORD_DRIFT=${API_PASSWORD_DRIFT:-admin123}
     volumes:
       - ./config:/opt/airflow/config:ro  # Mount centralized config
       - ./airflow/dags:/opt/airflow/dags
@@ -469,6 +474,10 @@ services:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - ALERT_EMAIL=${ALERT_EMAIL:-ml-alerts@localhost.com}
       - ENVIRONMENT=local  # Use development environment
+      # API configuration for drift detection
+      - API_BASE_URL=${API_BASE_URL:-http://api:8000}
+      - API_USERNAME_DRIFT=${API_USERNAME_DRIFT:-admin}
+      - API_PASSWORD_DRIFT=${API_PASSWORD_DRIFT:-admin123}
     volumes:
       - ./config:/opt/airflow/config:ro  # Mount centralized config
       - ./airflow/dags:/opt/airflow/dags
@@ -518,6 +527,10 @@ services:
       - AIRFLOW__CELERY__WORKER_PREFETCH_MULTIPLIER=1
       - AIRFLOW__CELERY__WORKER_MAX_TASKS_PER_CHILD=50
       - AIRFLOW__CELERY__WORKER_AUTOSCALE=2,4
+      # API configuration for drift detection
+      - API_BASE_URL=${API_BASE_URL:-http://api:8000}
+      - API_USERNAME_DRIFT=${API_USERNAME_DRIFT:-admin}
+      - API_PASSWORD_DRIFT=${API_PASSWORD_DRIFT:-admin123}
     volumes:
       - ./config:/opt/airflow/config:ro  # Mount centralized config
       - ./airflow/dags:/opt/airflow/dags

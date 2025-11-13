@@ -30,7 +30,7 @@ class FraudDetectionAPIClient:
 
     def __init__(
         self,
-        base_url: str = "http://localhost:8000",
+        base_url: Optional[str] = None,
         timeout: int = 30,
         username: Optional[str] = None,
         password: Optional[str] = None,
@@ -40,20 +40,29 @@ class FraudDetectionAPIClient:
         Initialize API client with JWT authentication.
 
         Args:
-            base_url: Base URL of the fraud detection API
+            base_url: Base URL of the fraud detection API (defaults to API_BASE_URL env var or localhost)
             timeout: Request timeout in seconds
             username: API username for authentication
             password: API password for authentication
             auth_token: Pre-existing JWT token
         """
+        # Use environment variable if base_url not provided
+        if base_url is None:
+            base_url = os.getenv(
+                "API_BASE_URL",
+                os.getenv("FRAUD_DETECTION_API_URL", "http://localhost:8000"),
+            )
+
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
 
         # JWT Authentication
-        self.username = username or os.getenv("API_USERNAME")
-        self.password = password or os.getenv("API_PASSWORD")
-        self.auth_token = auth_token or os.getenv("API_TOKEN")
+        self.username = username or os.getenv("API_USERNAME", "admin")
+        self.password = password or os.getenv("API_PASSWORD", "admin123")
+        self.auth_token = auth_token or os.getenv(
+            "API_TOKEN", "change-me-in-production-admin-token"
+        )
 
         # Token expiry tracking
         self._token_expiry = None
