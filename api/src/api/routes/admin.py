@@ -218,3 +218,39 @@ async def get_admin_docs(
         title="Admin API Documentation - Fraud Detection",
         redoc_js_url="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js",
     )
+
+
+@router.get("/swagger", include_in_schema=False)
+async def get_admin_swagger(
+    request: Request,
+    token: str,  # Query parameter
+):
+    """
+    Access admin Swagger UI documentation with token in URL.
+
+    Usage: GET /admin/swagger?token=YOUR_ADMIN_TOKEN
+
+    This returns the native FastAPI Swagger UI for interactive API testing.
+    """
+    from fastapi.openapi.docs import get_swagger_ui_html
+
+    # Verify token
+    if token != settings.admin_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin token"
+        )
+
+    # Get OpenAPI URL
+    openapi_url = request.app.openapi_url
+    if not openapi_url:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="OpenAPI schema is disabled"
+        )
+
+    # Return native FastAPI Swagger UI HTML
+    return get_swagger_ui_html(
+        openapi_url=openapi_url,
+        title="Admin API Documentation - Fraud Detection (Swagger UI)",
+        swagger_js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
+        swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css",
+    )

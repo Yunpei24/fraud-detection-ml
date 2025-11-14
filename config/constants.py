@@ -83,20 +83,20 @@ ENV_VARS = {
     # Python configuration
     "PYTHONPATH": "/app",
     "PYTHONUNBUFFERED": "1",
-    # PostgreSQL configuration (using DB_* prefix for Pydantic + DATABASE_URL)
+    # PostgreSQL configuration (using DB_* prefix for Pydantic compatibility)
     "DB_HOST": "postgres",
     "DB_PORT": "5432",
     "DB_NAME": "fraud_detection",
     "DB_USER": "fraud_user",
-    "DB_PASSWORD": "fraud_pass_dev_2024",
+    "DB_PASSWORD": os.getenv("POSTGRES_PASSWORD", "fraud_pass_dev_2024"),
     # Explicit database URL to override Pydantic defaults
-    "DATABASE_URL": "postgresql://fraud_user:fraud_pass_dev_2024@postgres:5432/fraud_detection",
-    # Keep POSTGRES_* for backward compatibility
+    "DATABASE_URL": f"postgresql://fraud_user:{os.getenv('POSTGRES_PASSWORD', 'fraud_pass_dev_2024')}@postgres:5432/fraud_detection",
+    # Keep POSTGRES_* for backward compatibility with some scripts
     "POSTGRES_HOST": "postgres",
     "POSTGRES_PORT": "5432",
     "POSTGRES_DB": "fraud_detection",
     "POSTGRES_USER": "fraud_user",
-    "POSTGRES_PASSWORD": "fraud_pass_dev_2024",
+    "POSTGRES_PASSWORD": os.getenv("POSTGRES_PASSWORD", "fraud_pass_dev_2024"),
     "POSTGRES_CONN_ID": "fraud_postgres",
     # MLflow configuration
     "MLFLOW_TRACKING_URI": "http://mlflow:5000",
@@ -121,14 +121,18 @@ ENV_VARS = {
         "KAFKA_TIMEOUT_MS", "10000"
     ),  # 10s instead of 60s (faster feedback if Kafka empty)
     "KAFKA_MAX_POLL_RECORDS": os.getenv("KAFKA_MAX_POLL_RECORDS", "500"),
-    # API configuration
-    "API_URL": os.getenv("API_URL", "http://api:8000"),
+    # API configuration (Azure Web App deployment)
+    "API_URL": os.getenv(
+        "API_URL", "https://fraud-detection-api-ammi-2025.azurewebsites.net"
+    ),
     "API_TIMEOUT_SECONDS": os.getenv("API_TIMEOUT_SECONDS", "60"),
     # JWT Authentication (from environment or Airflow Variables)
     "API_USERNAME": os.getenv("API_USERNAME", "admin"),
     "API_PASSWORD": os.getenv("API_PASSWORD", "admin123"),
-    # Web Application for fraud alerts
-    "WEBAPP_URL": os.getenv("WEBAPP_URL", "http://localhost:3001"),
+    # Web Application for fraud alerts (Render deployment)
+    "WEBAPP_URL": os.getenv(
+        "WEBAPP_URL", "https://fraud-detection-backend-tf5o.onrender.com"
+    ),
     "WEBAPP_TIMEOUT_SECONDS": os.getenv("WEBAPP_TIMEOUT_SECONDS", "30"),
 }
 
