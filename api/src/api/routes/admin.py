@@ -212,11 +212,12 @@ async def get_admin_docs(
             status_code=status.HTTP_404_NOT_FOUND, detail="OpenAPI schema is disabled"
         )
 
-    # Return native FastAPI Redoc HTML
+    # Return native FastAPI Redoc HTML with stable version
+    # Using stable version instead of @next to avoid initialization issues
     return get_redoc_html(
         openapi_url=openapi_url,
         title="Admin API Documentation - Fraud Detection",
-        redoc_js_url="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js",
+        redoc_js_url="https://cdn.jsdelivr.net/npm/redoc@latest/bundles/redoc.standalone.js",
     )
 
 
